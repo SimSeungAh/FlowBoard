@@ -3,6 +3,8 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/FlowBoard.iml" filepath="$PROJECT_DIR$/.idea/FlowBoard.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/com.example.FlowBoard.main.iml" filepath="$PROJECT_DIR$/.idea/modules/com.example.FlowBoard.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/com.example.FlowBoard.test.iml" filepath="$PROJECT_DIR$/.idea/modules/com.example.FlowBoard.test.iml" />
     </modules>
   </component>
 </project>
