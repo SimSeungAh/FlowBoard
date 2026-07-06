@@ -39,15 +39,23 @@ public class Card extends BaseEntity {
 
   private LocalDateTime dueDate;
 
-  public Card(BoardColumn boardColumn, User createdBy, String title, String description, String rank) {
+  public Card(
+      BoardColumn boardColumn,
+      User createdBy,
+      String title,
+      String description,
+      String rank,
+      LocalDateTime dueDate
+  ) {
     this.boardColumn = boardColumn;
     this.createdBy = createdBy;
     this.title = title;
     this.description = description;
     this.rank = rank;
+    this.dueDate = dueDate;
   }
 
-public void uodate(String title,String description,LocalDateTime dueDate) {
+  public void update(String title, String description, LocalDateTime dueDate) {
     this.title = title;
     this.description = description;
     this.dueDate = dueDate;
@@ -57,5 +65,4 @@ public void uodate(String title,String description,LocalDateTime dueDate) {
     this.boardColumn = boardColumn;
     this.rank = rank;
   }
-
 }

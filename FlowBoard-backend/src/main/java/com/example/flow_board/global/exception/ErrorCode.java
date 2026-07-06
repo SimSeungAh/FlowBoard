@@ -14,6 +14,13 @@ public enum ErrorCode {
   USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_002", "사용자를 찾을 수 없습니다."),
   PASSWORD_NOT_MATCH(HttpStatus.UNAUTHORIZED, "USER_003", "비밀번호가 일치하지 않습니다."),
 
+  BOARD_NOT_FOUND(HttpStatus.NOT_FOUND, "BOARD_001", "보드를 찾을 수 없습니다."),
+  BOARD_ACCESS_DENIED(HttpStatus.FORBIDDEN, "BOARD_002", "보드에 접근할 권한이 없습니다."),
+
+  COLUMN_NOT_FOUND(HttpStatus.NOT_FOUND, "COLUMN_001", "컬럼을 찾을 수 없습니다."),
+
+  CARD_NOT_FOUND(HttpStatus.NOT_FOUND, "CARD_001", "카드를 찾을 수 없습니다."),
+
   INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "SERVER_001", "서버 내부 오류가 발생했습니다."),
   INVALID_TOKEN(
       HttpStatus.UNAUTHORIZED,
