@@ -21,6 +21,16 @@ public enum ErrorCode {
 
   CARD_NOT_FOUND(HttpStatus.NOT_FOUND, "CARD_001", "카드를 찾을 수 없습니다."),
 
+  COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "COMMENT_001", "댓글을 찾을 수 없습니다."),
+  COMMENT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "COMMENT_002", "댓글을 수정하거나 삭제할 권한이 없습니다."),
+
+  CHECKLIST_NOT_FOUND(HttpStatus.NOT_FOUND, "CHECKLIST_001", "체크리스트를 찾을 수 없습니다."),
+  CHECKLIST_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "CHECKLIST_ITEM_001", "체크리스트 항목을 찾을 수 없습니다."),
+
+  TAG_NOT_FOUND(HttpStatus.NOT_FOUND, "TAG_001", "태그를 찾을 수 없습니다."),
+  TAG_ALREADY_EXISTS(HttpStatus.CONFLICT, "TAG_002", "이미 존재하는 태그입니다."),
+  CARD_TAG_NOT_FOUND(HttpStatus.NOT_FOUND, "CARD_TAG_001", "카드에 연결된 태그를 찾을 수 없습니다."),
+
   INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "SERVER_001", "서버 내부 오류가 발생했습니다."),
   INVALID_TOKEN(
       HttpStatus.UNAUTHORIZED,
