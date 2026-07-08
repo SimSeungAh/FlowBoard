@@ -6,6 +6,7 @@ import com.example.flow_board.domain.board.repository.BoardColumnRepository;
 import com.example.flow_board.domain.board.repository.BoardMemberRepository;
 import com.example.flow_board.domain.board.repository.BoardRepository;
 import com.example.flow_board.domain.card.dto.request.CardCreateRequest;
+import com.example.flow_board.domain.card.dto.request.CardMoveRequest;
 import com.example.flow_board.domain.card.dto.request.CardUpdateRequest;
 import com.example.flow_board.domain.card.dto.response.CardResponse;
 import com.example.flow_board.domain.card.entity.Card;
@@ -16,6 +17,8 @@ import com.example.flow_board.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.example.flow_board.domain.card.dto.request.CardMoveRequest;
 
 import java.util.List;
 import java.util.Objects;
@@ -109,6 +112,49 @@ public class CardService {
   }
 
   @Transactional
+  public CardResponse moveCard(
+      User user,
+      Long cardId,
+      CardMoveRequest request
+  ) {
+    Card card = getCardById(cardId);
+    BoardColumn sourceColumn = card.getBoardColumn();
+    Board board = sourceColumn.getBoard();
+
+    validateBoardAccess(board, user);
+
+    BoardColumn targetColumn = getColumnById(request.targetColumnId());
+    validateColumnInBoard(targetColumn, board);
+
+    boolean sameColumn = Objects.equals(sourceColumn.getId(), targetColumn.getId());
+
+    if (sameColumn) {
+      List<Card> cards = cardRepository.findByBoardColumnOrderByRankAsc(sourceColumn);
+      cards.removeIf(item -> Objects.equals(item.getId(), card.getId()));
+
+      validateTargetIndex(request.targetIndex(), cards.size());
+
+      cards.add(request.targetIndex(), card);
+      reorderCards(cards, targetColumn);
+
+      return CardResponse.from(card);
+    }
+
+    List<Card> sourceCards = cardRepository.findByBoardColumnOrderByRankAsc(sourceColumn);
+    sourceCards.removeIf(item -> Objects.equals(item.getId(), card.getId()));
+    reorderCards(sourceCards, sourceColumn);
+
+    List<Card> targetCards = cardRepository.findByBoardColumnOrderByRankAsc(targetColumn);
+
+    validateTargetIndex(request.targetIndex(), targetCards.size());
+
+    targetCards.add(request.targetIndex(), card);
+    reorderCards(targetCards, targetColumn);
+
+    return CardResponse.from(card);
+  }
+
+  @Transactional
   public void deleteCard(
       User user,
       Long cardId
@@ -119,6 +165,22 @@ public class CardService {
     validateBoardAccess(board, user);
 
     cardRepository.delete(card);
+  }
+
+  private void validateTargetIndex(Integer targetIndex, int maxIndex) {
+    if (targetIndex == null || targetIndex < 0 || targetIndex > maxIndex) {
+      throw new CustomException(ErrorCode.INVALID_INPUT);
+    }
+  }
+
+  private void reorderCards(List<Card> cards, BoardColumn boardColumn) {
+    for (int i = 0; i < cards.size(); i++) {
+      cards.get(i).moveTo(boardColumn, createSimpleRank(i + 1));
+    }
+  }
+
+  private String createSimpleRank(int position) {
+    return String.format("%010d", position);
   }
 
   private String createSimpleRank(BoardColumn boardColumn) {

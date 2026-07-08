@@ -12,7 +12,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
+import com.example.flow_board.domain.card.dto.request.CardMoveRequest;
 import java.util.List;
 
 @RestController
@@ -84,6 +84,22 @@ public class CardController {
     );
 
     return ApiResponse.success("카드 수정 성공", response);
+  }
+
+  @PatchMapping("/api/cards/{cardId}/move")
+  @Operation(summary = "카드 이동", description = "드래그 앤 드롭 결과에 따라 카드의 컬럼과 순서를 변경합니다.")
+  public ApiResponse<CardResponse> moveCard(
+      @AuthenticationPrincipal CustomUserDetails userDetails,
+      @PathVariable Long cardId,
+      @Valid @RequestBody CardMoveRequest request
+  ) {
+    CardResponse response = cardService.moveCard(
+        userDetails.getUser(),
+        cardId,
+        request
+    );
+
+    return ApiResponse.success("카드 이동 성공", response);
   }
 
   @DeleteMapping("/api/cards/{cardId}")
