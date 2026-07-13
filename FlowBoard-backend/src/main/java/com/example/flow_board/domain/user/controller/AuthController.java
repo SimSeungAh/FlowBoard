@@ -11,9 +11,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.log4j.Log4j2;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
+@Log4j2
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 @Tag(name = "Auth", description = "회원 인증 API")
