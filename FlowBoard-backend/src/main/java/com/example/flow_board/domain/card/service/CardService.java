@@ -11,14 +11,13 @@ import com.example.flow_board.domain.card.dto.request.CardUpdateRequest;
 import com.example.flow_board.domain.card.dto.response.CardResponse;
 import com.example.flow_board.domain.card.entity.Card;
 import com.example.flow_board.domain.card.repository.CardRepository;
+import com.example.flow_board.domain.card.util.LexoRankUtil;
 import com.example.flow_board.domain.user.entity.User;
 import com.example.flow_board.global.exception.CustomException;
 import com.example.flow_board.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import com.example.flow_board.domain.card.dto.request.CardMoveRequest;
 
 import java.util.List;
 import java.util.Objects;
@@ -46,7 +45,7 @@ public class CardService {
     BoardColumn boardColumn = getColumnById(columnId);
     validateColumnInBoard(boardColumn, board);
 
-    String rank = createSimpleRank(boardColumn);
+    String rank = createLexoRank(boardColumn);
 
     Card card = new Card(
         boardColumn,
@@ -118,38 +117,26 @@ public class CardService {
       CardMoveRequest request
   ) {
     Card card = getCardById(cardId);
-    BoardColumn sourceColumn = card.getBoardColumn();
-    Board board = sourceColumn.getBoard();
+    Board sourceBoard = card.getBoardColumn().getBoard();
 
-    validateBoardAccess(board, user);
+    validateBoardAccess(sourceBoard, user);
 
     BoardColumn targetColumn = getColumnById(request.targetColumnId());
-    validateColumnInBoard(targetColumn, board);
+    validateColumnInBoard(targetColumn, sourceBoard);
 
-    boolean sameColumn = Objects.equals(sourceColumn.getId(), targetColumn.getId());
-
-    if (sameColumn) {
-      List<Card> cards = cardRepository.findByBoardColumnOrderByRankAsc(sourceColumn);
-      cards.removeIf(item -> Objects.equals(item.getId(), card.getId()));
-
-      validateTargetIndex(request.targetIndex(), cards.size());
-
-      cards.add(request.targetIndex(), card);
-      reorderCards(cards, targetColumn);
-
-      return CardResponse.from(card);
-    }
-
-    List<Card> sourceCards = cardRepository.findByBoardColumnOrderByRankAsc(sourceColumn);
-    sourceCards.removeIf(item -> Objects.equals(item.getId(), card.getId()));
-    reorderCards(sourceCards, sourceColumn);
-
-    List<Card> targetCards = cardRepository.findByBoardColumnOrderByRankAsc(targetColumn);
+    List<Card> targetCards = cardRepository.findByBoardColumnOrderByRankAsc(targetColumn)
+        .stream()
+        .filter(item -> !Objects.equals(item.getId(), card.getId()))
+        .toList();
 
     validateTargetIndex(request.targetIndex(), targetCards.size());
 
-    targetCards.add(request.targetIndex(), card);
-    reorderCards(targetCards, targetColumn);
+    String newRank = createMoveRank(
+        targetCards,
+        request.targetIndex()
+    );
+
+    card.moveTo(targetColumn, newRank);
 
     return CardResponse.from(card);
   }
@@ -167,26 +154,54 @@ public class CardService {
     cardRepository.delete(card);
   }
 
+  private String createLexoRank(BoardColumn boardColumn) {
+    return cardRepository.findTopByBoardColumnOrderByRankDesc(boardColumn)
+        .map(lastCard -> LexoRankUtil.between(lastCard.getRank(), null))
+        .orElseGet(() -> LexoRankUtil.between(null, null));
+  }
+
+  private String createMoveRank(
+      List<Card> targetCards,
+      int targetIndex
+  ) {
+    String prevRank = targetIndex == 0
+        ? null
+        : targetCards.get(targetIndex - 1).getRank();
+
+    String nextRank = targetIndex == targetCards.size()
+        ? null
+        : targetCards.get(targetIndex).getRank();
+
+    if (!LexoRankUtil.hasSpace(prevRank, nextRank)) {
+      rebalanceCards(targetCards);
+
+      prevRank = targetIndex == 0
+          ? null
+          : targetCards.get(targetIndex - 1).getRank();
+
+      nextRank = targetIndex == targetCards.size()
+          ? null
+          : targetCards.get(targetIndex).getRank();
+    }
+
+    return LexoRankUtil.between(prevRank, nextRank);
+  }
+
+  private void rebalanceCards(List<Card> cards) {
+    for (int i = 0; i < cards.size(); i++) {
+      Card card = cards.get(i);
+
+      card.moveTo(
+          card.getBoardColumn(),
+          LexoRankUtil.rankAt(i, cards.size())
+      );
+    }
+  }
+
   private void validateTargetIndex(Integer targetIndex, int maxIndex) {
     if (targetIndex == null || targetIndex < 0 || targetIndex > maxIndex) {
       throw new CustomException(ErrorCode.INVALID_INPUT);
     }
-  }
-
-  private void reorderCards(List<Card> cards, BoardColumn boardColumn) {
-    for (int i = 0; i < cards.size(); i++) {
-      cards.get(i).moveTo(boardColumn, createSimpleRank(i + 1));
-    }
-  }
-
-  private String createSimpleRank(int position) {
-    return String.format("%010d", position);
-  }
-
-  private String createSimpleRank(BoardColumn boardColumn) {
-    long count = cardRepository.countByBoardColumn(boardColumn);
-
-    return String.format("%010d", count + 1);
   }
 
   private Board getBoardById(Long boardId) {
