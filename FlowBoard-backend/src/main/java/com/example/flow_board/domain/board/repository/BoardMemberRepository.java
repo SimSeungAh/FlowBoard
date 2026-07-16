@@ -8,13 +8,18 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional;
 
-public interface BoardMemberRepository extends JpaRepository<BoardMember, Long> {
+public interface BoardMemberRepository
+    extends JpaRepository<BoardMember, Long> {
 
   List<BoardMember> findByUser(User user);
 
   List<BoardMember> findByBoard(Board board);
 
+  List<BoardMember> findByBoardOrderByCreatedAtAsc(Board board);
+
   Optional<BoardMember> findByBoardAndUser(Board board, User user);
+
+  Optional<BoardMember> findByIdAndBoard(Long id, Board board);
 
   boolean existsByBoardAndUser(Board board, User user);
 }

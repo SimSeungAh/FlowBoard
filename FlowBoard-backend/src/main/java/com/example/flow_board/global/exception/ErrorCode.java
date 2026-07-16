@@ -17,6 +17,32 @@ public enum ErrorCode {
   BOARD_NOT_FOUND(HttpStatus.NOT_FOUND, "BOARD_001", "보드를 찾을 수 없습니다."),
   BOARD_ACCESS_DENIED(HttpStatus.FORBIDDEN, "BOARD_002", "보드에 접근할 권한이 없습니다."),
 
+  BOARD_MEMBER_NOT_FOUND(
+      HttpStatus.NOT_FOUND,
+      "BOARD_MEMBER_001",
+      "보드 멤버를 찾을 수 없습니다."
+  ),
+  BOARD_MEMBER_ALREADY_EXISTS(
+      HttpStatus.CONFLICT,
+      "BOARD_MEMBER_002",
+      "이미 보드에 참여 중인 사용자입니다."
+  ),
+  BOARD_OWNER_ROLE_NOT_ALLOWED(
+      HttpStatus.BAD_REQUEST,
+      "BOARD_MEMBER_003",
+      "OWNER 역할로 초대할 수 없습니다."
+  ),
+  BOARD_OWNER_ROLE_CANNOT_BE_CHANGED(
+      HttpStatus.BAD_REQUEST,
+      "BOARD_MEMBER_004",
+      "보드 소유자의 역할은 변경할 수 없습니다."
+  ),
+  BOARD_OWNER_CANNOT_BE_REMOVED(
+      HttpStatus.BAD_REQUEST,
+      "BOARD_MEMBER_005",
+      "보드 소유자는 멤버에서 제거할 수 없습니다."
+  ),
+
   COLUMN_NOT_FOUND(HttpStatus.NOT_FOUND, "COLUMN_001", "컬럼을 찾을 수 없습니다."),
 
   CARD_NOT_FOUND(HttpStatus.NOT_FOUND, "CARD_001", "카드를 찾을 수 없습니다."),
