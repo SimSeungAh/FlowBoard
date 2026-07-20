@@ -37,15 +37,17 @@ public class WebSocketAuthChannelInterceptor
       "Bearer ";
 
   /**
-   * 허용할 카드 WebSocket 구독 주소
+   * 허용하는 보드 WebSocket 구독 주소입니다.
    *
-   * 예:
+   * 카드:
    * /topic/boards/1/cards
-   * /topic/boards/25/cards
+   *
+   * 댓글:
+   * /topic/boards/1/comments
    */
-  private static final Pattern CARD_TOPIC_PATTERN =
+  private static final Pattern BOARD_TOPIC_PATTERN =
       Pattern.compile(
-          "^/topic/boards/(\\d+)/cards$"
+          "^/topic/boards/(\\d+)/(cards|comments)$"
       );
 
   private final JwtProvider jwtProvider;
@@ -69,15 +71,26 @@ public class WebSocketAuthChannelInterceptor
             StompHeaderAccessor.class
         );
 
-    if (accessor == null || accessor.getCommand() == null) {
+    if (
+        accessor == null ||
+            accessor.getCommand() == null
+    ) {
       return message;
     }
 
-    if (StompCommand.CONNECT.equals(accessor.getCommand())) {
+    if (
+        StompCommand.CONNECT.equals(
+            accessor.getCommand()
+        )
+    ) {
       authenticate(accessor);
     }
 
-    if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
+    if (
+        StompCommand.SUBSCRIBE.equals(
+            accessor.getCommand()
+        )
+    ) {
       authorizeSubscription(accessor);
     }
 
@@ -85,7 +98,8 @@ public class WebSocketAuthChannelInterceptor
   }
 
   /**
-   * WebSocket 최초 연결 시 JWT 인증
+   * WebSocket 최초 연결 시 JWT를 검사하고
+   * 인증 정보를 WebSocket 세션에 저장합니다.
    */
   private void authenticate(
       StompHeaderAccessor accessor
@@ -108,21 +122,18 @@ public class WebSocketAuthChannelInterceptor
             userDetails.getAuthorities()
         );
 
-    /*
-     * WebSocket 세션에 인증 정보를 저장합니다.
-     * 이후 SUBSCRIBE 메시지에서도 이 사용자 정보를
-     * 가져올 수 있습니다.
-     */
     accessor.setUser(authentication);
   }
 
   /**
-   * 보드 카드 이벤트 구독 권한 검사
+   * 카드 또는 댓글 구독 시
+   * 해당 사용자가 보드 멤버인지 확인합니다.
    */
   private void authorizeSubscription(
       StompHeaderAccessor accessor
   ) {
-    String destination = accessor.getDestination();
+    String destination =
+        accessor.getDestination();
 
     if (destination == null) {
       throw new AccessDeniedException(
@@ -131,11 +142,13 @@ public class WebSocketAuthChannelInterceptor
     }
 
     Matcher matcher =
-        CARD_TOPIC_PATTERN.matcher(destination);
+        BOARD_TOPIC_PATTERN.matcher(destination);
 
     /*
-     * 현재 백엔드에서 허용하는 구독 주소는
-     * /topic/boards/{boardId}/cards 형식뿐입니다.
+     * 허용 주소:
+     *
+     * /topic/boards/{boardId}/cards
+     * /topic/boards/{boardId}/comments
      */
     if (!matcher.matches()) {
       throw new AccessDeniedException(
@@ -146,7 +159,9 @@ public class WebSocketAuthChannelInterceptor
     Long boardId;
 
     try {
-      boardId = Long.valueOf(matcher.group(1));
+      boardId = Long.valueOf(
+          matcher.group(1)
+      );
     } catch (NumberFormatException e) {
       throw new AccessDeniedException(
           "올바르지 않은 보드 ID입니다."
@@ -178,20 +193,27 @@ public class WebSocketAuthChannelInterceptor
   }
 
   /**
-   * WebSocket 세션에 저장된 인증 사용자 조회
+   * WebSocket 세션의 인증 사용자 정보를 가져옵니다.
    */
   private CustomUserDetails getAuthenticatedUser(
       StompHeaderAccessor accessor
   ) {
-    if (!(accessor.getUser() instanceof Authentication authentication)) {
+    if (
+        !(accessor.getUser()
+            instanceof Authentication authentication)
+    ) {
       throw new BadCredentialsException(
           "WebSocket 인증 정보가 없습니다."
       );
     }
 
-    Object principal = authentication.getPrincipal();
+    Object principal =
+        authentication.getPrincipal();
 
-    if (!(principal instanceof CustomUserDetails userDetails)) {
+    if (
+        !(principal
+            instanceof CustomUserDetails userDetails)
+    ) {
       throw new BadCredentialsException(
           "WebSocket 사용자 정보를 확인할 수 없습니다."
       );
@@ -201,7 +223,7 @@ public class WebSocketAuthChannelInterceptor
   }
 
   /**
-   * STOMP CONNECT 헤더에서 Access Token 추출
+   * STOMP CONNECT 헤더에서 Access Token을 추출합니다.
    */
   private String resolveToken(
       StompHeaderAccessor accessor
