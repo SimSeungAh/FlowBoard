@@ -4,6 +4,7 @@ import com.example.flow_board.domain.activity.entity.ActivityType;
 import com.example.flow_board.domain.activity.service.ActivityLogService;
 import com.example.flow_board.domain.board.entity.Board;
 import com.example.flow_board.domain.board.repository.BoardMemberRepository;
+import com.example.flow_board.domain.board.service.BoardPermissionService;
 import com.example.flow_board.domain.card.dto.request.CardAssigneeAddRequest;
 import com.example.flow_board.domain.card.dto.response.CardAssigneeResponse;
 import com.example.flow_board.domain.card.entity.Card;
@@ -28,11 +29,24 @@ public class CardAssigneeService {
   private final CardRepository cardRepository;
   private final CardAssigneeRepository cardAssigneeRepository;
   private final UserRepository userRepository;
+
+  /*
+   * 담당자로 지정할 사용자가 실제 보드 멤버인지
+   * 확인할 때 사용합니다.
+   */
   private final BoardMemberRepository boardMemberRepository;
+
+  /*
+   * 로그인 사용자의 읽기·쓰기 권한을 검사합니다.
+   */
+  private final BoardPermissionService boardPermissionService;
+
   private final ActivityLogService activityLogService;
 
   /**
    * 카드 담당자 추가
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public CardAssigneeResponse addAssignee(
@@ -40,31 +54,41 @@ public class CardAssigneeService {
       Long cardId,
       CardAssigneeAddRequest request
   ) {
-    Card card = getCardById(cardId);
+    Card card =
+        getCardById(cardId);
 
-    Board board = card
-        .getBoardColumn()
-        .getBoard();
+    Board board =
+        card.getBoardColumn()
+            .getBoard();
 
-    validateBoardAccess(
+    /*
+     * VIEWER는 담당자를 추가할 수 없습니다.
+     */
+    boardPermissionService.validateWritePermission(
         board,
         loginUser
     );
 
-    User assignee = getUserById(
-        request.userId()
-    );
+    User assignee =
+        getUserById(
+            request.userId()
+        );
 
+    /*
+     * 담당자로 지정할 사용자도
+     * 해당 보드에 참여 중이어야 합니다.
+     */
     validateAssigneeIsBoardMember(
         board,
         assignee
     );
 
     boolean alreadyExists =
-        cardAssigneeRepository.existsByCardAndUser(
-            card,
-            assignee
-        );
+        cardAssigneeRepository
+            .existsByCardAndUser(
+                card,
+                assignee
+            );
 
     if (alreadyExists) {
       throw new CustomException(
@@ -107,18 +131,21 @@ public class CardAssigneeService {
 
   /**
    * 카드 담당자 목록 조회
+   *
+   * OWNER, MEMBER, VIEWER 모두 가능합니다.
    */
   public List<CardAssigneeResponse> getAssignees(
       User loginUser,
       Long cardId
   ) {
-    Card card = getCardById(cardId);
+    Card card =
+        getCardById(cardId);
 
-    Board board = card
-        .getBoardColumn()
-        .getBoard();
+    Board board =
+        card.getBoardColumn()
+            .getBoard();
 
-    validateBoardAccess(
+    boardPermissionService.validateReadPermission(
         board,
         loginUser
     );
@@ -132,6 +159,8 @@ public class CardAssigneeService {
 
   /**
    * 카드 담당자 삭제
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public void removeAssignee(
@@ -139,18 +168,23 @@ public class CardAssigneeService {
       Long cardId,
       Long userId
   ) {
-    Card card = getCardById(cardId);
+    Card card =
+        getCardById(cardId);
 
-    Board board = card
-        .getBoardColumn()
-        .getBoard();
+    Board board =
+        card.getBoardColumn()
+            .getBoard();
 
-    validateBoardAccess(
+    /*
+     * VIEWER는 담당자를 삭제할 수 없습니다.
+     */
+    boardPermissionService.validateWritePermission(
         board,
         loginUser
     );
 
-    User assignee = getUserById(userId);
+    User assignee =
+        getUserById(userId);
 
     CardAssignee cardAssignee =
         cardAssigneeRepository
@@ -220,37 +254,19 @@ public class CardAssigneeService {
   }
 
   /**
-   * 로그인 사용자가 해당 보드의 멤버인지 확인
-   */
-  private void validateBoardAccess(
-      Board board,
-      User user
-  ) {
-    boolean hasAccess =
-        boardMemberRepository.existsByBoardAndUser(
-            board,
-            user
-        );
-
-    if (!hasAccess) {
-      throw new CustomException(
-          ErrorCode.BOARD_ACCESS_DENIED
-      );
-    }
-  }
-
-  /**
-   * 담당자로 지정하려는 사용자가 해당 보드의 멤버인지 확인
+   * 담당자로 지정할 사용자가
+   * 해당 보드의 멤버인지 확인합니다.
    */
   private void validateAssigneeIsBoardMember(
       Board board,
       User assignee
   ) {
     boolean isBoardMember =
-        boardMemberRepository.existsByBoardAndUser(
-            board,
-            assignee
-        );
+        boardMemberRepository
+            .existsByBoardAndUser(
+                board,
+                assignee
+            );
 
     if (!isBoardMember) {
       throw new CustomException(

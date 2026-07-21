@@ -3,7 +3,7 @@ package com.example.flow_board.domain.card.service;
 import com.example.flow_board.domain.activity.entity.ActivityType;
 import com.example.flow_board.domain.activity.service.ActivityLogService;
 import com.example.flow_board.domain.board.entity.Board;
-import com.example.flow_board.domain.board.repository.BoardMemberRepository;
+import com.example.flow_board.domain.board.service.BoardPermissionService;
 import com.example.flow_board.domain.card.dto.request.CommentCreateRequest;
 import com.example.flow_board.domain.card.dto.request.CommentUpdateRequest;
 import com.example.flow_board.domain.card.dto.response.CommentResponse;
@@ -30,12 +30,14 @@ public class CommentService {
 
   private final CardRepository cardRepository;
   private final CommentRepository commentRepository;
-  private final BoardMemberRepository boardMemberRepository;
+  private final BoardPermissionService boardPermissionService;
   private final CommentEventPublisher commentEventPublisher;
   private final ActivityLogService activityLogService;
 
   /**
    * 댓글 생성
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public CommentResponse createComment(
@@ -44,11 +46,12 @@ public class CommentService {
       CommentCreateRequest request
   ) {
     Card card = getCardById(cardId);
-    Board board = card
-        .getBoardColumn()
-        .getBoard();
 
-    validateBoardAccess(
+    Board board =
+        card.getBoardColumn()
+            .getBoard();
+
+    boardPermissionService.validateWritePermission(
         board,
         user
     );
@@ -65,9 +68,6 @@ public class CommentService {
     CommentResponse response =
         CommentResponse.from(savedComment);
 
-    /*
-     * 댓글과 활동 로그는 같은 트랜잭션에서 저장
-     */
     activityLogService.recordActivity(
         board,
         user,
@@ -92,17 +92,20 @@ public class CommentService {
 
   /**
    * 카드의 댓글 목록 조회
+   *
+   * OWNER, MEMBER, VIEWER 모두 가능합니다.
    */
   public List<CommentResponse> getComments(
       User user,
       Long cardId
   ) {
     Card card = getCardById(cardId);
-    Board board = card
-        .getBoardColumn()
-        .getBoard();
 
-    validateBoardAccess(
+    Board board =
+        card.getBoardColumn()
+            .getBoard();
+
+    boardPermissionService.validateReadPermission(
         board,
         user
     );
@@ -116,6 +119,9 @@ public class CommentService {
 
   /**
    * 댓글 수정
+   *
+   * OWNER와 MEMBER 중에서도
+   * 댓글 작성자 본인만 가능합니다.
    */
   @Transactional
   public CommentResponse updateComment(
@@ -126,13 +132,14 @@ public class CommentService {
     Comment comment =
         getCommentById(commentId);
 
-    Card card = comment.getCard();
+    Card card =
+        comment.getCard();
 
-    Board board = card
-        .getBoardColumn()
-        .getBoard();
+    Board board =
+        card.getBoardColumn()
+            .getBoard();
 
-    validateBoardAccess(
+    boardPermissionService.validateWritePermission(
         board,
         user
     );
@@ -173,6 +180,9 @@ public class CommentService {
 
   /**
    * 댓글 삭제
+   *
+   * OWNER와 MEMBER 중에서도
+   * 댓글 작성자 본인만 가능합니다.
    */
   @Transactional
   public void deleteComment(
@@ -182,13 +192,14 @@ public class CommentService {
     Comment comment =
         getCommentById(commentId);
 
-    Card card = comment.getCard();
+    Card card =
+        comment.getCard();
 
-    Board board = card
-        .getBoardColumn()
-        .getBoard();
+    Board board =
+        card.getBoardColumn()
+            .getBoard();
 
-    validateBoardAccess(
+    boardPermissionService.validateWritePermission(
         board,
         user
     );
@@ -199,7 +210,8 @@ public class CommentService {
     );
 
     /*
-     * 댓글 삭제 후에도 이벤트와 활동 로그에 사용할 수 있도록 필요한 값을 먼저 보관
+     * 댓글 삭제 후에도 활동 로그와
+     * WebSocket 이벤트에 사용할 값을 보관합니다.
      */
     Long boardId =
         board.getId();
@@ -213,7 +225,9 @@ public class CommentService {
     String cardTitle =
         card.getTitle();
 
-    commentRepository.delete(comment);
+    commentRepository.delete(
+        comment
+    );
 
     activityLogService.recordActivity(
         board,
@@ -264,27 +278,6 @@ public class CommentService {
                 ErrorCode.COMMENT_NOT_FOUND
             )
         );
-  }
-
-  /**
-   * 사용자가 해당 보드의 멤버인지 검사
-   */
-  private void validateBoardAccess(
-      Board board,
-      User user
-  ) {
-    boolean hasAccess =
-        boardMemberRepository
-            .existsByBoardAndUser(
-                board,
-                user
-            );
-
-    if (!hasAccess) {
-      throw new CustomException(
-          ErrorCode.BOARD_ACCESS_DENIED
-      );
-    }
   }
 
   /**

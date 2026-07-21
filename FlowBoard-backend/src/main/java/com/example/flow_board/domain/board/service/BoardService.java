@@ -6,6 +6,7 @@ import com.example.flow_board.domain.board.dto.request.BoardCreateRequest;
 import com.example.flow_board.domain.board.dto.request.BoardUpdateRequest;
 import com.example.flow_board.domain.board.dto.response.BoardColumnResponse;
 import com.example.flow_board.domain.board.dto.response.BoardDetailResponse;
+import com.example.flow_board.domain.board.dto.response.BoardListResponse;
 import com.example.flow_board.domain.board.dto.response.BoardResponse;
 import com.example.flow_board.domain.board.entity.Board;
 import com.example.flow_board.domain.board.entity.BoardColumn;
@@ -85,20 +86,25 @@ public class BoardService {
   }
 
   /**
-   * 내가 소유한 보드 목록 조회
+   * 내가 참여 중인 보드 목록 조회
+   * OWNER, MEMBER, VIEWER 역할을 모두 포함
    */
-  public List<BoardResponse> getMyBoards(
+  public List<BoardListResponse> getMyBoards(
       User user
   ) {
-    return boardRepository
-        .findByOwnerOrderByCreatedAtDesc(user)
+    return boardMemberRepository
+        .findAllByUserWithBoardAndOwnerOrderByBoardUpdatedAtDesc(
+            user
+        )
         .stream()
-        .map(BoardResponse::from)
+        .map(BoardListResponse::from)
         .toList();
   }
 
   /**
    * 보드 상세 조회
+   * OWNER, MEMBER, VIEWER 모두 조회할 수 있음
+   * 로그인 사용자의 역할도 함께 반환
    */
   public BoardDetailResponse getBoardDetail(
       User user,
@@ -107,10 +113,11 @@ public class BoardService {
     Board board =
         getBoardById(boardId);
 
-    validateBoardOwner(
-        board,
-        user
-    );
+    BoardMember boardMember =
+        getBoardMember(
+            board,
+            user
+        );
 
     List<BoardColumnResponse> columns =
         boardColumnRepository
@@ -121,12 +128,14 @@ public class BoardService {
 
     return BoardDetailResponse.from(
         board,
+        boardMember.getRole(),
         columns
     );
   }
 
   /**
    * 보드 수정
+   * OWNER만 사용할 수 있음
    */
   @Transactional
   public BoardResponse updateBoard(
@@ -149,8 +158,8 @@ public class BoardService {
         request.backgroundColor();
 
     if (
-        backgroundColor == null ||
-            backgroundColor.isBlank()
+        backgroundColor == null
+            || backgroundColor.isBlank()
     ) {
       backgroundColor =
           board.getBackgroundColor();
@@ -201,6 +210,7 @@ public class BoardService {
 
   /**
    * 보드 삭제
+   * OWNER만 사용할 수 있음
    */
   @Transactional
   public void deleteBoard(
@@ -215,24 +225,9 @@ public class BoardService {
         user
     );
 
-    /*
-     * 보드가 소유한 하위 데이터를 먼저 정리합니다.
-     *
-     * 카드 하위 데이터
-     * 카드
-     * 화이트보드 선
-     * 태그
-     * 활동 로그
-     * 보드 멤버
-     * 보드 컬럼
-     */
     boardDependencyCleanupService
         .deleteDependencies(board);
 
-    /*
-     * 모든 하위 데이터가 정리된 뒤
-     * 보드 자체를 삭제합니다.
-     */
     boardRepository.delete(
         board
     );
@@ -279,6 +274,26 @@ public class BoardService {
         .orElseThrow(
             () -> new CustomException(
                 ErrorCode.BOARD_NOT_FOUND
+            )
+        );
+  }
+
+  /**
+   * 현재 사용자의 보드 멤버 정보 조회
+   * 보드 멤버가 아니라면 접근을 거부
+   */
+  private BoardMember getBoardMember(
+      Board board,
+      User user
+  ) {
+    return boardMemberRepository
+        .findByBoardAndUser(
+            board,
+            user
+        )
+        .orElseThrow(
+            () -> new CustomException(
+                ErrorCode.BOARD_ACCESS_DENIED
             )
         );
   }

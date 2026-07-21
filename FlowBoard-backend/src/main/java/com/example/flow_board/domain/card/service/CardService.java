@@ -5,8 +5,8 @@ import com.example.flow_board.domain.activity.service.ActivityLogService;
 import com.example.flow_board.domain.board.entity.Board;
 import com.example.flow_board.domain.board.entity.BoardColumn;
 import com.example.flow_board.domain.board.repository.BoardColumnRepository;
-import com.example.flow_board.domain.board.repository.BoardMemberRepository;
 import com.example.flow_board.domain.board.repository.BoardRepository;
+import com.example.flow_board.domain.board.service.BoardPermissionService;
 import com.example.flow_board.domain.card.dto.request.CardCreateRequest;
 import com.example.flow_board.domain.card.dto.request.CardMoveRequest;
 import com.example.flow_board.domain.card.dto.request.CardSearchCondition;
@@ -42,7 +42,7 @@ public class CardService {
 
   private final BoardRepository boardRepository;
   private final BoardColumnRepository boardColumnRepository;
-  private final BoardMemberRepository boardMemberRepository;
+  private final BoardPermissionService boardPermissionService;
   private final CardRepository cardRepository;
   private final CardAssigneeRepository cardAssigneeRepository;
   private final CardTagRepository cardTagRepository;
@@ -52,6 +52,8 @@ public class CardService {
 
   /**
    * 카드 생성
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public CardResponse createCard(
@@ -62,7 +64,7 @@ public class CardService {
   ) {
     Board board = getBoardById(boardId);
 
-    validateBoardAccess(
+    boardPermissionService.validateWritePermission(
         board,
         user
     );
@@ -117,6 +119,8 @@ public class CardService {
 
   /**
    * 컬럼별 카드 목록 조회
+   *
+   * OWNER, MEMBER, VIEWER 모두 가능합니다.
    */
   public List<CardResponse> getCardsByColumn(
       User user,
@@ -125,7 +129,7 @@ public class CardService {
   ) {
     Board board = getBoardById(boardId);
 
-    validateBoardAccess(
+    boardPermissionService.validateReadPermission(
         board,
         user
     );
@@ -149,6 +153,8 @@ public class CardService {
 
   /**
    * 보드 내 카드 검색 및 필터
+   *
+   * OWNER, MEMBER, VIEWER 모두 가능합니다.
    */
   public List<CardSearchResponse> searchCards(
       User user,
@@ -157,7 +163,7 @@ public class CardService {
   ) {
     Board board = getBoardById(boardId);
 
-    validateBoardAccess(
+    boardPermissionService.validateReadPermission(
         board,
         user
     );
@@ -244,6 +250,8 @@ public class CardService {
 
   /**
    * 카드 상세 조회
+   *
+   * OWNER, MEMBER, VIEWER 모두 가능합니다.
    */
   public CardResponse getCardDetail(
       User user,
@@ -256,7 +264,7 @@ public class CardService {
         card.getBoardColumn()
             .getBoard();
 
-    validateBoardAccess(
+    boardPermissionService.validateReadPermission(
         board,
         user
     );
@@ -266,6 +274,8 @@ public class CardService {
 
   /**
    * 카드 수정
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public CardResponse updateCard(
@@ -280,7 +290,7 @@ public class CardService {
         card.getBoardColumn()
             .getBoard();
 
-    validateBoardAccess(
+    boardPermissionService.validateWritePermission(
         board,
         user
     );
@@ -318,6 +328,8 @@ public class CardService {
 
   /**
    * 카드 이동 및 순서 변경
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public CardResponse moveCard(
@@ -334,7 +346,7 @@ public class CardService {
     Board sourceBoard =
         sourceColumn.getBoard();
 
-    validateBoardAccess(
+    boardPermissionService.validateWritePermission(
         sourceBoard,
         user
     );
@@ -435,6 +447,8 @@ public class CardService {
 
   /**
    * 카드 삭제
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public void deleteCard(
@@ -448,32 +462,20 @@ public class CardService {
         card.getBoardColumn()
             .getBoard();
 
-    validateBoardAccess(
+    boardPermissionService.validateWritePermission(
         board,
         user
     );
 
-    /*
-     * 카드가 삭제된 후에도 활동 로그와
-     * WebSocket 이벤트에 사용하도록 값을 보관합니다.
-     */
     Long deletedCardId =
         card.getId();
 
     String deletedCardTitle =
         card.getTitle();
 
-    /*
-     * 카드 담당자, 카드 태그, 댓글,
-     * 체크리스트 항목과 체크리스트를 먼저 삭제합니다.
-     */
     cardDependencyCleanupService
         .deleteDependencies(card);
 
-    /*
-     * 하위 데이터 정리가 끝난 뒤
-     * 카드 자체를 삭제합니다.
-     */
     cardRepository.delete(card);
 
     activityLogService.recordActivity(
@@ -619,8 +621,8 @@ public class CardService {
   ) {
     return boardRepository
         .findById(boardId)
-        .orElseThrow(() ->
-            new CustomException(
+        .orElseThrow(
+            () -> new CustomException(
                 ErrorCode.BOARD_NOT_FOUND
             )
         );
@@ -634,8 +636,8 @@ public class CardService {
   ) {
     return boardColumnRepository
         .findById(columnId)
-        .orElseThrow(() ->
-            new CustomException(
+        .orElseThrow(
+            () -> new CustomException(
                 ErrorCode.COLUMN_NOT_FOUND
             )
         );
@@ -649,32 +651,11 @@ public class CardService {
   ) {
     return cardRepository
         .findById(cardId)
-        .orElseThrow(() ->
-            new CustomException(
+        .orElseThrow(
+            () -> new CustomException(
                 ErrorCode.CARD_NOT_FOUND
             )
         );
-  }
-
-  /**
-   * 사용자가 보드 멤버인지 검사
-   */
-  private void validateBoardAccess(
-      Board board,
-      User user
-  ) {
-    boolean hasAccess =
-        boardMemberRepository
-            .existsByBoardAndUser(
-                board,
-                user
-            );
-
-    if (!hasAccess) {
-      throw new CustomException(
-          ErrorCode.BOARD_ACCESS_DENIED
-      );
-    }
   }
 
   /**
