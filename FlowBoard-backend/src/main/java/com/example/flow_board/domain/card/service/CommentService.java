@@ -1,5 +1,7 @@
 package com.example.flow_board.domain.card.service;
 
+import com.example.flow_board.domain.activity.entity.ActivityType;
+import com.example.flow_board.domain.activity.service.ActivityLogService;
 import com.example.flow_board.domain.board.entity.Board;
 import com.example.flow_board.domain.board.repository.BoardMemberRepository;
 import com.example.flow_board.domain.card.dto.request.CommentCreateRequest;
@@ -30,6 +32,7 @@ public class CommentService {
   private final CommentRepository commentRepository;
   private final BoardMemberRepository boardMemberRepository;
   private final CommentEventPublisher commentEventPublisher;
+  private final ActivityLogService activityLogService;
 
   /**
    * 댓글 생성
@@ -41,9 +44,14 @@ public class CommentService {
       CommentCreateRequest request
   ) {
     Card card = getCardById(cardId);
-    Board board = card.getBoardColumn().getBoard();
+    Board board = card
+        .getBoardColumn()
+        .getBoard();
 
-    validateBoardAccess(board, user);
+    validateBoardAccess(
+        board,
+        user
+    );
 
     Comment comment = new Comment(
         card,
@@ -51,8 +59,26 @@ public class CommentService {
         request.content()
     );
 
-    Comment savedComment = commentRepository.save(comment);
-    CommentResponse response = CommentResponse.from(savedComment);
+    Comment savedComment =
+        commentRepository.save(comment);
+
+    CommentResponse response =
+        CommentResponse.from(savedComment);
+
+    /*
+     * 댓글과 활동 로그는 같은 트랜잭션에서 저장
+     */
+    activityLogService.recordActivity(
+        board,
+        user,
+        ActivityType.COMMENT_CREATED,
+        savedComment.getId(),
+        card.getTitle(),
+        user.getNickname()
+            + "님이 '"
+            + card.getTitle()
+            + "' 카드에 댓글을 작성했습니다."
+    );
 
     commentEventPublisher.publish(
         CommentWebSocketEvent.created(
@@ -72,9 +98,14 @@ public class CommentService {
       Long cardId
   ) {
     Card card = getCardById(cardId);
-    Board board = card.getBoardColumn().getBoard();
+    Board board = card
+        .getBoardColumn()
+        .getBoard();
 
-    validateBoardAccess(board, user);
+    validateBoardAccess(
+        board,
+        user
+    );
 
     return commentRepository
         .findByCardOrderByCreatedAtAsc(card)
@@ -92,18 +123,43 @@ public class CommentService {
       Long commentId,
       CommentUpdateRequest request
   ) {
-    Comment comment = getCommentById(commentId);
-    Board board = comment
-        .getCard()
+    Comment comment =
+        getCommentById(commentId);
+
+    Card card = comment.getCard();
+
+    Board board = card
         .getBoardColumn()
         .getBoard();
 
-    validateBoardAccess(board, user);
-    validateCommentOwner(comment, user);
+    validateBoardAccess(
+        board,
+        user
+    );
 
-    comment.updateContent(request.content());
+    validateCommentOwner(
+        comment,
+        user
+    );
 
-    CommentResponse response = CommentResponse.from(comment);
+    comment.updateContent(
+        request.content()
+    );
+
+    CommentResponse response =
+        CommentResponse.from(comment);
+
+    activityLogService.recordActivity(
+        board,
+        user,
+        ActivityType.COMMENT_UPDATED,
+        comment.getId(),
+        card.getTitle(),
+        user.getNickname()
+            + "님이 '"
+            + card.getTitle()
+            + "' 카드의 댓글을 수정했습니다."
+    );
 
     commentEventPublisher.publish(
         CommentWebSocketEvent.updated(
@@ -123,25 +179,59 @@ public class CommentService {
       User user,
       Long commentId
   ) {
-    Comment comment = getCommentById(commentId);
-    Board board = comment
-        .getCard()
+    Comment comment =
+        getCommentById(commentId);
+
+    Card card = comment.getCard();
+
+    Board board = card
         .getBoardColumn()
         .getBoard();
 
-    validateBoardAccess(board, user);
-    validateCommentOwner(comment, user);
+    validateBoardAccess(
+        board,
+        user
+    );
 
-    Long boardId = board.getId();
-    Long cardId = comment.getCard().getId();
+    validateCommentOwner(
+        comment,
+        user
+    );
+
+    /*
+     * 댓글 삭제 후에도 이벤트와 활동 로그에 사용할 수 있도록 필요한 값을 먼저 보관
+     */
+    Long boardId =
+        board.getId();
+
+    Long cardId =
+        card.getId();
+
+    Long deletedCommentId =
+        comment.getId();
+
+    String cardTitle =
+        card.getTitle();
 
     commentRepository.delete(comment);
+
+    activityLogService.recordActivity(
+        board,
+        user,
+        ActivityType.COMMENT_DELETED,
+        deletedCommentId,
+        cardTitle,
+        user.getNickname()
+            + "님이 '"
+            + cardTitle
+            + "' 카드의 댓글을 삭제했습니다."
+    );
 
     commentEventPublisher.publish(
         CommentWebSocketEvent.deleted(
             boardId,
             cardId,
-            commentId
+            deletedCommentId
         )
     );
   }
@@ -184,10 +274,11 @@ public class CommentService {
       User user
   ) {
     boolean hasAccess =
-        boardMemberRepository.existsByBoardAndUser(
-            board,
-            user
-        );
+        boardMemberRepository
+            .existsByBoardAndUser(
+                board,
+                user
+            );
 
     if (!hasAccess) {
       throw new CustomException(

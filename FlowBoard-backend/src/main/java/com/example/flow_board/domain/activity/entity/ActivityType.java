@@ -1,0 +1,67 @@
+package com.example.flow_board.domain.activity.entity;
+
+/**
+ * 보드에서 발생한 활동의 종류
+ */
+public enum ActivityType {
+
+  /*
+   * 보드
+   */
+  BOARD_CREATED,
+  BOARD_UPDATED,
+
+  /*
+   * 보드 멤버
+   */
+  MEMBER_INVITED,
+  MEMBER_ROLE_CHANGED,
+  MEMBER_REMOVED,
+
+  /*
+   * 카드
+   */
+  CARD_CREATED,
+  CARD_UPDATED,
+  CARD_MOVED,
+  CARD_DELETED,
+
+  /*
+   * 카드 담당자
+   */
+  CARD_ASSIGNEE_ADDED,
+  CARD_ASSIGNEE_REMOVED,
+
+  /*
+   * 댓글
+   */
+  COMMENT_CREATED,
+  COMMENT_UPDATED,
+  COMMENT_DELETED,
+
+  /*
+   * 태그
+   */
+  TAG_CREATED,
+  TAG_UPDATED,
+  TAG_DELETED,
+  CARD_TAG_ADDED,
+  CARD_TAG_REMOVED,
+
+  /*
+   * 체크리스트
+   */
+  CHECKLIST_CREATED,
+  CHECKLIST_UPDATED,
+  CHECKLIST_DELETED,
+  CHECKLIST_ITEM_CREATED,
+  CHECKLIST_ITEM_UPDATED,
+  CHECKLIST_ITEM_TOGGLED,
+  CHECKLIST_ITEM_DELETED,
+
+  /*
+   * 화이트보드
+   */
+  WHITEBOARD_STROKE_CREATED,
+  WHITEBOARD_CLEARED
+}

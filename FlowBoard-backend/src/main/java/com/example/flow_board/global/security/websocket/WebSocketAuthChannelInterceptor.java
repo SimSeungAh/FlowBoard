@@ -37,17 +37,20 @@ public class WebSocketAuthChannelInterceptor
       "Bearer ";
 
   /**
-   * 허용하는 보드 WebSocket 구독 주소입니다.
+   * 허용하는 보드 WebSocket 구독 주소
    *
    * 카드:
    * /topic/boards/1/cards
    *
    * 댓글:
    * /topic/boards/1/comments
+   *
+   * 화이트보드:
+   * /topic/boards/1/whiteboard
    */
   private static final Pattern BOARD_TOPIC_PATTERN =
       Pattern.compile(
-          "^/topic/boards/(\\d+)/(cards|comments)$"
+          "^/topic/boards/(\\d+)/(cards|comments|whiteboard)$"
       );
 
   private final JwtProvider jwtProvider;
@@ -98,8 +101,7 @@ public class WebSocketAuthChannelInterceptor
   }
 
   /**
-   * WebSocket 최초 연결 시 JWT를 검사하고
-   * 인증 정보를 WebSocket 세션에 저장합니다.
+   * WebSocket 최초 연결 시 JWT를 검사하고 인증 정보를 WebSocket 세션에 저장
    */
   private void authenticate(
       StompHeaderAccessor accessor
@@ -126,8 +128,7 @@ public class WebSocketAuthChannelInterceptor
   }
 
   /**
-   * 카드 또는 댓글 구독 시
-   * 해당 사용자가 보드 멤버인지 확인합니다.
+   * 카드, 댓글 또는 화이트보드 구독 시 해당 사용자가 보드 멤버인지 확인
    */
   private void authorizeSubscription(
       StompHeaderAccessor accessor
@@ -149,6 +150,7 @@ public class WebSocketAuthChannelInterceptor
      *
      * /topic/boards/{boardId}/cards
      * /topic/boards/{boardId}/comments
+     * /topic/boards/{boardId}/whiteboard
      */
     if (!matcher.matches()) {
       throw new AccessDeniedException(
@@ -193,7 +195,7 @@ public class WebSocketAuthChannelInterceptor
   }
 
   /**
-   * WebSocket 세션의 인증 사용자 정보를 가져옵니다.
+   * WebSocket 세션의 인증 사용자 정보를 가져옴
    */
   private CustomUserDetails getAuthenticatedUser(
       StompHeaderAccessor accessor
@@ -223,7 +225,7 @@ public class WebSocketAuthChannelInterceptor
   }
 
   /**
-   * STOMP CONNECT 헤더에서 Access Token을 추출합니다.
+   * STOMP CONNECT 헤더에서 Access Token을 추출
    */
   private String resolveToken(
       StompHeaderAccessor accessor

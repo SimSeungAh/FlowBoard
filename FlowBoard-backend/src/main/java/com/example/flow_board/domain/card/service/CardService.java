@@ -1,5 +1,7 @@
 package com.example.flow_board.domain.card.service;
 
+import com.example.flow_board.domain.activity.entity.ActivityType;
+import com.example.flow_board.domain.activity.service.ActivityLogService;
 import com.example.flow_board.domain.board.entity.Board;
 import com.example.flow_board.domain.board.entity.BoardColumn;
 import com.example.flow_board.domain.board.repository.BoardColumnRepository;
@@ -7,10 +9,16 @@ import com.example.flow_board.domain.board.repository.BoardMemberRepository;
 import com.example.flow_board.domain.board.repository.BoardRepository;
 import com.example.flow_board.domain.card.dto.request.CardCreateRequest;
 import com.example.flow_board.domain.card.dto.request.CardMoveRequest;
+import com.example.flow_board.domain.card.dto.request.CardSearchCondition;
 import com.example.flow_board.domain.card.dto.request.CardUpdateRequest;
+import com.example.flow_board.domain.card.dto.response.CardAssigneeResponse;
 import com.example.flow_board.domain.card.dto.response.CardResponse;
+import com.example.flow_board.domain.card.dto.response.CardSearchResponse;
+import com.example.flow_board.domain.card.dto.response.TagResponse;
 import com.example.flow_board.domain.card.entity.Card;
+import com.example.flow_board.domain.card.repository.CardAssigneeRepository;
 import com.example.flow_board.domain.card.repository.CardRepository;
+import com.example.flow_board.domain.card.repository.CardTagRepository;
 import com.example.flow_board.domain.card.util.LexoRankUtil;
 import com.example.flow_board.domain.card.websocket.CardEventPublisher;
 import com.example.flow_board.domain.card.websocket.CardWebSocketEvent;
@@ -21,8 +29,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -33,7 +44,11 @@ public class CardService {
   private final BoardColumnRepository boardColumnRepository;
   private final BoardMemberRepository boardMemberRepository;
   private final CardRepository cardRepository;
+  private final CardAssigneeRepository cardAssigneeRepository;
+  private final CardTagRepository cardTagRepository;
   private final CardEventPublisher cardEventPublisher;
+  private final ActivityLogService activityLogService;
+  private final CardDependencyCleanupService cardDependencyCleanupService;
 
   /**
    * 카드 생성
@@ -46,12 +61,22 @@ public class CardService {
       CardCreateRequest request
   ) {
     Board board = getBoardById(boardId);
-    validateBoardAccess(board, user);
 
-    BoardColumn boardColumn = getColumnById(columnId);
-    validateColumnInBoard(boardColumn, board);
+    validateBoardAccess(
+        board,
+        user
+    );
 
-    String rank = createLexoRank(boardColumn);
+    BoardColumn boardColumn =
+        getColumnById(columnId);
+
+    validateColumnInBoard(
+        boardColumn,
+        board
+    );
+
+    String rank =
+        createLexoRank(boardColumn);
 
     Card card = new Card(
         boardColumn,
@@ -62,8 +87,23 @@ public class CardService {
         request.dueDate()
     );
 
-    Card savedCard = cardRepository.save(card);
-    CardResponse response = CardResponse.from(savedCard);
+    Card savedCard =
+        cardRepository.save(card);
+
+    CardResponse response =
+        CardResponse.from(savedCard);
+
+    activityLogService.recordActivity(
+        board,
+        user,
+        ActivityType.CARD_CREATED,
+        savedCard.getId(),
+        savedCard.getTitle(),
+        user.getNickname()
+            + "님이 '"
+            + savedCard.getTitle()
+            + "' 카드를 생성했습니다."
+    );
 
     cardEventPublisher.publish(
         CardWebSocketEvent.created(
@@ -84,15 +124,121 @@ public class CardService {
       Long columnId
   ) {
     Board board = getBoardById(boardId);
-    validateBoardAccess(board, user);
 
-    BoardColumn boardColumn = getColumnById(columnId);
-    validateColumnInBoard(boardColumn, board);
+    validateBoardAccess(
+        board,
+        user
+    );
+
+    BoardColumn boardColumn =
+        getColumnById(columnId);
+
+    validateColumnInBoard(
+        boardColumn,
+        board
+    );
 
     return cardRepository
-        .findByBoardColumnOrderByRankAsc(boardColumn)
+        .findByBoardColumnOrderByRankAsc(
+            boardColumn
+        )
         .stream()
         .map(CardResponse::from)
+        .toList();
+  }
+
+  /**
+   * 보드 내 카드 검색 및 필터
+   */
+  public List<CardSearchResponse> searchCards(
+      User user,
+      Long boardId,
+      CardSearchCondition condition
+  ) {
+    Board board = getBoardById(boardId);
+
+    validateBoardAccess(
+        board,
+        user
+    );
+
+    LocalDateTime referenceTime =
+        LocalDateTime.now();
+
+    List<Card> cards =
+        cardRepository.searchCards(
+            board.getId(),
+            condition,
+            referenceTime
+        );
+
+    if (cards.isEmpty()) {
+      return List.of();
+    }
+
+    List<Long> cardIds =
+        cards.stream()
+            .map(Card::getId)
+            .toList();
+
+    Map<Long, List<CardAssigneeResponse>>
+        assigneesByCardId =
+        cardAssigneeRepository
+            .findAllByCardIdsWithUser(
+                cardIds
+            )
+            .stream()
+            .collect(
+                Collectors.groupingBy(
+                    cardAssignee ->
+                        cardAssignee
+                            .getCard()
+                            .getId(),
+                    Collectors.mapping(
+                        CardAssigneeResponse::from,
+                        Collectors.toList()
+                    )
+                )
+            );
+
+    Map<Long, List<TagResponse>>
+        tagsByCardId =
+        cardTagRepository
+            .findAllByCardIdsWithTag(
+                cardIds
+            )
+            .stream()
+            .collect(
+                Collectors.groupingBy(
+                    cardTag ->
+                        cardTag
+                            .getCard()
+                            .getId(),
+                    Collectors.mapping(
+                        cardTag ->
+                            TagResponse.from(
+                                cardTag.getTag()
+                            ),
+                        Collectors.toList()
+                    )
+                )
+            );
+
+    return cards
+        .stream()
+        .map(card ->
+            CardSearchResponse.from(
+                card,
+                assigneesByCardId.getOrDefault(
+                    card.getId(),
+                    List.of()
+                ),
+                tagsByCardId.getOrDefault(
+                    card.getId(),
+                    List.of()
+                )
+            )
+        )
         .toList();
   }
 
@@ -103,10 +249,17 @@ public class CardService {
       User user,
       Long cardId
   ) {
-    Card card = getCardById(cardId);
-    Board board = card.getBoardColumn().getBoard();
+    Card card =
+        getCardById(cardId);
 
-    validateBoardAccess(board, user);
+    Board board =
+        card.getBoardColumn()
+            .getBoard();
+
+    validateBoardAccess(
+        board,
+        user
+    );
 
     return CardResponse.from(card);
   }
@@ -120,10 +273,17 @@ public class CardService {
       Long cardId,
       CardUpdateRequest request
   ) {
-    Card card = getCardById(cardId);
-    Board board = card.getBoardColumn().getBoard();
+    Card card =
+        getCardById(cardId);
 
-    validateBoardAccess(board, user);
+    Board board =
+        card.getBoardColumn()
+            .getBoard();
+
+    validateBoardAccess(
+        board,
+        user
+    );
 
     card.update(
         request.title(),
@@ -131,7 +291,20 @@ public class CardService {
         request.dueDate()
     );
 
-    CardResponse response = CardResponse.from(card);
+    CardResponse response =
+        CardResponse.from(card);
+
+    activityLogService.recordActivity(
+        board,
+        user,
+        ActivityType.CARD_UPDATED,
+        card.getId(),
+        card.getTitle(),
+        user.getNickname()
+            + "님이 '"
+            + card.getTitle()
+            + "' 카드를 수정했습니다."
+    );
 
     cardEventPublisher.publish(
         CardWebSocketEvent.updated(
@@ -152,38 +325,103 @@ public class CardService {
       Long cardId,
       CardMoveRequest request
   ) {
-    Card card = getCardById(cardId);
-    Board sourceBoard = card.getBoardColumn().getBoard();
+    Card card =
+        getCardById(cardId);
 
-    validateBoardAccess(sourceBoard, user);
+    BoardColumn sourceColumn =
+        card.getBoardColumn();
 
-    BoardColumn targetColumn = getColumnById(
-        request.targetColumnId()
+    Board sourceBoard =
+        sourceColumn.getBoard();
+
+    validateBoardAccess(
+        sourceBoard,
+        user
     );
 
-    validateColumnInBoard(targetColumn, sourceBoard);
+    BoardColumn targetColumn =
+        getColumnById(
+            request.targetColumnId()
+        );
 
-    List<Card> targetCards = cardRepository
-        .findByBoardColumnOrderByRankAsc(targetColumn)
-        .stream()
-        .filter(item ->
-            !Objects.equals(item.getId(), card.getId())
-        )
-        .toList();
+    validateColumnInBoard(
+        targetColumn,
+        sourceBoard
+    );
+
+    List<Card> targetCards =
+        cardRepository
+            .findByBoardColumnOrderByRankAsc(
+                targetColumn
+            )
+            .stream()
+            .filter(item ->
+                !Objects.equals(
+                    item.getId(),
+                    card.getId()
+                )
+            )
+            .toList();
 
     validateTargetIndex(
         request.targetIndex(),
         targetCards.size()
     );
 
-    String newRank = createMoveRank(
-        targetCards,
-        request.targetIndex()
+    String newRank =
+        createMoveRank(
+            targetCards,
+            request.targetIndex()
+        );
+
+    String sourceColumnTitle =
+        sourceColumn.getTitle();
+
+    String targetColumnTitle =
+        targetColumn.getTitle();
+
+    boolean sameColumn =
+        Objects.equals(
+            sourceColumn.getId(),
+            targetColumn.getId()
+        );
+
+    card.moveTo(
+        targetColumn,
+        newRank
     );
 
-    card.moveTo(targetColumn, newRank);
+    CardResponse response =
+        CardResponse.from(card);
 
-    CardResponse response = CardResponse.from(card);
+    String description;
+
+    if (sameColumn) {
+      description =
+          user.getNickname()
+              + "님이 '"
+              + card.getTitle()
+              + "' 카드의 순서를 변경했습니다.";
+    } else {
+      description =
+          user.getNickname()
+              + "님이 '"
+              + card.getTitle()
+              + "' 카드를 '"
+              + sourceColumnTitle
+              + "'에서 '"
+              + targetColumnTitle
+              + "'(으)로 이동했습니다.";
+    }
+
+    activityLogService.recordActivity(
+        sourceBoard,
+        user,
+        ActivityType.CARD_MOVED,
+        card.getId(),
+        card.getTitle(),
+        description
+    );
 
     cardEventPublisher.publish(
         CardWebSocketEvent.moved(
@@ -203,17 +441,57 @@ public class CardService {
       User user,
       Long cardId
   ) {
-    Card card = getCardById(cardId);
-    Board board = card.getBoardColumn().getBoard();
+    Card card =
+        getCardById(cardId);
 
-    validateBoardAccess(board, user);
+    Board board =
+        card.getBoardColumn()
+            .getBoard();
 
+    validateBoardAccess(
+        board,
+        user
+    );
+
+    /*
+     * 카드가 삭제된 후에도 활동 로그와
+     * WebSocket 이벤트에 사용하도록 값을 보관합니다.
+     */
+    Long deletedCardId =
+        card.getId();
+
+    String deletedCardTitle =
+        card.getTitle();
+
+    /*
+     * 카드 담당자, 카드 태그, 댓글,
+     * 체크리스트 항목과 체크리스트를 먼저 삭제합니다.
+     */
+    cardDependencyCleanupService
+        .deleteDependencies(card);
+
+    /*
+     * 하위 데이터 정리가 끝난 뒤
+     * 카드 자체를 삭제합니다.
+     */
     cardRepository.delete(card);
+
+    activityLogService.recordActivity(
+        board,
+        user,
+        ActivityType.CARD_DELETED,
+        deletedCardId,
+        deletedCardTitle,
+        user.getNickname()
+            + "님이 '"
+            + deletedCardTitle
+            + "' 카드를 삭제했습니다."
+    );
 
     cardEventPublisher.publish(
         CardWebSocketEvent.deleted(
             board.getId(),
-            cardId
+            deletedCardId
         )
     );
   }
@@ -225,7 +503,9 @@ public class CardService {
       BoardColumn boardColumn
   ) {
     return cardRepository
-        .findTopByBoardColumnOrderByRankDesc(boardColumn)
+        .findTopByBoardColumnOrderByRankDesc(
+            boardColumn
+        )
         .map(lastCard ->
             LexoRankUtil.between(
                 lastCard.getRank(),
@@ -233,35 +513,58 @@ public class CardService {
             )
         )
         .orElseGet(() ->
-            LexoRankUtil.between(null, null)
+            LexoRankUtil.between(
+                null,
+                null
+            )
         );
   }
 
   /**
-   * 카드가 이동할 위치의 앞뒤 rank를 기준으로 새 rank 생성
+   * 이동 위치의 앞뒤 rank를 기준으로
+   * 새로운 LexoRank를 생성합니다.
    */
   private String createMoveRank(
       List<Card> targetCards,
       int targetIndex
   ) {
-    String prevRank = targetIndex == 0
-        ? null
-        : targetCards.get(targetIndex - 1).getRank();
+    String prevRank =
+        targetIndex == 0
+            ? null
+            : targetCards
+            .get(targetIndex - 1)
+            .getRank();
 
-    String nextRank = targetIndex == targetCards.size()
-        ? null
-        : targetCards.get(targetIndex).getRank();
+    String nextRank =
+        targetIndex == targetCards.size()
+            ? null
+            : targetCards
+            .get(targetIndex)
+            .getRank();
 
-    if (!LexoRankUtil.hasSpace(prevRank, nextRank)) {
-      rebalanceCards(targetCards);
+    if (
+        !LexoRankUtil.hasSpace(
+            prevRank,
+            nextRank
+        )
+    ) {
+      rebalanceCards(
+          targetCards
+      );
 
-      prevRank = targetIndex == 0
-          ? null
-          : targetCards.get(targetIndex - 1).getRank();
+      prevRank =
+          targetIndex == 0
+              ? null
+              : targetCards
+              .get(targetIndex - 1)
+              .getRank();
 
-      nextRank = targetIndex == targetCards.size()
-          ? null
-          : targetCards.get(targetIndex).getRank();
+      nextRank =
+          targetIndex == targetCards.size()
+              ? null
+              : targetCards
+              .get(targetIndex)
+              .getRank();
     }
 
     return LexoRankUtil.between(
@@ -271,7 +574,8 @@ public class CardService {
   }
 
   /**
-   * rank 사이에 공간이 없으면 해당 컬럼의 카드 rank 재배치
+   * rank 사이에 공간이 없으면
+   * 해당 컬럼의 카드 rank를 재배치합니다.
    */
   private void rebalanceCards(
       List<Card> cards
@@ -290,16 +594,16 @@ public class CardService {
   }
 
   /**
-   * 이동할 인덱스 유효성 검사
+   * 이동 대상 인덱스 검사
    */
   private void validateTargetIndex(
       Integer targetIndex,
       int maxIndex
   ) {
     if (
-        targetIndex == null ||
-            targetIndex < 0 ||
-            targetIndex > maxIndex
+        targetIndex == null
+            || targetIndex < 0
+            || targetIndex > maxIndex
     ) {
       throw new CustomException(
           ErrorCode.INVALID_INPUT
@@ -360,10 +664,11 @@ public class CardService {
       User user
   ) {
     boolean hasAccess =
-        boardMemberRepository.existsByBoardAndUser(
-            board,
-            user
-        );
+        boardMemberRepository
+            .existsByBoardAndUser(
+                board,
+                user
+            );
 
     if (!hasAccess) {
       throw new CustomException(
@@ -373,7 +678,7 @@ public class CardService {
   }
 
   /**
-   * 컬럼이 해당 보드에 속해 있는지 검사
+   * 컬럼이 해당 보드에 속하는지 검사
    */
   private void validateColumnInBoard(
       BoardColumn boardColumn,
@@ -381,7 +686,9 @@ public class CardService {
   ) {
     if (
         !Objects.equals(
-            boardColumn.getBoard().getId(),
+            boardColumn
+                .getBoard()
+                .getId(),
             board.getId()
         )
     ) {
