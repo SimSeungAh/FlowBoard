@@ -3,7 +3,7 @@ package com.example.flow_board.domain.card.service;
 import com.example.flow_board.domain.activity.entity.ActivityType;
 import com.example.flow_board.domain.activity.service.ActivityLogService;
 import com.example.flow_board.domain.board.entity.Board;
-import com.example.flow_board.domain.board.repository.BoardMemberRepository;
+import com.example.flow_board.domain.board.service.BoardPermissionService;
 import com.example.flow_board.domain.card.dto.request.ChecklistCreateRequest;
 import com.example.flow_board.domain.card.dto.request.ChecklistItemCreateRequest;
 import com.example.flow_board.domain.card.dto.request.ChecklistItemUpdateRequest;
@@ -33,58 +33,66 @@ public class ChecklistService {
   private final CardRepository cardRepository;
   private final ChecklistRepository checklistRepository;
   private final ChecklistItemRepository checklistItemRepository;
-  private final BoardMemberRepository boardMemberRepository;
+  private final BoardPermissionService boardPermissionService;
   private final ActivityLogService activityLogService;
 
   /**
    * 체크리스트 생성
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public ChecklistResponse createChecklist(
-      User user,
-      Long cardId,
-      ChecklistCreateRequest request
+          User user,
+          Long cardId,
+          ChecklistCreateRequest request
   ) {
     Card card = getCardById(cardId);
 
     Board board =
-        card.getBoardColumn().getBoard();
+            card.getBoardColumn()
+                    .getBoard();
 
-    validateBoardAccess(
-        board,
-        user
+    boardPermissionService.validateWritePermission(
+            board,
+            user
     );
 
     int position =
-        (int) checklistRepository.countByCard(card);
+            (int) checklistRepository.countByCard(
+                    card
+            );
 
-    Checklist checklist = new Checklist(
-        card,
-        request.title(),
-        position
-    );
+    Checklist checklist =
+            new Checklist(
+                    card,
+                    request.title(),
+                    position
+            );
 
     Checklist savedChecklist =
-        checklistRepository.save(checklist);
+            checklistRepository.save(
+                    checklist
+            );
 
     ChecklistResponse response =
-        ChecklistResponse.from(
-            savedChecklist,
-            List.of()
-        );
+            ChecklistResponse.from(
+                    savedChecklist,
+                    List.of()
+            );
 
     activityLogService.recordActivity(
-        board,
-        user,
-        ActivityType.CHECKLIST_CREATED,
-        card.getId(),
-        card.getTitle(),
-        user.getNickname()
-            + "님이 '"
-            + card.getTitle()
-            + "' 카드에 '"
-            + savedChecklist.getTitle()
-            + "' 체크리스트를 생성했습니다."
+            board,
+            user,
+            ActivityType.CHECKLIST_CREATED,
+            card.getId(),
+            card.getTitle(),
+            user.getNickname()
+                    + "님이 '"
+                    + card.getTitle()
+                    + "' 카드에 '"
+                    + savedChecklist.getTitle()
+                    + "' 체크리스트를 생성했습니다."
     );
 
     return response;
@@ -92,70 +100,82 @@ public class ChecklistService {
 
   /**
    * 카드의 체크리스트 목록 조회
+   *
+   * OWNER, MEMBER, VIEWER 모두 가능합니다.
    */
   public List<ChecklistResponse> getChecklists(
-      User user,
-      Long cardId
+          User user,
+          Long cardId
   ) {
     Card card = getCardById(cardId);
 
     Board board =
-        card.getBoardColumn().getBoard();
+            card.getBoardColumn()
+                    .getBoard();
 
-    validateBoardAccess(
-        board,
-        user
+    boardPermissionService.validateReadPermission(
+            board,
+            user
     );
 
     return checklistRepository
-        .findByCardOrderByPositionAsc(card)
-        .stream()
-        .map(this::toChecklistResponse)
-        .toList();
+            .findByCardOrderByPositionAsc(
+                    card
+            )
+            .stream()
+            .map(this::toChecklistResponse)
+            .toList();
   }
 
   /**
    * 체크리스트 제목 수정
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public ChecklistResponse updateChecklist(
-      User user,
-      Long checklistId,
-      ChecklistUpdateRequest request
+          User user,
+          Long checklistId,
+          ChecklistUpdateRequest request
   ) {
     Checklist checklist =
-        getChecklistById(checklistId);
+            getChecklistById(
+                    checklistId
+            );
 
     Card card =
-        checklist.getCard();
+            checklist.getCard();
 
     Board board =
-        card.getBoardColumn().getBoard();
+            card.getBoardColumn()
+                    .getBoard();
 
-    validateBoardAccess(
-        board,
-        user
+    boardPermissionService.validateWritePermission(
+            board,
+            user
     );
 
     checklist.updateTitle(
-        request.title()
+            request.title()
     );
 
     ChecklistResponse response =
-        toChecklistResponse(checklist);
+            toChecklistResponse(
+                    checklist
+            );
 
     activityLogService.recordActivity(
-        board,
-        user,
-        ActivityType.CHECKLIST_UPDATED,
-        card.getId(),
-        card.getTitle(),
-        user.getNickname()
-            + "님이 '"
-            + card.getTitle()
-            + "' 카드의 '"
-            + checklist.getTitle()
-            + "' 체크리스트를 수정했습니다."
+            board,
+            user,
+            ActivityType.CHECKLIST_UPDATED,
+            card.getId(),
+            card.getTitle(),
+            user.getNickname()
+                    + "님이 '"
+                    + card.getTitle()
+                    + "' 카드의 '"
+                    + checklist.getTitle()
+                    + "' 체크리스트를 수정했습니다."
     );
 
     return response;
@@ -163,114 +183,131 @@ public class ChecklistService {
 
   /**
    * 체크리스트 삭제
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public void deleteChecklist(
-      User user,
-      Long checklistId
+          User user,
+          Long checklistId
   ) {
     Checklist checklist =
-        getChecklistById(checklistId);
+            getChecklistById(
+                    checklistId
+            );
 
     Card card =
-        checklist.getCard();
+            checklist.getCard();
 
     Board board =
-        card.getBoardColumn().getBoard();
+            card.getBoardColumn()
+                    .getBoard();
 
-    validateBoardAccess(
-        board,
-        user
+    boardPermissionService.validateWritePermission(
+            board,
+            user
     );
 
     String checklistTitle =
-        checklist.getTitle();
+            checklist.getTitle();
 
     List<ChecklistItem> items =
-        checklistItemRepository
-            .findByChecklistOrderByPositionAsc(
-                checklist
-            );
+            checklistItemRepository
+                    .findByChecklistOrderByPositionAsc(
+                            checklist
+                    );
 
+    /*
+     * 체크리스트보다 항목을 먼저 삭제합니다.
+     */
     checklistItemRepository.deleteAll(
-        items
+            items
     );
 
     checklistRepository.delete(
-        checklist
+            checklist
     );
 
     activityLogService.recordActivity(
-        board,
-        user,
-        ActivityType.CHECKLIST_DELETED,
-        card.getId(),
-        card.getTitle(),
-        user.getNickname()
-            + "님이 '"
-            + card.getTitle()
-            + "' 카드의 '"
-            + checklistTitle
-            + "' 체크리스트를 삭제했습니다."
+            board,
+            user,
+            ActivityType.CHECKLIST_DELETED,
+            card.getId(),
+            card.getTitle(),
+            user.getNickname()
+                    + "님이 '"
+                    + card.getTitle()
+                    + "' 카드의 '"
+                    + checklistTitle
+                    + "' 체크리스트를 삭제했습니다."
     );
   }
 
   /**
    * 체크리스트 항목 생성
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public ChecklistItemResponse createChecklistItem(
-      User user,
-      Long checklistId,
-      ChecklistItemCreateRequest request
+          User user,
+          Long checklistId,
+          ChecklistItemCreateRequest request
   ) {
     Checklist checklist =
-        getChecklistById(checklistId);
+            getChecklistById(
+                    checklistId
+            );
 
     Card card =
-        checklist.getCard();
+            checklist.getCard();
 
     Board board =
-        card.getBoardColumn().getBoard();
+            card.getBoardColumn()
+                    .getBoard();
 
-    validateBoardAccess(
-        board,
-        user
+    boardPermissionService.validateWritePermission(
+            board,
+            user
     );
 
     int position =
-        (int) checklistItemRepository
-            .countByChecklist(checklist);
+            (int) checklistItemRepository
+                    .countByChecklist(
+                            checklist
+                    );
 
     ChecklistItem item =
-        new ChecklistItem(
-            checklist,
-            request.content(),
-            position
-        );
+            new ChecklistItem(
+                    checklist,
+                    request.content(),
+                    position
+            );
 
     ChecklistItem savedItem =
-        checklistItemRepository.save(item);
+            checklistItemRepository.save(
+                    item
+            );
 
     ChecklistItemResponse response =
-        ChecklistItemResponse.from(
-            savedItem
-        );
+            ChecklistItemResponse.from(
+                    savedItem
+            );
 
     activityLogService.recordActivity(
-        board,
-        user,
-        ActivityType.CHECKLIST_ITEM_CREATED,
-        card.getId(),
-        card.getTitle(),
-        user.getNickname()
-            + "님이 '"
-            + card.getTitle()
-            + "' 카드의 '"
-            + checklist.getTitle()
-            + "' 체크리스트에 '"
-            + savedItem.getContent()
-            + "' 항목을 추가했습니다."
+            board,
+            user,
+            ActivityType.CHECKLIST_ITEM_CREATED,
+            card.getId(),
+            card.getTitle(),
+            user.getNickname()
+                    + "님이 '"
+                    + card.getTitle()
+                    + "' 카드의 '"
+                    + checklist.getTitle()
+                    + "' 체크리스트에 '"
+                    + savedItem.getContent()
+                    + "' 항목을 추가했습니다."
     );
 
     return response;
@@ -278,49 +315,56 @@ public class ChecklistService {
 
   /**
    * 체크리스트 항목 내용 수정
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public ChecklistItemResponse updateChecklistItem(
-      User user,
-      Long itemId,
-      ChecklistItemUpdateRequest request
+          User user,
+          Long itemId,
+          ChecklistItemUpdateRequest request
   ) {
     ChecklistItem item =
-        getChecklistItemById(itemId);
+            getChecklistItemById(
+                    itemId
+            );
 
     Checklist checklist =
-        item.getChecklist();
+            item.getChecklist();
 
     Card card =
-        checklist.getCard();
+            checklist.getCard();
 
     Board board =
-        card.getBoardColumn().getBoard();
+            card.getBoardColumn()
+                    .getBoard();
 
-    validateBoardAccess(
-        board,
-        user
+    boardPermissionService.validateWritePermission(
+            board,
+            user
     );
 
     item.updateContent(
-        request.content()
+            request.content()
     );
 
     ChecklistItemResponse response =
-        ChecklistItemResponse.from(item);
+            ChecklistItemResponse.from(
+                    item
+            );
 
     activityLogService.recordActivity(
-        board,
-        user,
-        ActivityType.CHECKLIST_ITEM_UPDATED,
-        card.getId(),
-        card.getTitle(),
-        user.getNickname()
-            + "님이 '"
-            + card.getTitle()
-            + "' 카드의 체크리스트 항목을 '"
-            + item.getContent()
-            + "'(으)로 수정했습니다."
+            board,
+            user,
+            ActivityType.CHECKLIST_ITEM_UPDATED,
+            card.getId(),
+            card.getTitle(),
+            user.getNickname()
+                    + "님이 '"
+                    + card.getTitle()
+                    + "' 카드의 체크리스트 항목을 '"
+                    + item.getContent()
+                    + "'(으)로 수정했습니다."
     );
 
     return response;
@@ -328,52 +372,59 @@ public class ChecklistService {
 
   /**
    * 체크리스트 항목 완료 상태 변경
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public ChecklistItemResponse toggleChecklistItem(
-      User user,
-      Long itemId
+          User user,
+          Long itemId
   ) {
     ChecklistItem item =
-        getChecklistItemById(itemId);
+            getChecklistItemById(
+                    itemId
+            );
 
     Checklist checklist =
-        item.getChecklist();
+            item.getChecklist();
 
     Card card =
-        checklist.getCard();
+            checklist.getCard();
 
     Board board =
-        card.getBoardColumn().getBoard();
+            card.getBoardColumn()
+                    .getBoard();
 
-    validateBoardAccess(
-        board,
-        user
+    boardPermissionService.validateWritePermission(
+            board,
+            user
     );
 
     item.toggleChecked();
 
     ChecklistItemResponse response =
-        ChecklistItemResponse.from(item);
+            ChecklistItemResponse.from(
+                    item
+            );
 
     String action =
-        item.isChecked()
-            ? "완료 처리했습니다."
-            : "완료를 취소했습니다.";
+            item.isChecked()
+                    ? "완료 처리했습니다."
+                    : "완료를 취소했습니다.";
 
     activityLogService.recordActivity(
-        board,
-        user,
-        ActivityType.CHECKLIST_ITEM_TOGGLED,
-        card.getId(),
-        card.getTitle(),
-        user.getNickname()
-            + "님이 '"
-            + card.getTitle()
-            + "' 카드의 '"
-            + item.getContent()
-            + "' 항목을 "
-            + action
+            board,
+            user,
+            ActivityType.CHECKLIST_ITEM_TOGGLED,
+            card.getId(),
+            card.getTitle(),
+            user.getNickname()
+                    + "님이 '"
+                    + card.getTitle()
+                    + "' 카드의 '"
+                    + item.getContent()
+                    + "' 항목을 "
+                    + action
     );
 
     return response;
@@ -381,67 +432,74 @@ public class ChecklistService {
 
   /**
    * 체크리스트 항목 삭제
+   *
+   * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
   public void deleteChecklistItem(
-      User user,
-      Long itemId
+          User user,
+          Long itemId
   ) {
     ChecklistItem item =
-        getChecklistItemById(itemId);
+            getChecklistItemById(
+                    itemId
+            );
 
     Checklist checklist =
-        item.getChecklist();
+            item.getChecklist();
 
     Card card =
-        checklist.getCard();
+            checklist.getCard();
 
     Board board =
-        card.getBoardColumn().getBoard();
+            card.getBoardColumn()
+                    .getBoard();
 
-    validateBoardAccess(
-        board,
-        user
+    boardPermissionService.validateWritePermission(
+            board,
+            user
     );
 
     String itemContent =
-        item.getContent();
+            item.getContent();
 
-    checklistItemRepository.delete(item);
+    checklistItemRepository.delete(
+            item
+    );
 
     activityLogService.recordActivity(
-        board,
-        user,
-        ActivityType.CHECKLIST_ITEM_DELETED,
-        card.getId(),
-        card.getTitle(),
-        user.getNickname()
-            + "님이 '"
-            + card.getTitle()
-            + "' 카드의 '"
-            + itemContent
-            + "' 체크리스트 항목을 삭제했습니다."
+            board,
+            user,
+            ActivityType.CHECKLIST_ITEM_DELETED,
+            card.getId(),
+            card.getTitle(),
+            user.getNickname()
+                    + "님이 '"
+                    + card.getTitle()
+                    + "' 카드의 '"
+                    + itemContent
+                    + "' 체크리스트 항목을 삭제했습니다."
     );
   }
 
   /**
-   * 체크리스트 응답 생성
+   * 체크리스트와 항목을 합쳐 응답으로 변환합니다.
    */
   private ChecklistResponse toChecklistResponse(
-      Checklist checklist
+          Checklist checklist
   ) {
     List<ChecklistItemResponse> items =
-        checklistItemRepository
-            .findByChecklistOrderByPositionAsc(
-                checklist
-            )
-            .stream()
-            .map(ChecklistItemResponse::from)
-            .toList();
+            checklistItemRepository
+                    .findByChecklistOrderByPositionAsc(
+                            checklist
+                    )
+                    .stream()
+                    .map(ChecklistItemResponse::from)
+                    .toList();
 
     return ChecklistResponse.from(
-        checklist,
-        items
+            checklist,
+            items
     );
   }
 
@@ -449,65 +507,44 @@ public class ChecklistService {
    * 카드 조회
    */
   private Card getCardById(
-      Long cardId
+          Long cardId
   ) {
     return cardRepository
-        .findById(cardId)
-        .orElseThrow(
-            () -> new CustomException(
-                ErrorCode.CARD_NOT_FOUND
-            )
-        );
+            .findById(cardId)
+            .orElseThrow(
+                    () -> new CustomException(
+                            ErrorCode.CARD_NOT_FOUND
+                    )
+            );
   }
 
   /**
    * 체크리스트 조회
    */
   private Checklist getChecklistById(
-      Long checklistId
+          Long checklistId
   ) {
     return checklistRepository
-        .findById(checklistId)
-        .orElseThrow(
-            () -> new CustomException(
-                ErrorCode.CHECKLIST_NOT_FOUND
-            )
-        );
+            .findById(checklistId)
+            .orElseThrow(
+                    () -> new CustomException(
+                            ErrorCode.CHECKLIST_NOT_FOUND
+                    )
+            );
   }
 
   /**
    * 체크리스트 항목 조회
    */
   private ChecklistItem getChecklistItemById(
-      Long itemId
+          Long itemId
   ) {
     return checklistItemRepository
-        .findById(itemId)
-        .orElseThrow(
-            () -> new CustomException(
-                ErrorCode.CHECKLIST_ITEM_NOT_FOUND
-            )
-        );
-  }
-
-  /**
-   * 보드 접근 권한 검사
-   */
-  private void validateBoardAccess(
-      Board board,
-      User user
-  ) {
-    boolean hasAccess =
-        boardMemberRepository
-            .existsByBoardAndUser(
-                board,
-                user
+            .findById(itemId)
+            .orElseThrow(
+                    () -> new CustomException(
+                            ErrorCode.CHECKLIST_ITEM_NOT_FOUND
+                    )
             );
-
-    if (!hasAccess) {
-      throw new CustomException(
-          ErrorCode.BOARD_ACCESS_DENIED
-      );
-    }
   }
 }
