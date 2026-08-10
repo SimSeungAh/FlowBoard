@@ -5,8 +5,8 @@ import com.example.flow_board.domain.activity.entity.ActivityLog;
 import com.example.flow_board.domain.activity.entity.ActivityType;
 import com.example.flow_board.domain.activity.repository.ActivityLogRepository;
 import com.example.flow_board.domain.board.entity.Board;
-import com.example.flow_board.domain.board.repository.BoardMemberRepository;
 import com.example.flow_board.domain.board.repository.BoardRepository;
+import com.example.flow_board.domain.board.service.BoardPermissionService;
 import com.example.flow_board.domain.user.entity.User;
 import com.example.flow_board.global.exception.CustomException;
 import com.example.flow_board.global.exception.ErrorCode;
@@ -23,15 +23,11 @@ import java.time.LocalDateTime;
 @Transactional(readOnly = true)
 public class ActivityLogService {
 
-  /**
-   * 같은 사용자의 화이트보드 활동을
-   * 다시 기록하기까지의 최소 간격입니다.
-   */
   private static final long WHITEBOARD_ACTIVITY_INTERVAL_MINUTES = 5L;
 
   private final ActivityLogRepository activityLogRepository;
   private final BoardRepository boardRepository;
-  private final BoardMemberRepository boardMemberRepository;
+  private final BoardPermissionService boardPermissionService;
 
   /**
    * 일반 활동 로그 저장
@@ -66,11 +62,10 @@ public class ActivityLogService {
   }
 
   /**
-   * 화이트보드 작업 활동을 필요할 때만 기록합니다.
+   * 화이트보드 활동 로그 제한
    *
-   * 같은 사용자가 같은 보드에서 5분 이내에
-   * 계속 그림을 그리고 있다면 활동 로그를
-   * 반복해서 만들지 않습니다.
+   * 같은 사용자가 같은 보드에서 계속 작업하는 경우
+   * 5분 동안 최대 1개의 활동 로그만 기록합니다.
    */
   @Transactional
   public void recordWhiteboardActivityIfNeeded(
@@ -114,9 +109,9 @@ public class ActivityLogService {
   }
 
   /**
-   * 특정 보드의 활동 로그를 최신순으로 조회합니다.
+   * 보드 활동 로그 조회
    *
-   * OWNER, MEMBER, VIEWER 모두 조회할 수 있습니다.
+   * OWNER / MEMBER / VIEWER 모두 가능합니다.
    */
   public Page<ActivityLogResponse> getBoardActivities(
           User user,
@@ -126,7 +121,7 @@ public class ActivityLogService {
     Board board =
             getBoardById(boardId);
 
-    validateBoardAccess(
+    boardPermissionService.validateReadPermission(
             board,
             user
     );
@@ -141,9 +136,6 @@ public class ActivityLogService {
             );
   }
 
-  /**
-   * 보드 조회
-   */
   private Board getBoardById(
           Long boardId
   ) {
@@ -154,26 +146,5 @@ public class ActivityLogService {
                             ErrorCode.BOARD_NOT_FOUND
                     )
             );
-  }
-
-  /**
-   * 현재 사용자가 해당 보드의 멤버인지 검사합니다.
-   */
-  private void validateBoardAccess(
-          Board board,
-          User user
-  ) {
-    boolean hasAccess =
-            boardMemberRepository
-                    .existsByBoardAndUser(
-                            board,
-                            user
-                    );
-
-    if (!hasAccess) {
-      throw new CustomException(
-              ErrorCode.BOARD_ACCESS_DENIED
-      );
-    }
   }
 }

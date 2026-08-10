@@ -15,12 +15,12 @@ import com.example.flow_board.domain.whiteboard.websocket.WhiteboardEventPublish
 import com.example.flow_board.domain.whiteboard.websocket.WhiteboardWebSocketEvent;
 import com.example.flow_board.global.exception.CustomException;
 import com.example.flow_board.global.exception.ErrorCode;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 
@@ -39,7 +39,7 @@ public class WhiteboardService {
   private final WhiteboardStrokeRepository whiteboardStrokeRepository;
   private final WhiteboardEventPublisher whiteboardEventPublisher;
   private final ActivityLogService activityLogService;
-  private final ObjectMapper objectMapper;
+  private final JsonMapper jsonMapper;
 
   /**
    * 화이트보드 선 저장
@@ -100,11 +100,9 @@ public class WhiteboardService {
                     request.points()
             );
 
-    /*
-     * 선마다 활동 로그를 남기지 않습니다.
-     *
-     * 같은 사용자가 같은 보드에서 계속 작업하는 동안에는
-     * 5분에 최대 1개의 화이트보드 활동 로그만 기록됩니다.
+    /**
+     * 같은 사용자가 같은 보드에서 계속 작업할 경우
+     * 5분에 최대 하나의 화이트보드 활동 로그만 남깁니다.
      */
     activityLogService
             .recordWhiteboardActivityIfNeeded(
@@ -113,9 +111,9 @@ public class WhiteboardService {
                     savedStroke.getId()
             );
 
-    /*
+    /**
      * DB 트랜잭션 정상 커밋 후
-     * WebSocket으로 선 생성 이벤트를 전달합니다.
+     * WebSocket으로 선 생성 이벤트가 전달됩니다.
      */
     whiteboardEventPublisher.publish(
             WhiteboardWebSocketEvent.strokeCreated(
@@ -128,7 +126,7 @@ public class WhiteboardService {
   }
 
   /**
-   * 특정 보드의 화이트보드 선 전체 조회
+   * 화이트보드 선 전체 조회
    *
    * OWNER, MEMBER, VIEWER 모두 가능합니다.
    */
@@ -183,9 +181,9 @@ public class WhiteboardService {
             board
     );
 
-    /*
-     * 전체 삭제는 중요한 작업이므로
-     * 5분 제한과 관계없이 항상 기록합니다.
+    /**
+     * 전체 삭제는 중요한 활동이므로
+     * 시간 제한 없이 항상 기록합니다.
      */
     activityLogService.recordActivity(
             board,
@@ -197,9 +195,9 @@ public class WhiteboardService {
                     + "님이 화이트보드를 전체 삭제했습니다."
     );
 
-    /*
-     * 다른 사용자의 Canvas도 비우도록
-     * WebSocket 전체 삭제 이벤트를 전달합니다.
+    /**
+     * 다른 사용자 Canvas에도
+     * 전체 삭제 이벤트를 전달합니다.
      */
     whiteboardEventPublisher.publish(
             WhiteboardWebSocketEvent.cleared(
@@ -224,16 +222,16 @@ public class WhiteboardService {
   }
 
   /**
-   * 좌표 목록 → JSON
+   * 좌표 목록 -> JSON
    */
   private String convertPointsToJson(
           List<WhiteboardPoint> points
   ) {
     try {
-      return objectMapper.writeValueAsString(
+      return jsonMapper.writeValueAsString(
               points
       );
-    } catch (JsonProcessingException exception) {
+    } catch (JacksonException exception) {
       throw new CustomException(
               ErrorCode.WHITEBOARD_DATA_PROCESSING_FAILED
       );
@@ -241,17 +239,17 @@ public class WhiteboardService {
   }
 
   /**
-   * JSON → 좌표 목록
+   * JSON -> 좌표 목록
    */
   private List<WhiteboardPoint> convertJsonToPoints(
           String pointsJson
   ) {
     try {
-      return objectMapper.readValue(
+      return jsonMapper.readValue(
               pointsJson,
               WHITEBOARD_POINT_LIST_TYPE
       );
-    } catch (JsonProcessingException exception) {
+    } catch (JacksonException exception) {
       throw new CustomException(
               ErrorCode.WHITEBOARD_DATA_PROCESSING_FAILED
       );
