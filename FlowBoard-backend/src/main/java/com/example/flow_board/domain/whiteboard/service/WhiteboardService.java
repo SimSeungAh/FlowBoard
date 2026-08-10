@@ -55,10 +55,6 @@ public class WhiteboardService {
     Board board =
             getBoardById(boardId);
 
-    /*
-     * VIEWER는 화이트보드에
-     * 선을 추가할 수 없습니다.
-     */
     boardPermissionService.validateWritePermission(
             board,
             user
@@ -105,25 +101,21 @@ public class WhiteboardService {
             );
 
     /*
-     * 현재는 선 단위로 활동 로그를 기록합니다.
-     * 다음 단계에서 화이트보드 특성상 로그가
-     * 너무 많이 쌓이지 않도록 보완합니다.
+     * 선마다 활동 로그를 남기지 않습니다.
+     *
+     * 같은 사용자가 같은 보드에서 계속 작업하는 동안에는
+     * 5분에 최대 1개의 화이트보드 활동 로그만 기록됩니다.
      */
-    activityLogService.recordActivity(
-            board,
-            user,
-            ActivityType.WHITEBOARD_STROKE_CREATED,
-            savedStroke.getId(),
-            "화이트보드 선",
-            user.getNickname()
-                    + "님이 화이트보드에 "
-                    + getToolDescription(request)
-                    + "을(를) 추가했습니다."
-    );
+    activityLogService
+            .recordWhiteboardActivityIfNeeded(
+                    board,
+                    user,
+                    savedStroke.getId()
+            );
 
     /*
-     * DB 트랜잭션이 정상 커밋된 후
-     * WebSocket 이벤트가 전송됩니다.
+     * DB 트랜잭션 정상 커밋 후
+     * WebSocket으로 선 생성 이벤트를 전달합니다.
      */
     whiteboardEventPublisher.publish(
             WhiteboardWebSocketEvent.strokeCreated(
@@ -153,7 +145,9 @@ public class WhiteboardService {
     );
 
     return whiteboardStrokeRepository
-            .findByBoardOrderByIdAsc(board)
+            .findByBoardOrderByIdAsc(
+                    board
+            )
             .stream()
             .map(
                     stroke ->
@@ -180,9 +174,6 @@ public class WhiteboardService {
     Board board =
             getBoardById(boardId);
 
-    /*
-     * VIEWER는 전체 삭제할 수 없습니다.
-     */
     boardPermissionService.validateWritePermission(
             board,
             user
@@ -192,6 +183,10 @@ public class WhiteboardService {
             board
     );
 
+    /*
+     * 전체 삭제는 중요한 작업이므로
+     * 5분 제한과 관계없이 항상 기록합니다.
+     */
     activityLogService.recordActivity(
             board,
             user,
@@ -203,27 +198,14 @@ public class WhiteboardService {
     );
 
     /*
-     * 트랜잭션 커밋 후 모든 구독자에게
-     * 전체 삭제 이벤트를 전송합니다.
+     * 다른 사용자의 Canvas도 비우도록
+     * WebSocket 전체 삭제 이벤트를 전달합니다.
      */
     whiteboardEventPublisher.publish(
             WhiteboardWebSocketEvent.cleared(
                     board.getId()
             )
     );
-  }
-
-  /**
-   * 화이트보드 도구에 따른
-   * 활동 로그 표시 문구입니다.
-   */
-  private String getToolDescription(
-          WhiteboardStrokeCreateRequest request
-  ) {
-    return switch (request.tool()) {
-      case PEN -> "새로운 선";
-      case ERASER -> "지우개 선";
-    };
   }
 
   /**
@@ -242,7 +224,7 @@ public class WhiteboardService {
   }
 
   /**
-   * 좌표 목록을 JSON 문자열로 변환합니다.
+   * 좌표 목록 → JSON
    */
   private String convertPointsToJson(
           List<WhiteboardPoint> points
@@ -259,7 +241,7 @@ public class WhiteboardService {
   }
 
   /**
-   * JSON 문자열을 좌표 목록으로 복원합니다.
+   * JSON → 좌표 목록
    */
   private List<WhiteboardPoint> convertJsonToPoints(
           String pointsJson
