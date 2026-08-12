@@ -8,7 +8,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { toast } from "sonner";
 
+import { getBoardDetail } from "@/api/board";
 import {
+  clearWhiteboard,
   createWhiteboardStroke,
   getWhiteboardStrokes,
   type WhiteboardPoint,
@@ -18,6 +20,7 @@ import {
 } from "@/api/whiteboard";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import LoadingOverlay from "@/components/ui/LoadingOverlay";
 import {
   connectWhiteboardWebSocket,
@@ -76,27 +79,23 @@ const drawStroke = (
     return;
   }
 
+  const firstPoint = stroke.points[0];
+
+  if (!firstPoint) {
+    return;
+  }
+
   context.save();
 
   context.globalCompositeOperation =
     stroke.tool === "ERASER" ? "destination-out" : "source-over";
 
   context.strokeStyle = stroke.color;
-
   context.lineWidth = stroke.lineWidth;
-
   context.lineCap = "round";
   context.lineJoin = "round";
 
   context.beginPath();
-
-  const firstPoint = stroke.points[0];
-
-  if (!firstPoint) {
-    context.restore();
-
-    return;
-  }
 
   context.moveTo(firstPoint.x, firstPoint.y);
 
@@ -123,9 +122,7 @@ const drawSegment = (
     tool === "ERASER" ? "destination-out" : "source-over";
 
   context.strokeStyle = color;
-
   context.lineWidth = lineWidth;
-
   context.lineCap = "round";
   context.lineJoin = "round";
 
@@ -183,6 +180,23 @@ const getConnectionClassName = (state: WhiteboardConnectionState) => {
   }
 };
 
+const appendStrokeIfMissing = (
+  current: WhiteboardStrokeResponse[],
+  incomingStroke: WhiteboardStrokeResponse,
+) => {
+  const alreadyExists = current.some(
+    (stroke) =>
+      stroke.id === incomingStroke.id ||
+      stroke.clientStrokeId === incomingStroke.clientStrokeId,
+  );
+
+  if (alreadyExists) {
+    return current;
+  }
+
+  return [...current, incomingStroke];
+};
+
 export default function WhiteboardPage() {
   const { boardId: boardIdParam } = useParams<{
     boardId: string;
@@ -207,20 +221,41 @@ export default function WhiteboardPage() {
   const [connectionState, setConnectionState] =
     useState<WhiteboardConnectionState>("connecting");
 
-  const queryKey = ["whiteboard", boardId, "strokes"] as const;
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+
+  const whiteboardQueryKey = ["whiteboard", boardId, "strokes"] as const;
+
+  const boardQueryKey = ["boards", boardId] as const;
+
+  const {
+    data: board,
+    isLoading: isBoardLoading,
+    isError: isBoardError,
+    refetch: refetchBoard,
+  } = useQuery({
+    queryKey: boardQueryKey,
+
+    queryFn: () => getBoardDetail(boardId),
+
+    enabled: isValidBoardId,
+  });
 
   const {
     data: strokes = [],
-    isLoading,
-    isError,
-    refetch,
+    isLoading: isStrokesLoading,
+    isError: isStrokesError,
+    refetch: refetchStrokes,
   } = useQuery({
-    queryKey,
+    queryKey: whiteboardQueryKey,
 
     queryFn: () => getWhiteboardStrokes(boardId),
 
     enabled: isValidBoardId,
   });
+
+  const canEdit = board?.myRole === "OWNER" || board?.myRole === "MEMBER";
+
+  const isViewer = board?.myRole === "VIEWER";
 
   const createStrokeMutation = useMutation({
     mutationFn: (data: WhiteboardStrokeCreateRequest) =>
@@ -228,20 +263,8 @@ export default function WhiteboardPage() {
 
     onSuccess: (savedStroke) => {
       queryClient.setQueryData<WhiteboardStrokeResponse[]>(
-        queryKey,
-        (current = []) => {
-          const alreadyExists = current.some(
-            (stroke) =>
-              stroke.id === savedStroke.id ||
-              stroke.clientStrokeId === savedStroke.clientStrokeId,
-          );
-
-          if (alreadyExists) {
-            return current;
-          }
-
-          return [...current, savedStroke];
-        },
+        whiteboardQueryKey,
+        (current = []) => appendStrokeIfMissing(current, savedStroke),
       );
     },
 
@@ -251,8 +274,25 @@ export default function WhiteboardPage() {
       );
 
       await queryClient.invalidateQueries({
-        queryKey,
+        queryKey: whiteboardQueryKey,
       });
+    },
+  });
+
+  const clearWhiteboardMutation = useMutation({
+    mutationFn: () => clearWhiteboard(boardId),
+
+    onSuccess: () => {
+      queryClient.setQueryData<WhiteboardStrokeResponse[]>(
+        whiteboardQueryKey,
+        [],
+      );
+
+      toast.success("화이트보드를 초기화했습니다.");
+    },
+
+    onError: () => {
+      toast.error("화이트보드를 초기화하지 못했습니다.");
     },
   });
 
@@ -272,25 +312,11 @@ export default function WhiteboardPage() {
         if (event.type === "STROKE_CREATED" && event.stroke) {
           queryClient.setQueryData<WhiteboardStrokeResponse[]>(
             currentQueryKey,
-            (current = []) => {
-              const incomingStroke = event.stroke;
-
-              if (!incomingStroke) {
-                return current;
-              }
-
-              const alreadyExists = current.some(
-                (stroke) =>
-                  stroke.id === incomingStroke.id ||
-                  stroke.clientStrokeId === incomingStroke.clientStrokeId,
-              );
-
-              if (alreadyExists) {
-                return current;
-              }
-
-              return [...current, incomingStroke];
-            },
+            (current = []) =>
+              appendStrokeIfMissing(
+                current,
+                event.stroke as WhiteboardStrokeResponse,
+              ),
           );
 
           return;
@@ -339,7 +365,7 @@ export default function WhiteboardPage() {
   });
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!isValidBoardId || isLoading || isError) {
+    if (!canEdit || !isValidBoardId || isStrokesLoading || isStrokesError) {
       return;
     }
 
@@ -357,7 +383,7 @@ export default function WhiteboardPage() {
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current) {
+    if (!canEdit || !drawingRef.current) {
       return;
     }
 
@@ -375,7 +401,7 @@ export default function WhiteboardPage() {
 
     const points = currentPointsRef.current;
 
-    const previousPoint = points.at(-1);
+    const previousPoint = points[points.length - 1];
 
     const currentPoint = getCanvasPoint(canvas, event);
 
@@ -391,7 +417,7 @@ export default function WhiteboardPage() {
   };
 
   const finishStroke = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current) {
+    if (!canEdit || !drawingRef.current) {
       return;
     }
 
@@ -450,7 +476,25 @@ export default function WhiteboardPage() {
       canvas.releasePointerCapture(event.pointerId);
     }
 
-    void refetch();
+    void refetchStrokes();
+  };
+
+  const handleClearWhiteboard = async () => {
+    if (!canEdit) {
+      return;
+    }
+
+    try {
+      await clearWhiteboardMutation.mutateAsync();
+
+      setClearDialogOpen(false);
+    } catch {
+      // mutation onError에서 사용자 메시지를 처리합니다.
+    }
+  };
+
+  const handleRetry = async () => {
+    await Promise.all([refetchBoard(), refetchStrokes()]);
   };
 
   if (!isValidBoardId) {
@@ -469,15 +513,30 @@ export default function WhiteboardPage() {
     );
   }
 
+  const isLoading = isBoardLoading || isStrokesLoading;
+
+  const isError = isBoardError || isStrokesError;
+
   return (
     <>
       <LoadingOverlay open={isLoading} text="화이트보드를 불러오는 중..." />
+
+      <ConfirmDialog
+        open={clearDialogOpen}
+        title="화이트보드 전체 초기화"
+        description="현재 화이트보드에 저장된 모든 선이 삭제됩니다. 다른 참여자의 화면에서도 즉시 초기화되며 되돌릴 수 없습니다."
+        confirmText="전체 초기화"
+        cancelText="취소"
+        loading={clearWhiteboardMutation.isPending}
+        onConfirm={handleClearWhiteboard}
+        onCancel={() => setClearDialogOpen(false)}
+      />
 
       <section className="flex w-full max-w-7xl flex-col gap-5 px-6 py-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-blue-600">
-              Board #{boardId}
+              {board ? board.title : `Board #${boardId}`}
             </p>
 
             <h1 className="mt-1 text-3xl font-bold text-slate-900">
@@ -485,12 +544,25 @@ export default function WhiteboardPage() {
             </h1>
 
             <p className="mt-2 text-sm text-slate-500">
-              펜과 지우개로 자유롭게 그리고, 저장된 그림은 참여자와 실시간으로
-              동기화됩니다.
+              {isViewer
+                ? "VIEWER 권한으로 참여 중입니다. 화이트보드는 조회만 할 수 있습니다."
+                : "펜과 지우개로 자유롭게 그리고, 저장된 그림은 참여자와 실시간으로 동기화됩니다."}
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {board && (
+              <span
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                  isViewer
+                    ? "bg-slate-100 text-slate-600"
+                    : "bg-blue-50 text-blue-700"
+                }`}
+              >
+                {board.myRole}
+              </span>
+            )}
+
             <span
               className={`rounded-full px-3 py-1.5 text-xs font-medium ${getConnectionClassName(
                 connectionState,
@@ -499,13 +571,26 @@ export default function WhiteboardPage() {
               {getConnectionLabel(connectionState)}
             </span>
 
-            <p className="text-sm text-slate-500">
+            <span className="text-sm text-slate-500">
               {createStrokeMutation.isPending
                 ? "선 저장 중..."
                 : `저장된 선 ${strokes.length.toLocaleString()}개`}
-            </p>
+            </span>
           </div>
         </div>
+
+        {isViewer && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-sm font-medium text-slate-700">
+              읽기 전용 화이트보드
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500">
+              VIEWER는 다른 참여자의 그림과 변경사항을 실시간으로 볼 수 있지만,
+              선을 그리거나 지우거나 전체 초기화할 수 없습니다.
+            </p>
+          </div>
+        )}
 
         <Card className="p-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -513,6 +598,7 @@ export default function WhiteboardPage() {
               type="button"
               variant={tool === "PEN" ? "primary" : "outline"}
               aria-pressed={tool === "PEN"}
+              disabled={!canEdit}
               onClick={() => setTool("PEN")}
             >
               PEN
@@ -522,6 +608,7 @@ export default function WhiteboardPage() {
               type="button"
               variant={tool === "ERASER" ? "primary" : "outline"}
               aria-pressed={tool === "ERASER"}
+              disabled={!canEdit}
               onClick={() => setTool("ERASER")}
             >
               ERASER
@@ -532,18 +619,29 @@ export default function WhiteboardPage() {
               <input
                 type="color"
                 value={penColor}
-                disabled={tool === "ERASER"}
+                disabled={!canEdit || tool === "ERASER"}
                 onChange={(event) => setPenColor(event.target.value)}
                 className="h-10 w-12 cursor-pointer rounded-md border border-slate-300 bg-white p-1 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="펜 색상 선택"
               />
             </label>
 
-            <span className="ml-auto text-xs text-slate-400">
-              PEN {PEN_LINE_WIDTH}
-              px · ERASER {ERASER_LINE_WIDTH}
-              px
-            </span>
+            <div className="ml-auto flex items-center gap-3">
+              <span className="text-xs text-slate-400">
+                PEN {PEN_LINE_WIDTH}
+                px · ERASER {ERASER_LINE_WIDTH}
+                px
+              </span>
+
+              <Button
+                type="button"
+                variant="danger"
+                disabled={!canEdit || strokes.length === 0}
+                onClick={() => setClearDialogOpen(true)}
+              >
+                전체 초기화
+              </Button>
+            </div>
           </div>
         </Card>
 
@@ -556,14 +654,15 @@ export default function WhiteboardPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  로그인 상태와 백엔드 실행 여부를 확인한 뒤 다시 시도해주세요.
+                  보드 접근 권한, 로그인 상태와 백엔드 실행 여부를 확인한 뒤
+                  다시 시도해주세요.
                 </p>
               </div>
 
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => void refetch()}
+                onClick={() => void handleRetry()}
               >
                 다시 불러오기
               </Button>
@@ -580,15 +679,28 @@ export default function WhiteboardPage() {
                 onPointerMove={handlePointerMove}
                 onPointerUp={finishStroke}
                 onPointerCancel={handlePointerCancel}
-                className="h-auto w-full min-w-[900px] touch-none cursor-crosshair rounded-lg border border-slate-200 bg-white shadow-sm"
                 aria-label={`보드 ${boardId} 화이트보드`}
+                aria-disabled={!canEdit}
+                className={`h-auto w-full min-w-[900px] touch-none rounded-lg border border-slate-200 bg-white shadow-sm ${
+                  canEdit ? "cursor-crosshair" : "cursor-default"
+                }`}
               />
             </div>
 
-            <div className="border-t border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
-              {strokes.length === 0
-                ? "아직 저장된 선이 없습니다. 캔버스에 바로 그려보세요."
-                : "저장된 선을 불러왔습니다. 다른 참여자의 변경사항도 실시간으로 반영됩니다."}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-3">
+              <p className="text-xs text-slate-500">
+                {strokes.length === 0
+                  ? canEdit
+                    ? "아직 저장된 선이 없습니다. 캔버스에 바로 그려보세요."
+                    : "아직 저장된 선이 없습니다."
+                  : "저장된 선을 불러왔습니다. 다른 참여자의 변경사항도 실시간으로 반영됩니다."}
+              </p>
+
+              {isViewer && (
+                <span className="text-xs font-medium text-slate-500">
+                  VIEWER · 읽기 전용
+                </span>
+              )}
             </div>
           </Card>
         )}
