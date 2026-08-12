@@ -8,17 +8,29 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public record WhiteboardStrokeResponse(
+
     Long id,
+
     Long boardId,
+
     Long userId,
+
     String userNickname,
+
     String clientStrokeId,
+
     WhiteboardTool tool,
+
     String color,
+
     Integer lineWidth,
+
     List<WhiteboardPoint> points,
+
     LocalDateTime createdAt,
+
     LocalDateTime updatedAt
+
 ) {
 
   public static WhiteboardStrokeResponse from(

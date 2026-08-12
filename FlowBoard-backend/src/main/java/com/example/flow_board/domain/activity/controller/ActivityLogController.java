@@ -11,11 +11,16 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/boards/{boardId}/activities")
 @RequiredArgsConstructor
+@RequestMapping(
+    "/api/boards/{boardId}/activities"
+)
 @Tag(
     name = "Activity Log",
     description = "보드 활동 로그 API"
@@ -26,16 +31,17 @@ public class ActivityLogController {
 
   /**
    * 보드 활동 로그 조회
-   * 활동 로그는 최신순으로 반환
-   * OWNER, MEMBER, VIEWER 모두 조회할 수 있음
+   *
+   * OWNER / MEMBER / VIEWER 모두 조회 가능합니다.
+   *
+   * 기본 페이지 크기:
+   * 20개
    */
   @GetMapping
   @Operation(
       summary = "보드 활동 로그 조회",
-      description = """
-          특정 보드의 활동 로그를 최신순으로 조회합니다.
-          페이지 번호는 0부터 시작하며 기본 페이지 크기는 20입니다.
-          """
+      description =
+          "보드에서 발생한 활동을 최신순으로 조회합니다."
   )
   public ApiResponse<Page<ActivityLogResponse>>
   getBoardActivities(
@@ -45,15 +51,19 @@ public class ActivityLogController {
       @PathVariable
       Long boardId,
 
-      @PageableDefault(size = 20)
+      @PageableDefault(
+          size = 20
+      )
       Pageable pageable
   ) {
+
     Page<ActivityLogResponse> response =
-        activityLogService.getBoardActivities(
-            userDetails.getUser(),
-            boardId,
-            pageable
-        );
+        activityLogService
+            .getBoardActivities(
+                userDetails.getUser(),
+                boardId,
+                pageable
+            );
 
     return ApiResponse.success(
         "보드 활동 로그 조회 성공",

@@ -10,13 +10,21 @@ public interface WhiteboardStrokeRepository
     extends JpaRepository<WhiteboardStroke, Long> {
 
   /**
-   * 특정 보드에 저장된 모든 선을 저장된 순서대로 조회
+   * 보드에 저장된 선을 저장 순서대로 조회합니다.
+   *
+   * Canvas 복원 시 이 순서대로 다시 그리면
+   * 기존 화이트보드 상태를 재구성할 수 있습니다.
    */
-  List<WhiteboardStroke> findByBoardOrderByIdAsc(Board board);
+  List<WhiteboardStroke> findByBoardOrderByIdAsc(
+      Board board
+  );
 
   /**
-   * 동일한 클라이언트 선 ID가 이미 저장되어 있는지 확인
-   * WebSocket이나 네트워크 재요청으로 같은 선이 중복 저장되는 것을 방지할 때 사용
+   * 프론트에서 생성한 clientStrokeId가
+   * 이미 저장되어 있는지 확인합니다.
+   *
+   * 네트워크 재시도나 중복 요청으로 인해
+   * 동일 선이 두 번 저장되는 것을 방지합니다.
    */
   boolean existsByBoardAndClientStrokeId(
       Board board,
@@ -24,8 +32,12 @@ public interface WhiteboardStrokeRepository
   );
 
   /**
-   * 특정 보드에 저장된 모든 선을 삭제
-   * 화이트보드 전체 지우기 기능에서 사용
+   * 보드의 모든 화이트보드 선 삭제
+   *
+   * 화이트보드 전체 초기화와
+   * 보드 삭제 시 사용합니다.
    */
-  void deleteByBoard(Board board);
+  void deleteByBoard(
+      Board board
+  );
 }

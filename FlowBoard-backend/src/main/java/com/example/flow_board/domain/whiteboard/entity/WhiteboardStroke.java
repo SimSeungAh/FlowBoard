@@ -8,13 +8,12 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-@Getter
 @Entity
 @Table(
     name = "whiteboard_strokes",
     uniqueConstraints = {
         @UniqueConstraint(
-            name = "uk_whiteboard_stroke_board_client",
+            name = "uk_whiteboard_board_client_stroke",
             columnNames = {
                 "board_id",
                 "client_stroke_id"
@@ -23,22 +22,31 @@ import lombok.NoArgsConstructor;
     },
     indexes = {
         @Index(
-            name = "idx_whiteboard_stroke_board",
+            name = "idx_whiteboard_board_id",
             columnList = "board_id, id"
         )
     }
 )
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class WhiteboardStroke extends BaseEntity {
+@Getter
+@NoArgsConstructor(
+    access = AccessLevel.PROTECTED
+)
+public class WhiteboardStroke
+    extends BaseEntity {
 
   @Id
-  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @GeneratedValue(
+      strategy = GenerationType.IDENTITY
+  )
   private Long id;
 
   /**
-   * 이 선이 그려진 보드
+   * 해당 선이 속한 보드
    */
-  @ManyToOne(fetch = FetchType.LAZY)
+  @ManyToOne(
+      fetch = FetchType.LAZY,
+      optional = false
+  )
   @JoinColumn(
       name = "board_id",
       nullable = false
@@ -46,9 +54,12 @@ public class WhiteboardStroke extends BaseEntity {
   private Board board;
 
   /**
-   * 이 선을 그린 사용자
+   * 선을 그린 사용자
    */
-  @ManyToOne(fetch = FetchType.LAZY)
+  @ManyToOne(
+      fetch = FetchType.LAZY,
+      optional = false
+  )
   @JoinColumn(
       name = "user_id",
       nullable = false
@@ -56,9 +67,10 @@ public class WhiteboardStroke extends BaseEntity {
   private User user;
 
   /**
-   * 프론트엔드에서 생성한 선의 고유 ID
+   * 프론트에서 생성한 선 고유 ID
    *
-   * WebSocket 재연결 또는 중복 요청으로 동일한 선이 여러 번 저장되는 것을 막을 때 사용
+   * WebSocket 재전송이나 네트워크 중복 요청 시
+   * 동일 선이 DB에 두 번 저장되는 것을 방지합니다.
    */
   @Column(
       name = "client_stroke_id",
@@ -68,30 +80,33 @@ public class WhiteboardStroke extends BaseEntity {
   private String clientStrokeId;
 
   /**
-   * PEN 또는 ERASER
+   * PEN / ERASER
    */
-  @Enumerated(EnumType.STRING)
+  @Enumerated(
+      EnumType.STRING
+  )
   @Column(
+      name = "tool",
       nullable = false,
       length = 20
   )
   private WhiteboardTool tool;
 
   /**
-   * 펜의 색상
+   * HEX 색상
    *
    * 예:
    * #000000
-   * #2563EB
    */
   @Column(
+      name = "color",
       nullable = false,
       length = 20
   )
   private String color;
 
   /**
-   * 선 또는 지우개의 굵기
+   * 선 굵기
    */
   @Column(
       name = "line_width",
@@ -100,12 +115,12 @@ public class WhiteboardStroke extends BaseEntity {
   private Integer lineWidth;
 
   /**
-   * 선을 구성하는 좌표 목록을 JSON 문자열로 저장
+   * Canvas 좌표 목록 JSON
    *
-   * 저장 예:
+   * 예:
    * [
-   *   {"x":10.5,"y":20.0},
-   *   {"x":11.2,"y":21.8}
+   *   {"x":10.0,"y":20.0},
+   *   {"x":11.5,"y":22.0}
    * ]
    */
   @Lob

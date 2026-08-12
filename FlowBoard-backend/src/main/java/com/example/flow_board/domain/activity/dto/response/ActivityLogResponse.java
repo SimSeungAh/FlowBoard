@@ -5,19 +5,26 @@ import com.example.flow_board.domain.activity.entity.ActivityType;
 
 import java.time.LocalDateTime;
 
-/**
- * 보드 활동 로그 조회 응답
- */
 public record ActivityLogResponse(
+
     Long id,
+
     Long boardId,
+
     Long actorId,
+
     String actorNickname,
+
     ActivityType type,
+
     Long targetId,
+
     String targetName,
+
     String description,
+
     LocalDateTime createdAt
+
 ) {
 
   public static ActivityLogResponse from(
