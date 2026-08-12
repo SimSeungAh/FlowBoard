@@ -29,20 +29,26 @@ export interface WhiteboardStrokeResponse {
   updatedAt: string;
 }
 
-export const getWhiteboardStrokes = async (boardId: number) => {
+export const getWhiteboardStrokes = async (
+  boardId: number,
+): Promise<WhiteboardStrokeResponse[]> => {
   const response = await api.get(`/boards/${boardId}/whiteboard/strokes`);
 
-  return response.data.data as WhiteboardStrokeResponse[];
+  return response.data.data;
 };
 
 export const createWhiteboardStroke = async (
   boardId: number,
   data: WhiteboardStrokeCreateRequest,
-) => {
+): Promise<WhiteboardStrokeResponse> => {
   const response = await api.post(
     `/boards/${boardId}/whiteboard/strokes`,
     data,
   );
 
-  return response.data.data as WhiteboardStrokeResponse;
+  return response.data.data;
+};
+
+export const clearWhiteboard = async (boardId: number): Promise<void> => {
+  await api.delete(`/boards/${boardId}/whiteboard/strokes`);
 };
