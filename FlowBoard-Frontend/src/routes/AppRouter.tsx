@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider } from "react-router";
 
 import MainLayout from "@/components/layout/MainLayout";
+import ActivityPage from "@/pages/Activity/ActivityPage";
 import CardSearchPage from "@/pages/CardSearch/CardSearchPage";
 import ErrorPage from "@/pages/ErrorPage";
 import HomePage from "@/pages/Home/HomePage";
@@ -43,6 +44,10 @@ const router = createBrowserRouter([
           {
             path: "boards/:boardId/search",
             element: <CardSearchPage />,
+          },
+          {
+            path: "boards/:boardId/activities",
+            element: <ActivityPage />,
           },
         ],
       },
