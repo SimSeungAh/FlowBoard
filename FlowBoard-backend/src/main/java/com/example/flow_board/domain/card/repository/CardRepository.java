@@ -12,21 +12,24 @@ public interface CardRepository
     CardSearchRepository {
 
   /**
-   * 특정 컬럼의 카드를 LexoRank 순서대로 조회
+   * 특정 컬럼의 카드를 LexoRank 순서로 조회합니다.
    */
   List<Card> findByBoardColumnOrderByRankAsc(
       BoardColumn boardColumn
   );
 
   /**
-   * 특정 컬럼에 들어 있는 카드 개수를 조회
+   * 특정 컬럼의 카드 개수를 조회합니다.
    */
   long countByBoardColumn(
       BoardColumn boardColumn
   );
 
   /**
-   * 특정 컬럼에서 가장 마지막 LexoRank를 가진 카드를 조회
+   * 특정 컬럼에서 가장 뒤에 있는 카드를 조회합니다.
+   *
+   * 새 카드 생성 시 마지막 카드 뒤의
+   * LexoRank를 계산하기 위해 사용합니다.
    */
   Optional<Card> findTopByBoardColumnOrderByRankDesc(
       BoardColumn boardColumn

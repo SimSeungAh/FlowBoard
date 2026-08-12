@@ -14,14 +14,14 @@ public interface CardAssigneeRepository
     extends JpaRepository<CardAssignee, Long> {
 
   /**
-   * 특정 카드에 등록된 담당자를 등록 순서대로 조회
+   * 카드 담당자 목록 조회
    */
   List<CardAssignee> findByCardOrderByCreatedAtAsc(
       Card card
   );
 
   /**
-   * 특정 카드와 사용자에 해당하는 담당자 연결 정보를 조회
+   * 특정 카드와 사용자의 담당자 연결 조회
    */
   Optional<CardAssignee> findByCardAndUser(
       Card card,
@@ -29,7 +29,7 @@ public interface CardAssigneeRepository
   );
 
   /**
-   * 특정 사용자가 이미 카드 담당자로 ㅜ등록되어 있는지 확인
+   * 이미 담당자로 지정돼 있는지 확인
    */
   boolean existsByCardAndUser(
       Card card,
@@ -37,18 +37,20 @@ public interface CardAssigneeRepository
   );
 
   /**
-   * 여러 카드의 담당자를 한 번에 조회
-   * 담당자 응답을 만들 때 User 정보가 필요하므로 fetch join으로 User까지 함께 조회
+   * 여러 카드의 담당자를 한 번에 조회합니다.
+   *
+   * user를 fetch join해서 검색 결과 DTO 변환 시
+   * 사용자마다 추가 쿼리가 발생하지 않도록 합니다.
    */
   @Query("""
-      select cardAssignee
-      from CardAssignee cardAssignee
-      join fetch cardAssignee.user
-      where cardAssignee.card.id in :cardIds
-      order by cardAssignee.card.id asc,
-               cardAssignee.createdAt asc
+      select ca
+      from CardAssignee ca
+      join fetch ca.user
+      where ca.card.id in :cardIds
+      order by ca.card.id asc, ca.createdAt asc
       """)
   List<CardAssignee> findAllByCardIdsWithUser(
-      @Param("cardIds") List<Long> cardIds
+      @Param("cardIds")
+      List<Long> cardIds
   );
 }

@@ -6,7 +6,6 @@ import com.example.flow_board.domain.card.entity.Card;
 import com.example.flow_board.domain.card.entity.QCard;
 import com.example.flow_board.domain.card.entity.QCardAssignee;
 import com.example.flow_board.domain.card.entity.QCardTag;
-import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
@@ -23,70 +22,91 @@ public class CardSearchRepositoryImpl
 
   private final JPAQueryFactory queryFactory;
 
-  /**
-   * 보드 내 카드 검색 및 필터
-   */
   @Override
   public List<Card> searchCards(
       Long boardId,
       CardSearchCondition condition,
       LocalDateTime referenceTime
   ) {
-    QCard card = QCard.card;
+    QCard card =
+        QCard.card;
 
-    BooleanBuilder builder =
-        new BooleanBuilder();
+    QCardAssignee assignee =
+        new QCardAssignee(
+            "searchAssignee"
+        );
 
-    /*
-     * 지정한 보드에 속한 카드만 조회
-     */
-    builder.and(
-        card.boardColumn.board.id.eq(boardId)
-    );
-
-    if (condition != null) {
-      builder.and(
-          keywordContains(
-              card,
-              condition.normalizedKeyword()
-          )
-      );
-
-      builder.and(
-          assigneeEquals(
-              card,
-              condition.assigneeId()
-          )
-      );
-
-      builder.and(
-          tagEquals(
-              card,
-              condition.tagId()
-          )
-      );
-
-      builder.and(
-          dueDateMatches(
-              card,
-              condition.dueDateFilter(),
-              referenceTime
-          )
-      );
-    }
+    QCardTag cardTag =
+        new QCardTag(
+            "searchCardTag"
+        );
 
     return queryFactory
         .selectFrom(card)
-        .where(builder)
+
+        /*
+         * 검색 결과 응답에서 바로 사용하는
+         * 컬럼/작성자 정보를 함께 조회합니다.
+         *
+         * 검색 결과를 DTO로 변환할 때
+         * 불필요한 추가 쿼리가 발생하는 것을 줄입니다.
+         */
+        .join(
+            card.boardColumn
+        )
+        .fetchJoin()
+
+        .join(
+            card.createdBy
+        )
+        .fetchJoin()
+
+        .where(
+            card.boardColumn
+                .board
+                .id
+                .eq(boardId),
+
+            keywordContains(
+                card,
+                condition.normalizedKeyword()
+            ),
+
+            assigneeExists(
+                card,
+                assignee,
+                condition.assigneeId()
+            ),
+
+            tagExists(
+                card,
+                cardTag,
+                condition.tagId()
+            ),
+
+            dueDateMatches(
+                card,
+                condition.dueDateFilter(),
+                referenceTime
+            )
+        )
+
+        /*
+         * 먼저 컬럼 순서대로,
+         * 같은 컬럼에서는 LexoRank 순서대로 정렬합니다.
+         */
         .orderBy(
-            card.boardColumn.position.asc(),
+            card.boardColumn
+                .position
+                .asc(),
+
             card.rank.asc()
         )
         .fetch();
   }
 
   /**
-   * 카드 제목 또는 설명에 검색어가 포함되어 있는지 확인
+   * 카드 제목 또는 설명 검색
    */
   private BooleanExpression keywordContains(
       QCard card,
@@ -97,63 +117,71 @@ public class CardSearchRepositoryImpl
     }
 
     return card.title
-        .containsIgnoreCase(keyword)
+        .containsIgnoreCase(
+            keyword
+        )
         .or(
             card.description
-                .containsIgnoreCase(keyword)
+                .containsIgnoreCase(
+                    keyword
+                )
         );
   }
 
   /**
-   * 특정 사용자가 담당자로 등록된 카드인지 확인
+   * 특정 담당자가 지정된 카드인지 검사
    */
-  private BooleanExpression assigneeEquals(
+  private BooleanExpression assigneeExists(
       QCard card,
+      QCardAssignee assignee,
       Long assigneeId
   ) {
     if (assigneeId == null) {
       return null;
     }
 
-    QCardAssignee cardAssignee =
-        QCardAssignee.cardAssignee;
-
     return JPAExpressions
         .selectOne()
-        .from(cardAssignee)
+        .from(assignee)
         .where(
-            cardAssignee.card.eq(card),
-            cardAssignee.user.id.eq(assigneeId)
+            assignee.card.eq(
+                card
+            ),
+            assignee.user
+                .id
+                .eq(assigneeId)
         )
         .exists();
   }
 
   /**
-   * 특정 태그가 연결된 카드인지 확인
+   * 특정 태그가 연결된 카드인지 검사
    */
-  private BooleanExpression tagEquals(
+  private BooleanExpression tagExists(
       QCard card,
+      QCardTag cardTag,
       Long tagId
   ) {
     if (tagId == null) {
       return null;
     }
 
-    QCardTag cardTag =
-        QCardTag.cardTag;
-
     return JPAExpressions
         .selectOne()
         .from(cardTag)
         .where(
-            cardTag.card.eq(card),
-            cardTag.tag.id.eq(tagId)
+            cardTag.card.eq(
+                card
+            ),
+            cardTag.tag
+                .id
+                .eq(tagId)
         )
         .exists();
   }
 
   /**
-   * 선택한 마감일 조건에 맞는지 확인
+   * 마감일 필터
    */
   private BooleanExpression dueDateMatches(
       QCard card,
@@ -164,36 +192,62 @@ public class CardSearchRepositoryImpl
       return null;
     }
 
-    LocalDateTime todayStart =
-        referenceTime
-            .toLocalDate()
-            .atStartOfDay();
-
-    LocalDateTime tomorrowStart =
-        todayStart.plusDays(1);
-
     return switch (dueDateFilter) {
+
+      /*
+       * 현재 시각보다 이전이면 마감됨
+       */
       case OVERDUE ->
           card.dueDate
               .isNotNull()
               .and(
-                  card.dueDate.lt(referenceTime)
+                  card.dueDate.lt(
+                      referenceTime
+                  )
               );
 
-      case TODAY ->
-          card.dueDate
-              .goe(todayStart)
-              .and(
-                  card.dueDate.lt(tomorrowStart)
-              );
+      /*
+       * 오늘 00:00 이상
+       * 내일 00:00 미만
+       */
+      case TODAY -> {
+        LocalDateTime todayStart =
+            referenceTime
+                .toLocalDate()
+                .atStartOfDay();
 
+        LocalDateTime tomorrowStart =
+            todayStart.plusDays(1);
+
+        yield card.dueDate
+            .isNotNull()
+            .and(
+                card.dueDate.goe(
+                    todayStart
+                )
+            )
+            .and(
+                card.dueDate.lt(
+                    tomorrowStart
+                )
+            );
+      }
+
+      /*
+       * 현재 시각 이후의 마감일
+       */
       case UPCOMING ->
           card.dueDate
               .isNotNull()
               .and(
-                  card.dueDate.goe(referenceTime)
+                  card.dueDate.goe(
+                      referenceTime
+                  )
               );
 
+      /*
+       * 마감일 미설정 카드
+       */
       case NO_DUE_DATE ->
           card.dueDate.isNull();
     };
