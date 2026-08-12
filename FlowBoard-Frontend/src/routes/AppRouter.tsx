@@ -1,5 +1,6 @@
 import { createBrowserRouter, RouterProvider } from "react-router";
 
+import BoardToolsLayout from "@/components/layout/BoardToolsLayout";
 import MainLayout from "@/components/layout/MainLayout";
 import ActivityPage from "@/pages/Activity/ActivityPage";
 import CardSearchPage from "@/pages/CardSearch/CardSearchPage";
@@ -38,16 +39,22 @@ const router = createBrowserRouter([
             element: <MyPage />,
           },
           {
-            path: "boards/:boardId/whiteboard",
-            element: <WhiteboardPage />,
-          },
-          {
-            path: "boards/:boardId/search",
-            element: <CardSearchPage />,
-          },
-          {
-            path: "boards/:boardId/activities",
-            element: <ActivityPage />,
+            path: "boards/:boardId",
+            element: <BoardToolsLayout />,
+            children: [
+              {
+                path: "search",
+                element: <CardSearchPage />,
+              },
+              {
+                path: "whiteboard",
+                element: <WhiteboardPage />,
+              },
+              {
+                path: "activities",
+                element: <ActivityPage />,
+              },
+            ],
           },
         ],
       },
