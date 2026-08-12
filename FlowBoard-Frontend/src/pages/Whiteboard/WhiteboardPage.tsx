@@ -19,6 +19,10 @@ import {
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import LoadingOverlay from "@/components/ui/LoadingOverlay";
+import {
+  connectWhiteboardWebSocket,
+  type WhiteboardConnectionState,
+} from "@/services/whiteboardWebSocket";
 
 const CANVAS_WIDTH = 1200;
 const CANVAS_HEIGHT = 700;
@@ -78,13 +82,23 @@ const drawStroke = (
     stroke.tool === "ERASER" ? "destination-out" : "source-over";
 
   context.strokeStyle = stroke.color;
+
   context.lineWidth = stroke.lineWidth;
+
   context.lineCap = "round";
   context.lineJoin = "round";
 
   context.beginPath();
 
-  context.moveTo(stroke.points[0].x, stroke.points[0].y);
+  const firstPoint = stroke.points[0];
+
+  if (!firstPoint) {
+    context.restore();
+
+    return;
+  }
+
+  context.moveTo(firstPoint.x, firstPoint.y);
 
   for (const point of stroke.points.slice(1)) {
     context.lineTo(point.x, point.y);
@@ -109,7 +123,9 @@ const drawSegment = (
     tool === "ERASER" ? "destination-out" : "source-over";
 
   context.strokeStyle = color;
+
   context.lineWidth = lineWidth;
+
   context.lineCap = "round";
   context.lineJoin = "round";
 
@@ -141,6 +157,32 @@ const getCanvasPoint = (
   };
 };
 
+const getConnectionLabel = (state: WhiteboardConnectionState) => {
+  switch (state) {
+    case "connected":
+      return "실시간 연결됨";
+
+    case "connecting":
+      return "실시간 연결 중...";
+
+    case "disconnected":
+      return "실시간 연결 끊김";
+  }
+};
+
+const getConnectionClassName = (state: WhiteboardConnectionState) => {
+  switch (state) {
+    case "connected":
+      return "bg-emerald-50 text-emerald-700";
+
+    case "connecting":
+      return "bg-amber-50 text-amber-700";
+
+    case "disconnected":
+      return "bg-red-50 text-red-700";
+  }
+};
+
 export default function WhiteboardPage() {
   const { boardId: boardIdParam } = useParams<{
     boardId: string;
@@ -161,6 +203,9 @@ export default function WhiteboardPage() {
   const [tool, setTool] = useState<WhiteboardTool>("PEN");
 
   const [penColor, setPenColor] = useState(DEFAULT_PEN_COLOR);
+
+  const [connectionState, setConnectionState] =
+    useState<WhiteboardConnectionState>("connecting");
 
   const queryKey = ["whiteboard", boardId, "strokes"] as const;
 
@@ -186,7 +231,9 @@ export default function WhiteboardPage() {
         queryKey,
         (current = []) => {
           const alreadyExists = current.some(
-            (stroke) => stroke.clientStrokeId === savedStroke.clientStrokeId,
+            (stroke) =>
+              stroke.id === savedStroke.id ||
+              stroke.clientStrokeId === savedStroke.clientStrokeId,
           );
 
           if (alreadyExists) {
@@ -208,6 +255,62 @@ export default function WhiteboardPage() {
       });
     },
   });
+
+  useEffect(() => {
+    if (!isValidBoardId) {
+      return;
+    }
+
+    const currentQueryKey = ["whiteboard", boardId, "strokes"] as const;
+
+    const disconnect = connectWhiteboardWebSocket({
+      boardId,
+
+      onConnectionStateChange: setConnectionState,
+
+      onEvent: (event) => {
+        if (event.type === "STROKE_CREATED" && event.stroke) {
+          queryClient.setQueryData<WhiteboardStrokeResponse[]>(
+            currentQueryKey,
+            (current = []) => {
+              const incomingStroke = event.stroke;
+
+              if (!incomingStroke) {
+                return current;
+              }
+
+              const alreadyExists = current.some(
+                (stroke) =>
+                  stroke.id === incomingStroke.id ||
+                  stroke.clientStrokeId === incomingStroke.clientStrokeId,
+              );
+
+              if (alreadyExists) {
+                return current;
+              }
+
+              return [...current, incomingStroke];
+            },
+          );
+
+          return;
+        }
+
+        if (event.type === "CLEARED") {
+          queryClient.setQueryData<WhiteboardStrokeResponse[]>(
+            currentQueryKey,
+            [],
+          );
+        }
+      },
+
+      onError: (error) => {
+        console.error("[Whiteboard WebSocket]", error);
+      },
+    });
+
+    return disconnect;
+  }, [boardId, isValidBoardId, queryClient]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -382,15 +485,26 @@ export default function WhiteboardPage() {
             </h1>
 
             <p className="mt-2 text-sm text-slate-500">
-              펜과 지우개로 자유롭게 그리고, 완성한 선은 자동으로 저장됩니다.
+              펜과 지우개로 자유롭게 그리고, 저장된 그림은 참여자와 실시간으로
+              동기화됩니다.
             </p>
           </div>
 
-          <p className="text-sm text-slate-500">
-            {createStrokeMutation.isPending
-              ? "선 저장 중..."
-              : `저장된 선 ${strokes.length.toLocaleString()}개`}
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <span
+              className={`rounded-full px-3 py-1.5 text-xs font-medium ${getConnectionClassName(
+                connectionState,
+              )}`}
+            >
+              {getConnectionLabel(connectionState)}
+            </span>
+
+            <p className="text-sm text-slate-500">
+              {createStrokeMutation.isPending
+                ? "선 저장 중..."
+                : `저장된 선 ${strokes.length.toLocaleString()}개`}
+            </p>
+          </div>
         </div>
 
         <Card className="p-4">
@@ -474,7 +588,7 @@ export default function WhiteboardPage() {
             <div className="border-t border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
               {strokes.length === 0
                 ? "아직 저장된 선이 없습니다. 캔버스에 바로 그려보세요."
-                : "저장된 선을 불러왔습니다. 새로 그린 선은 마우스를 놓는 순간 저장됩니다."}
+                : "저장된 선을 불러왔습니다. 다른 참여자의 변경사항도 실시간으로 반영됩니다."}
             </div>
           </Card>
         )}
