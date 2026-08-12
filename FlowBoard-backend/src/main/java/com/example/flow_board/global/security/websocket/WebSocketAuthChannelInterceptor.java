@@ -1,8 +1,8 @@
 package com.example.flow_board.global.security.websocket;
 
 import com.example.flow_board.domain.board.entity.Board;
-import com.example.flow_board.domain.board.repository.BoardMemberRepository;
 import com.example.flow_board.domain.board.repository.BoardRepository;
+import com.example.flow_board.domain.board.service.BoardPermissionService;
 import com.example.flow_board.global.exception.CustomException;
 import com.example.flow_board.global.exception.ErrorCode;
 import com.example.flow_board.global.security.jwt.JwtProvider;
@@ -39,14 +39,9 @@ public class WebSocketAuthChannelInterceptor
   /**
    * 허용하는 보드 WebSocket 구독 주소
    *
-   * 카드:
-   * /topic/boards/1/cards
-   *
-   * 댓글:
-   * /topic/boards/1/comments
-   *
-   * 화이트보드:
-   * /topic/boards/1/whiteboard
+   * /topic/boards/{boardId}/cards
+   * /topic/boards/{boardId}/comments
+   * /topic/boards/{boardId}/whiteboard
    */
   private static final Pattern BOARD_TOPIC_PATTERN =
       Pattern.compile(
@@ -55,13 +50,11 @@ public class WebSocketAuthChannelInterceptor
 
   private final JwtProvider jwtProvider;
 
-  private final CustomUserDetailsService
-      customUserDetailsService;
+  private final CustomUserDetailsService customUserDetailsService;
 
   private final BoardRepository boardRepository;
 
-  private final BoardMemberRepository
-      boardMemberRepository;
+  private final BoardPermissionService boardPermissionService;
 
   @Override
   public Message<?> preSend(
@@ -75,47 +68,66 @@ public class WebSocketAuthChannelInterceptor
         );
 
     if (
-        accessor == null ||
-            accessor.getCommand() == null
+        accessor == null
+            || accessor.getCommand() == null
     ) {
       return message;
     }
 
+    /*
+     * WebSocket 최초 연결
+     */
     if (
         StompCommand.CONNECT.equals(
             accessor.getCommand()
         )
     ) {
-      authenticate(accessor);
+      authenticate(
+          accessor
+      );
     }
 
+    /*
+     * Topic 구독
+     */
     if (
         StompCommand.SUBSCRIBE.equals(
             accessor.getCommand()
         )
     ) {
-      authorizeSubscription(accessor);
+      authorizeSubscription(
+          accessor
+      );
     }
 
     return message;
   }
 
   /**
-   * WebSocket 최초 연결 시 JWT를 검사하고 인증 정보를 WebSocket 세션에 저장
+   * CONNECT 시 JWT 인증
    */
   private void authenticate(
       StompHeaderAccessor accessor
   ) {
-    String token = resolveToken(accessor);
+    String token =
+        resolveToken(
+            accessor
+        );
 
-    jwtProvider.validateToken(token);
+    jwtProvider.validateToken(
+        token
+    );
 
-    String email = jwtProvider.getEmail(token);
+    String email =
+        jwtProvider.getEmail(
+            token
+        );
 
     UserDetails userDetails =
-        customUserDetailsService.loadUserByUsername(
-            email
-        );
+        customUserDetailsService
+            .loadUserByUsername(
+                email
+            );
 
     UsernamePasswordAuthenticationToken authentication =
         new UsernamePasswordAuthenticationToken(
@@ -124,11 +136,19 @@ public class WebSocketAuthChannelInterceptor
             userDetails.getAuthorities()
         );
 
-    accessor.setUser(authentication);
+    /*
+     * 인증 정보를 WebSocket 세션에 저장합니다.
+     */
+    accessor.setUser(
+        authentication
+    );
   }
 
   /**
-   * 카드, 댓글 또는 화이트보드 구독 시 해당 사용자가 보드 멤버인지 확인
+   * SUBSCRIBE 권한 확인
+   *
+   * OWNER / MEMBER / VIEWER 모두
+   * 실시간 데이터를 조회할 수 있습니다.
    */
   private void authorizeSubscription(
       StompHeaderAccessor accessor
@@ -143,15 +163,10 @@ public class WebSocketAuthChannelInterceptor
     }
 
     Matcher matcher =
-        BOARD_TOPIC_PATTERN.matcher(destination);
+        BOARD_TOPIC_PATTERN.matcher(
+            destination
+        );
 
-    /*
-     * 허용 주소:
-     *
-     * /topic/boards/{boardId}/cards
-     * /topic/boards/{boardId}/comments
-     * /topic/boards/{boardId}/whiteboard
-     */
     if (!matcher.matches()) {
       throw new AccessDeniedException(
           "허용되지 않은 WebSocket 구독 주소입니다."
@@ -161,41 +176,48 @@ public class WebSocketAuthChannelInterceptor
     Long boardId;
 
     try {
-      boardId = Long.valueOf(
-          matcher.group(1)
-      );
-    } catch (NumberFormatException e) {
+      boardId =
+          Long.valueOf(
+              matcher.group(1)
+          );
+
+    } catch (NumberFormatException exception) {
       throw new AccessDeniedException(
           "올바르지 않은 보드 ID입니다."
       );
     }
 
     CustomUserDetails userDetails =
-        getAuthenticatedUser(accessor);
-
-    Board board = boardRepository
-        .findById(boardId)
-        .orElseThrow(
-            () -> new CustomException(
-                ErrorCode.BOARD_NOT_FOUND
-            )
+        getAuthenticatedUser(
+            accessor
         );
 
-    boolean isBoardMember =
-        boardMemberRepository.existsByBoardAndUser(
+    Board board =
+        boardRepository
+            .findById(
+                boardId
+            )
+            .orElseThrow(
+                () -> new CustomException(
+                    ErrorCode.BOARD_NOT_FOUND
+                )
+            );
+
+    /*
+     * OWNER / MEMBER / VIEWER는 모두
+     * WebSocket 구독 가능.
+     *
+     * 보드에 참여하지 않은 사용자는 차단.
+     */
+    boardPermissionService
+        .validateReadPermission(
             board,
             userDetails.getUser()
         );
-
-    if (!isBoardMember) {
-      throw new CustomException(
-          ErrorCode.BOARD_ACCESS_DENIED
-      );
-    }
   }
 
   /**
-   * WebSocket 세션의 인증 사용자 정보를 가져옴
+   * WebSocket 세션에서 인증 사용자 조회
    */
   private CustomUserDetails getAuthenticatedUser(
       StompHeaderAccessor accessor
@@ -225,7 +247,7 @@ public class WebSocketAuthChannelInterceptor
   }
 
   /**
-   * STOMP CONNECT 헤더에서 Access Token을 추출
+   * STOMP CONNECT 헤더의 JWT 추출
    */
   private String resolveToken(
       StompHeaderAccessor accessor
@@ -236,8 +258,10 @@ public class WebSocketAuthChannelInterceptor
         );
 
     if (
-        bearerToken == null ||
-            !bearerToken.startsWith(BEARER_PREFIX)
+        bearerToken == null
+            || !bearerToken.startsWith(
+            BEARER_PREFIX
+        )
     ) {
       throw new BadCredentialsException(
           "WebSocket 인증 토큰이 없습니다."

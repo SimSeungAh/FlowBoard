@@ -21,7 +21,9 @@ public class WhiteboardWebSocketEventListener {
   private final SimpMessagingTemplate messagingTemplate;
 
   /**
-   * 화이트보드 관련 DB 트랜잭션이 정상 커밋된 뒤 해당 보드의 WebSocket 구독자에게 이벤트를 전송
+   * 화이트보드 DB 작업이 정상 커밋된 후
+   * 해당 보드를 구독하고 있는 사용자에게
+   * WebSocket 이벤트를 전달합니다.
    */
   @TransactionalEventListener(
       phase = TransactionPhase.AFTER_COMMIT
@@ -46,17 +48,22 @@ public class WhiteboardWebSocketEventListener {
           event.boardId(),
           event.strokeId()
       );
-    } catch (RuntimeException e) {
+
+    } catch (RuntimeException exception) {
+
       /*
-       * DB 트랜잭션은 이미 정상 커밋된 상태
-       * WebSocket 전송 실패 때문에 REST 요청까지 실패한 것처럼 처리하지 않고 로그만 남김
+       * DB 트랜잭션은 이미 정상적으로
+       * 커밋된 상태입니다.
+       *
+       * WebSocket 전송 실패가 REST 요청 실패로
+       * 이어지지 않도록 로그만 남깁니다.
        */
       log.error(
           "화이트보드 WebSocket 이벤트 전송 실패: type={}, boardId={}, strokeId={}",
           event.type(),
           event.boardId(),
           event.strokeId(),
-          e
+          exception
       );
     }
   }
