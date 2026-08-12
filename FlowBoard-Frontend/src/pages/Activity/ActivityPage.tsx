@@ -298,13 +298,9 @@ export default function ActivityPage() {
     return (
       <section className="w-full max-w-5xl px-6 py-10">
         <Card>
-          <h1 className="text-xl font-bold text-slate-900">
-            활동 로그를 열 수 없습니다.
-          </h1>
+          <h1 className="text-xl font-bold text-slate-900">활동 로그를 열 수 없습니다.</h1>
 
-          <p className="mt-2 text-sm text-slate-500">
-            올바른 보드 ID가 필요합니다.
-          </p>
+          <p className="mt-2 text-sm text-slate-500">올바른 보드 ID가 필요합니다.</p>
         </Card>
       </section>
     );
@@ -316,9 +312,7 @@ export default function ActivityPage() {
     <section className="flex w-full max-w-5xl flex-col gap-5 px-6 py-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-blue-600">
-            {board?.title ?? `Board #${boardId}`}
-          </p>
+          <p className="text-sm font-medium text-blue-600">{board?.title ?? `Board #${boardId}`}</p>
 
           <h1 className="mt-1 text-3xl font-bold text-slate-900">활동 로그</h1>
 
@@ -389,11 +383,7 @@ export default function ActivityPage() {
               </p>
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void refetch()}
-            >
+            <Button type="button" variant="outline" onClick={() => void refetch()}>
               다시 불러오기
             </Button>
           </div>
@@ -430,7 +420,7 @@ export default function ActivityPage() {
                         <Badge variant={display.variant}>{display.label}</Badge>
                       </div>
 
-                      <p className="mt-2 break-words text-sm leading-6 text-slate-700">
+                      <p className="mt-2 text-sm leading-6 break-words text-slate-700">
                         {activity.description}
                       </p>
 

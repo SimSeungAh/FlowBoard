@@ -119,9 +119,7 @@ export default function CardSearchPage() {
 
   const [tagId, setTagId] = useState("");
 
-  const [dueDateFilter, setDueDateFilter] = useState<CardDueDateFilter | "">(
-    "",
-  );
+  const [dueDateFilter, setDueDateFilter] = useState<CardDueDateFilter | "">("");
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -199,16 +197,12 @@ export default function CardSearchPage() {
   });
 
   const columnNameById = useMemo(
-    () =>
-      new Map(board?.columns.map((column) => [column.id, column.title]) ?? []),
+    () => new Map(board?.columns.map((column) => [column.id, column.title]) ?? []),
     [board?.columns],
   );
 
   const hasActiveFilters =
-    keyword.trim().length > 0 ||
-    assigneeId !== "" ||
-    tagId !== "" ||
-    dueDateFilter !== "";
+    keyword.trim().length > 0 || assigneeId !== "" || tagId !== "" || dueDateFilter !== "";
 
   const resetFilters = () => {
     setKeyword("");
@@ -222,13 +216,9 @@ export default function CardSearchPage() {
     return (
       <section className="w-full max-w-5xl px-6 py-10">
         <Card>
-          <h1 className="text-xl font-bold text-slate-900">
-            카드 검색을 열 수 없습니다.
-          </h1>
+          <h1 className="text-xl font-bold text-slate-900">카드 검색을 열 수 없습니다.</h1>
 
-          <p className="mt-2 text-sm text-slate-500">
-            올바른 보드 ID가 필요합니다.
-          </p>
+          <p className="mt-2 text-sm text-slate-500">올바른 보드 ID가 필요합니다.</p>
         </Card>
       </section>
     );
@@ -237,15 +227,12 @@ export default function CardSearchPage() {
   return (
     <section className="flex w-full max-w-7xl flex-col gap-5 px-6 py-8">
       <div>
-        <p className="text-sm font-medium text-blue-600">
-          {board?.title ?? `Board #${boardId}`}
-        </p>
+        <p className="text-sm font-medium text-blue-600">{board?.title ?? `Board #${boardId}`}</p>
 
         <h1 className="mt-1 text-3xl font-bold text-slate-900">카드 검색</h1>
 
         <p className="mt-2 text-sm text-slate-500">
-          제목과 설명을 검색하고 담당자, 태그, 마감일 조건을 함께 적용할 수
-          있습니다.
+          제목과 설명을 검색하고 담당자, 태그, 마감일 조건을 함께 적용할 수 있습니다.
         </p>
       </div>
 
@@ -265,7 +252,7 @@ export default function CardSearchPage() {
               value={assigneeId}
               disabled={isMembersLoading}
               onChange={(event) => setAssigneeId(event.target.value)}
-              className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100"
+              className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 transition-colors outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100"
             >
               <option value="">전체 담당자</option>
 
@@ -286,7 +273,7 @@ export default function CardSearchPage() {
               value={tagId}
               disabled={isTagsLoading}
               onChange={(event) => setTagId(event.target.value)}
-              className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100"
+              className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 transition-colors outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100"
             >
               <option value="">전체 태그</option>
 
@@ -303,10 +290,8 @@ export default function CardSearchPage() {
 
             <select
               value={dueDateFilter}
-              onChange={(event) =>
-                setDueDateFilter(event.target.value as CardDueDateFilter | "")
-              }
-              className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              onChange={(event) => setDueDateFilter(event.target.value as CardDueDateFilter | "")}
+              className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 transition-colors outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="">전체 마감일</option>
 
@@ -325,18 +310,12 @@ export default function CardSearchPage() {
               <span className="text-blue-600">검색 결과 갱신 중...</span>
             ) : (
               <span>
-                검색 결과{" "}
-                <strong className="font-semibold text-slate-800">
-                  {cards.length}
-                </strong>
-                개
+                검색 결과 <strong className="font-semibold text-slate-800">{cards.length}</strong>개
               </span>
             )}
 
             {(isMembersError || isTagsError) && (
-              <span className="text-amber-600">
-                일부 필터 정보를 불러오지 못했습니다.
-              </span>
+              <span className="text-amber-600">일부 필터 정보를 불러오지 못했습니다.</span>
             )}
           </div>
 
@@ -382,22 +361,14 @@ export default function CardSearchPage() {
               </p>
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void refetchCards()}
-            >
+            <Button type="button" variant="outline" onClick={() => void refetchCards()}>
               다시 불러오기
             </Button>
           </div>
         </Card>
       ) : cards.length === 0 ? (
         <EmptyState
-          title={
-            hasActiveFilters
-              ? "조건에 맞는 카드가 없습니다."
-              : "아직 카드가 없습니다."
-          }
+          title={hasActiveFilters ? "조건에 맞는 카드가 없습니다." : "아직 카드가 없습니다."}
           description={
             hasActiveFilters
               ? "검색어나 필터 조건을 변경해서 다시 찾아보세요."
@@ -411,36 +382,28 @@ export default function CardSearchPage() {
           {cards.map((card) => {
             const dueDateBadge = getDueDateBadge(card.dueDate);
 
-            const columnName =
-              columnNameById.get(card.columnId) ?? `Column #${card.columnId}`;
+            const columnName = columnNameById.get(card.columnId) ?? `Column #${card.columnId}`;
 
             return (
-              <Card
-                key={card.id}
-                className="flex flex-col gap-4 transition-shadow hover:shadow-md"
-              >
+              <Card key={card.id} className="flex flex-col gap-4 transition-shadow hover:shadow-md">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge>{columnName}</Badge>
 
-                      <span className="text-xs text-slate-400">
-                        Card #{card.id}
-                      </span>
+                      <span className="text-xs text-slate-400">Card #{card.id}</span>
                     </div>
 
-                    <h2 className="mt-3 break-words text-lg font-semibold text-slate-900">
+                    <h2 className="mt-3 text-lg font-semibold break-words text-slate-900">
                       {card.title}
                     </h2>
                   </div>
 
-                  <Badge variant={dueDateBadge.variant}>
-                    {dueDateBadge.label}
-                  </Badge>
+                  <Badge variant={dueDateBadge.variant}>{dueDateBadge.label}</Badge>
                 </div>
 
                 {card.description ? (
-                  <p className="line-clamp-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">
+                  <p className="line-clamp-3 text-sm leading-6 break-words whitespace-pre-wrap text-slate-600">
                     {card.description}
                   </p>
                 ) : (
@@ -470,9 +433,7 @@ export default function CardSearchPage() {
                 <div className="mt-auto border-t border-slate-100 pt-4">
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
-                      <p className="text-xs font-medium text-slate-500">
-                        담당자
-                      </p>
+                      <p className="text-xs font-medium text-slate-500">담당자</p>
 
                       {card.assignees.length > 0 ? (
                         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -490,28 +451,20 @@ export default function CardSearchPage() {
                           ))}
                         </div>
                       ) : (
-                        <p className="mt-2 text-xs text-slate-400">
-                          담당자 없음
-                        </p>
+                        <p className="mt-2 text-xs text-slate-400">담당자 없음</p>
                       )}
                     </div>
 
                     <div className="text-right">
-                      <p className="text-xs font-medium text-slate-500">
-                        마감일
-                      </p>
+                      <p className="text-xs font-medium text-slate-500">마감일</p>
 
                       <p className="mt-2 text-xs text-slate-700">
-                        {card.dueDate
-                          ? formatDateTime(card.dueDate)
-                          : "설정되지 않음"}
+                        {card.dueDate ? formatDateTime(card.dueDate) : "설정되지 않음"}
                       </p>
                     </div>
                   </div>
 
-                  <p className="mt-4 text-xs text-slate-400">
-                    작성자 {card.createdByNickname}
-                  </p>
+                  <p className="mt-4 text-xs text-slate-400">작성자 {card.createdByNickname}</p>
                 </div>
               </Card>
             );

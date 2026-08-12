@@ -6,7 +6,7 @@ spring:
     name: backend-template
 
   datasource:
-    url: jdbc:mysql://localhost:3307/backend_template
+    url: jdbc:mysql://localhost:33080/backend_template
     username: root
     password: 1234
     driver-class-name: com.mysql.cj.jdbc.Driver
