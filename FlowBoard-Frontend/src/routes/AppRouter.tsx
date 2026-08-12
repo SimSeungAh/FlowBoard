@@ -7,6 +7,7 @@ import LoginPage from "@/pages/Login/LoginPage";
 import MyPage from "@/pages/MyPage/MyPage";
 import NotFoundPage from "@/pages/NotFound/NotFoundPage";
 import SignupPage from "@/pages/Signup/SignupPage";
+import WhiteboardPage from "@/pages/Whiteboard/WhiteboardPage";
 import ProtectedRoute from "@/routes/ProtectedRoute";
 
 const router = createBrowserRouter([
@@ -33,6 +34,10 @@ const router = createBrowserRouter([
           {
             path: "mypage",
             element: <MyPage />,
+          },
+          {
+            path: "boards/:boardId/whiteboard",
+            element: <WhiteboardPage />,
           },
         ],
       },
