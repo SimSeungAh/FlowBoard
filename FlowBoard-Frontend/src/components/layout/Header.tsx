@@ -1,7 +1,8 @@
-import { Link, useNavigate } from "react-router";
+import { Link, NavLink, useNavigate } from "react-router";
 
 import { logout } from "@/api/auth";
 import { useAuthStore } from "@/store/authStore";
+import { cn } from "@/utils/cn";
 
 export default function Header() {
   const navigate = useNavigate();
@@ -24,63 +25,58 @@ export default function Header() {
     }
   };
 
+  const navLinkClassName = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+      isActive
+        ? "bg-blue-50 text-blue-700"
+        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+    );
+
   return (
     <header className="sticky top-0 z-50 flex justify-center border-b border-slate-200 bg-white/95 backdrop-blur">
-      <div className="flex h-14 w-full max-w-7xl items-center justify-between px-6">
-        <Link
-          to="/"
-          className="flex items-center gap-2"
-          aria-label="FlowBoard 홈으로 이동"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">
+      <div className="flex h-16 w-full max-w-7xl items-center justify-between px-6">
+        <Link to="/" className="flex items-center gap-2.5" aria-label="FlowBoard 홈">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-base font-bold text-white shadow-sm shadow-blue-200">
             F
           </span>
 
-          <span className="text-xl font-bold tracking-tight text-slate-900">
+          <span className="text-xl font-bold tracking-tight text-slate-950">
             Flow
             <span className="text-blue-600">Board</span>
           </span>
         </Link>
 
-        <nav className="flex items-center gap-1 text-sm" aria-label="주 메뉴">
-          <Link
-            to="/"
-            className="rounded-lg px-3 py-2 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-blue-600"
-          >
+        <nav className="flex items-center gap-1" aria-label="주 메뉴">
+          <NavLink to="/" end className={navLinkClassName}>
             홈
-          </Link>
+          </NavLink>
 
           {isLogin ? (
             <>
-              <Link
-                to="/mypage"
-                className="rounded-lg px-3 py-2 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-blue-600"
-              >
+              <NavLink to="/mypage" className={navLinkClassName}>
                 마이페이지
-              </Link>
+              </NavLink>
 
               <button
                 type="button"
                 onClick={handleLogout}
-                className="rounded-lg px-3 py-2 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-red-500"
+                className="ml-1 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
               >
                 로그아웃
               </button>
             </>
           ) : (
             <>
-              <Link
-                to="/login"
-                className="rounded-lg px-3 py-2 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-blue-600"
-              >
+              <NavLink to="/login" className={navLinkClassName}>
                 로그인
-              </Link>
+              </NavLink>
 
               <Link
                 to="/signup"
-                className="ml-1 rounded-lg bg-blue-600 px-3 py-2 font-medium text-white transition-colors hover:bg-blue-700"
+                className="ml-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
               >
-                회원가입
+                시작하기
               </Link>
             </>
           )}
