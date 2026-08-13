@@ -114,10 +114,10 @@ export default function HomePage() {
               {isLogin ? (
                 <>
                   <Link
-                    to="/mypage"
+                    to="/boards"
                     className="inline-flex h-12 items-center justify-center rounded-xl bg-blue-600 px-6 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
                   >
-                    마이페이지로 이동
+                    내 보드 보기
                     <span className="ml-2" aria-hidden="true">
                       →
                     </span>
@@ -182,13 +182,10 @@ export default function HomePage() {
                 </div>
 
                 <div className="flex -space-x-2">
-                  {["S", "J", "M"].map((name, index) => (
+                  {["S", "J", "M"].map((name) => (
                     <span
                       key={name}
                       className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-800 text-xs font-semibold text-white"
-                      style={{
-                        transform: `translateX(${index * 0}px)`,
-                      }}
                     >
                       {name}
                     </span>
@@ -329,6 +326,7 @@ export default function HomePage() {
 
                 <div>
                   <p className="text-sm font-semibold text-slate-900">사용자가 카드를 이동</p>
+
                   <p className="mt-1 text-xs text-slate-500">
                     Drag & Drop으로 위치와 순서를 변경합니다.
                   </p>
@@ -344,6 +342,7 @@ export default function HomePage() {
 
                 <div>
                   <p className="text-sm font-semibold text-slate-900">서버에 변경사항 저장</p>
+
                   <p className="mt-1 text-xs text-slate-500">
                     LexoRank를 계산하고 변경 이벤트를 발행합니다.
                   </p>
@@ -359,6 +358,7 @@ export default function HomePage() {
 
                 <div>
                   <p className="text-sm font-semibold text-slate-900">참여자 화면에 즉시 반영</p>
+
                   <p className="mt-1 text-xs text-slate-500">
                     페이지 새로고침 없이 동일한 상태를 확인합니다.
                   </p>
@@ -385,10 +385,11 @@ export default function HomePage() {
 
           <div className="mt-8">
             <Link
-              to={isLogin ? "/mypage" : "/signup"}
+              to={isLogin ? "/boards" : "/signup"}
               className="inline-flex h-12 items-center justify-center rounded-xl bg-blue-600 px-7 text-sm font-semibold text-white transition-colors hover:bg-blue-500"
             >
-              {isLogin ? "FlowBoard 계속하기" : "FlowBoard 시작하기"}
+              {isLogin ? "내 보드로 이동" : "FlowBoard 시작하기"}
+
               <span className="ml-2" aria-hidden="true">
                 →
               </span>

@@ -54,6 +54,10 @@ export default function Header() {
 
           {isLogin ? (
             <>
+              <NavLink to="/boards" className={navLinkClassName}>
+                내 보드
+              </NavLink>
+
               <NavLink to="/mypage" className={navLinkClassName}>
                 마이페이지
               </NavLink>
