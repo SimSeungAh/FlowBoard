@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { toast } from "sonner";
@@ -7,6 +13,7 @@ import { getBoardDetail } from "@/api/board";
 import {
   clearWhiteboard,
   createWhiteboardStroke,
+  deleteWhiteboardStroke,
   getWhiteboardStrokes,
   type WhiteboardPoint,
   type WhiteboardStrokeCreateRequest,
@@ -41,7 +48,18 @@ interface DrawableStroke {
 }
 
 interface ActiveStroke extends DrawableStroke {
+  gestureId: string;
   hasSavedChunk: boolean;
+}
+
+interface UndoGesture {
+  gestureId: string;
+  strokeIds: number[];
+}
+
+interface CreateStrokeMutationVariables {
+  request: WhiteboardStrokeCreateRequest;
+  gestureId: string;
 }
 
 const drawDot = (context: CanvasRenderingContext2D, stroke: DrawableStroke) => {
@@ -88,11 +106,8 @@ const drawStroke = (context: CanvasRenderingContext2D, stroke: DrawableStroke) =
   context.globalCompositeOperation = stroke.tool === "ERASER" ? "destination-out" : "source-over";
 
   context.strokeStyle = stroke.color;
-
   context.lineWidth = stroke.lineWidth;
-
   context.lineCap = "round";
-
   context.lineJoin = "round";
 
   context.beginPath();
@@ -121,11 +136,8 @@ const drawSegment = (
   context.globalCompositeOperation = tool === "ERASER" ? "destination-out" : "source-over";
 
   context.strokeStyle = color;
-
   context.lineWidth = lineWidth;
-
   context.lineCap = "round";
-
   context.lineJoin = "round";
 
   context.beginPath();
@@ -201,6 +213,18 @@ const appendStrokeIfMissing = (
   return [...current, incomingStroke];
 };
 
+const isTextEditingTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
+};
+
 export default function WhiteboardPage() {
   const { boardId: boardIdParam } = useParams<{
     boardId: string;
@@ -222,7 +246,20 @@ export default function WhiteboardPage() {
 
   const saveErrorShownRef = useRef(false);
 
+  /*
+   * 현재 브라우저 세션에서 사용자가 직접 그린 동작만
+   * Undo 히스토리에 저장합니다.
+   *
+   * 서버에 저장된 Stroke 전체를 Undo 대상으로 삼으면
+   * 다른 사용자의 작업까지 취소할 수 있으므로 그렇게 하지 않습니다.
+   */
+  const undoHistoryRef = useRef<UndoGesture[]>([]);
+
+  const [undoGestureCount, setUndoGestureCount] = useState(0);
+
   const [queuedSaveCount, setQueuedSaveCount] = useState(0);
+
+  const [isUndoing, setIsUndoing] = useState(false);
 
   const [tool, setTool] = useState<WhiteboardTool>("PEN");
 
@@ -235,6 +272,59 @@ export default function WhiteboardPage() {
   const whiteboardQueryKey = ["whiteboard", boardId, "strokes"] as const;
 
   const boardQueryKey = ["boards", boardId] as const;
+
+  const syncUndoGestureCount = useCallback(() => {
+    setUndoGestureCount(undoHistoryRef.current.length);
+  }, []);
+
+  const clearUndoHistory = useCallback(() => {
+    undoHistoryRef.current = [];
+
+    syncUndoGestureCount();
+  }, [syncUndoGestureCount]);
+
+  const registerStrokeForGesture = useCallback(
+    (gestureId: string, strokeId: number) => {
+      const history = undoHistoryRef.current;
+
+      const existingGesture = history.find((gesture) => gesture.gestureId === gestureId);
+
+      if (existingGesture) {
+        if (!existingGesture.strokeIds.includes(strokeId)) {
+          existingGesture.strokeIds.push(strokeId);
+        }
+
+        syncUndoGestureCount();
+
+        return;
+      }
+
+      history.push({
+        gestureId,
+        strokeIds: [strokeId],
+      });
+
+      syncUndoGestureCount();
+    },
+    [syncUndoGestureCount],
+  );
+
+  const removeStrokeFromUndoHistory = useCallback(
+    (strokeId: number) => {
+      const nextHistory = undoHistoryRef.current
+        .map((gesture) => ({
+          ...gesture,
+
+          strokeIds: gesture.strokeIds.filter((id) => id !== strokeId),
+        }))
+        .filter((gesture) => gesture.strokeIds.length > 0);
+
+      undoHistoryRef.current = nextHistory;
+
+      syncUndoGestureCount();
+    },
+    [syncUndoGestureCount],
+  );
 
   const {
     data: board,
@@ -267,14 +357,17 @@ export default function WhiteboardPage() {
   const isViewer = board?.myRole === "VIEWER";
 
   const createStrokeMutation = useMutation({
-    mutationFn: (data: WhiteboardStrokeCreateRequest) => createWhiteboardStroke(boardId, data),
+    mutationFn: ({ request }: CreateStrokeMutationVariables) =>
+      createWhiteboardStroke(boardId, request),
 
-    onSuccess: (savedStroke) => {
+    onSuccess: (savedStroke, variables) => {
       saveErrorShownRef.current = false;
 
       queryClient.setQueryData<WhiteboardStrokeResponse[]>(whiteboardQueryKey, (current = []) =>
         appendStrokeIfMissing(current, savedStroke),
       );
+
+      registerStrokeForGesture(variables.gestureId, savedStroke.id);
     },
 
     onError: async () => {
@@ -296,6 +389,8 @@ export default function WhiteboardPage() {
     onSuccess: () => {
       queryClient.setQueryData<WhiteboardStrokeResponse[]>(whiteboardQueryKey, []);
 
+      clearUndoHistory();
+
       toast.success("화이트보드를 초기화했습니다.");
     },
 
@@ -304,7 +399,7 @@ export default function WhiteboardPage() {
     },
   });
 
-  const enqueueStrokeSave = (stroke: DrawableStroke) => {
+  const enqueueStrokeSave = (stroke: DrawableStroke, gestureId: string) => {
     if (stroke.points.length === 0) {
       return;
     }
@@ -320,6 +415,7 @@ export default function WhiteboardPage() {
 
       points: stroke.points.map((point) => ({
         x: point.x,
+
         y: point.y,
       })),
     };
@@ -327,12 +423,18 @@ export default function WhiteboardPage() {
     setQueuedSaveCount((count) => count + 1);
 
     const saveTask = saveQueueRef.current.then(async () => {
-      await createStrokeMutation.mutateAsync(request);
+      await createStrokeMutation.mutateAsync({
+        request,
+        gestureId,
+      });
     });
 
     saveQueueRef.current = saveTask
       .catch(() => {
-        // mutation onError에서 처리
+        /*
+         * mutation의 onError에서 처리합니다.
+         * queue 자체는 계속 이어져야 합니다.
+         */
       })
       .finally(() => {
         setQueuedSaveCount((count) => Math.max(0, count - 1));
@@ -352,6 +454,72 @@ export default function WhiteboardPage() {
 
     activePointerIdRef.current = null;
   };
+
+  const handleUndo = useCallback(async () => {
+    if (!canEdit || isUndoing) {
+      return;
+    }
+
+    /*
+     * 그리는 도중 Ctrl+Z가 들어오면
+     * 미완성 화면 상태와 서버 상태가 엇갈릴 수 있으므로
+     * 마우스를 뗀 뒤 실행하도록 합니다.
+     */
+    if (activeStrokeRef.current) {
+      return;
+    }
+
+    setIsUndoing(true);
+
+    try {
+      /*
+       * 긴 선의 마지막 조각이 아직 저장 중일 수 있으므로
+       * 저장 queue가 끝난 뒤 Undo 대상을 결정합니다.
+       */
+      await saveQueueRef.current;
+
+      const history = undoHistoryRef.current;
+
+      const gesture = history[history.length - 1];
+
+      if (!gesture || gesture.strokeIds.length === 0) {
+        return;
+      }
+
+      /*
+       * 먼저 Undo 히스토리에서는 제거합니다.
+       * DELETE 후 WebSocket STROKE_DELETED가 되돌아와도
+       * 중복 처리되지 않습니다.
+       */
+      undoHistoryRef.current = history.slice(0, -1);
+
+      syncUndoGestureCount();
+
+      /*
+       * 한 번의 마우스 동작이 여러 Stroke로 나뉜 경우
+       * 모두 삭제해야 하나의 Undo가 됩니다.
+       *
+       * 뒤쪽 Stroke부터 삭제합니다.
+       */
+      const strokeIds = [...gesture.strokeIds].reverse();
+
+      for (const strokeId of strokeIds) {
+        await deleteWhiteboardStroke(boardId, strokeId);
+
+        queryClient.setQueryData<WhiteboardStrokeResponse[]>(whiteboardQueryKey, (current = []) =>
+          current.filter((stroke) => stroke.id !== strokeId),
+        );
+      }
+    } catch {
+      toast.error("실행 취소 중 문제가 발생했습니다. 화이트보드를 다시 동기화합니다.");
+
+      await queryClient.invalidateQueries({
+        queryKey: whiteboardQueryKey,
+      });
+    } finally {
+      setIsUndoing(false);
+    }
+  }, [boardId, canEdit, isUndoing, queryClient, syncUndoGestureCount, whiteboardQueryKey]);
 
   useEffect(() => {
     if (!isValidBoardId) {
@@ -381,6 +549,8 @@ export default function WhiteboardPage() {
             current.filter((stroke) => stroke.id !== deletedStrokeId),
           );
 
+          removeStrokeFromUndoHistory(deletedStrokeId);
+
           return;
         }
 
@@ -398,6 +568,8 @@ export default function WhiteboardPage() {
           activePointerIdRef.current = null;
 
           queryClient.setQueryData<WhiteboardStrokeResponse[]>(currentQueryKey, []);
+
+          clearUndoHistory();
         }
       },
 
@@ -407,7 +579,7 @@ export default function WhiteboardPage() {
     });
 
     return disconnect;
-  }, [boardId, isValidBoardId, queryClient]);
+  }, [boardId, clearUndoHistory, isValidBoardId, queryClient, removeStrokeFromUndoHistory]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -429,6 +601,39 @@ export default function WhiteboardPage() {
     }
   }, [strokes]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isUndoShortcut =
+        (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z";
+
+      if (!isUndoShortcut) {
+        return;
+      }
+
+      /*
+       * 검색창이나 다른 입력 요소에서 Ctrl+Z를 눌렀을 때는
+       * 브라우저 기본 텍스트 Undo를 그대로 사용합니다.
+       */
+      if (isTextEditingTarget(event.target)) {
+        return;
+      }
+
+      if (!canEdit || undoHistoryRef.current.length === 0 || activeStrokeRef.current) {
+        return;
+      }
+
+      event.preventDefault();
+
+      void handleUndo();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [canEdit, handleUndo]);
+
   const getCurrentStyle = () => ({
     color: tool === "PEN" ? penColor : "#FFFFFF",
 
@@ -436,7 +641,7 @@ export default function WhiteboardPage() {
   });
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!canEdit || !isValidBoardId || isStrokesLoading || isStrokesError) {
+    if (!canEdit || !isValidBoardId || isStrokesLoading || isStrokesError || isUndoing) {
       return;
     }
 
@@ -455,8 +660,12 @@ export default function WhiteboardPage() {
     activePointerIdRef.current = event.pointerId;
 
     activeStrokeRef.current = {
+      gestureId: crypto.randomUUID(),
+
       tool,
+
       color,
+
       lineWidth,
 
       points: [firstPoint],
@@ -517,21 +726,27 @@ export default function WhiteboardPage() {
 
     activeStrokeRef.current = {
       ...activeStroke,
+
       points: nextPoints,
     };
 
     if (nextPoints.length >= STROKE_CHUNK_POINT_LIMIT) {
-      enqueueStrokeSave({
-        tool: activeStroke.tool,
+      enqueueStrokeSave(
+        {
+          tool: activeStroke.tool,
 
-        color: activeStroke.color,
+          color: activeStroke.color,
 
-        lineWidth: activeStroke.lineWidth,
+          lineWidth: activeStroke.lineWidth,
 
-        points: nextPoints,
-      });
+          points: nextPoints,
+        },
+        activeStroke.gestureId,
+      );
 
       activeStrokeRef.current = {
+        gestureId: activeStroke.gestureId,
+
         tool: activeStroke.tool,
 
         color: activeStroke.color,
@@ -566,7 +781,7 @@ export default function WhiteboardPage() {
       return;
     }
 
-    const { points, hasSavedChunk, ...strokeStyle } = activeStroke;
+    const { points, hasSavedChunk, gestureId, ...strokeStyle } = activeStroke;
 
     if (points.length === 0) {
       return;
@@ -586,18 +801,24 @@ export default function WhiteboardPage() {
         });
       }
 
-      enqueueStrokeSave({
-        ...strokeStyle,
-        points,
-      });
+      enqueueStrokeSave(
+        {
+          ...strokeStyle,
+          points,
+        },
+        gestureId,
+      );
 
       return;
     }
 
-    enqueueStrokeSave({
-      ...strokeStyle,
-      points,
-    });
+    enqueueStrokeSave(
+      {
+        ...strokeStyle,
+        points,
+      },
+      gestureId,
+    );
   };
 
   const handlePointerCancel = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -618,15 +839,18 @@ export default function WhiteboardPage() {
     activeStrokeRef.current = null;
 
     if (canEdit && activeStroke && activeStroke.points.length > 1) {
-      enqueueStrokeSave({
-        tool: activeStroke.tool,
+      enqueueStrokeSave(
+        {
+          tool: activeStroke.tool,
 
-        color: activeStroke.color,
+          color: activeStroke.color,
 
-        lineWidth: activeStroke.lineWidth,
+          lineWidth: activeStroke.lineWidth,
 
-        points: activeStroke.points,
-      });
+          points: activeStroke.points,
+        },
+        activeStroke.gestureId,
+      );
     }
   };
 
@@ -670,6 +894,8 @@ export default function WhiteboardPage() {
 
   const isSaving = queuedSaveCount > 0;
 
+  const canUndo = canEdit && undoGestureCount > 0 && !isUndoing;
+
   return (
     <>
       <LoadingOverlay open={isLoading} text="화이트보드를 불러오는 중..." />
@@ -697,7 +923,7 @@ export default function WhiteboardPage() {
             <p className="mt-2 text-sm text-slate-500">
               {isViewer
                 ? "VIEWER 권한으로 참여 중입니다. 화이트보드는 조회만 할 수 있습니다."
-                : "펜과 지우개로 자유롭게 그리고, 저장된 그림은 참여자와 실시간으로 동기화됩니다."}
+                : "펜과 지우개로 그리고 Ctrl+Z로 마지막 작업을 실행 취소할 수 있습니다."}
             </p>
           </div>
 
@@ -733,8 +959,8 @@ export default function WhiteboardPage() {
             <p className="text-sm font-medium text-slate-700">읽기 전용 화이트보드</p>
 
             <p className="mt-1 text-xs text-slate-500">
-              VIEWER는 다른 참여자의 그림과 변경사항을 실시간으로 볼 수 있지만, 선을 그리거나
-              지우거나 전체 초기화할 수 없습니다.
+              VIEWER는 다른 참여자의 그림과 변경사항을 실시간으로 볼 수 있지만, 화이트보드를 수정할
+              수 없습니다.
             </p>
           </div>
         )}
@@ -745,7 +971,7 @@ export default function WhiteboardPage() {
               type="button"
               variant={tool === "PEN" ? "primary" : "outline"}
               aria-pressed={tool === "PEN"}
-              disabled={!canEdit}
+              disabled={!canEdit || isUndoing}
               onClick={() => setTool("PEN")}
             >
               PEN
@@ -755,18 +981,31 @@ export default function WhiteboardPage() {
               type="button"
               variant={tool === "ERASER" ? "primary" : "outline"}
               aria-pressed={tool === "ERASER"}
-              disabled={!canEdit}
+              disabled={!canEdit || isUndoing}
               onClick={() => setTool("ERASER")}
             >
               ERASER
             </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!canUndo}
+              onClick={() => void handleUndo()}
+            >
+              {isUndoing ? "실행 취소 중..." : "↶ 실행 취소"}
+            </Button>
+
+            <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-500">
+              Ctrl + Z
+            </span>
 
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               펜 색상
               <input
                 type="color"
                 value={penColor}
-                disabled={!canEdit || tool === "ERASER"}
+                disabled={!canEdit || tool === "ERASER" || isUndoing}
                 onChange={(event) => setPenColor(event.target.value)}
                 className="h-10 w-12 cursor-pointer rounded-md border border-slate-300 bg-white p-1 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="펜 색상 선택"
@@ -775,15 +1014,15 @@ export default function WhiteboardPage() {
 
             <div className="ml-auto flex items-center gap-3">
               <span className="text-xs text-slate-400">
-                PEN {PEN_LINE_WIDTH}
-                px · ERASER {ERASER_LINE_WIDTH}
-                px
+                PEN {PEN_LINE_WIDTH}px · ERASER {ERASER_LINE_WIDTH}px
               </span>
 
               <Button
                 type="button"
                 variant="danger"
-                disabled={!canEdit || strokes.length === 0 || clearWhiteboardMutation.isPending}
+                disabled={
+                  !canEdit || strokes.length === 0 || clearWhiteboardMutation.isPending || isUndoing
+                }
                 onClick={() => setClearDialogOpen(true)}
               >
                 전체 초기화
@@ -838,15 +1077,23 @@ export default function WhiteboardPage() {
                   : "저장된 선을 불러왔습니다. 다른 참여자의 변경사항도 실시간으로 반영됩니다."}
               </p>
 
-              {isSaving && (
-                <span className="text-xs font-medium text-blue-600">
-                  저장 대기 {queuedSaveCount}개
-                </span>
-              )}
+              <div className="flex items-center gap-3">
+                {canEdit && undoGestureCount > 0 && (
+                  <span className="text-xs text-slate-400">
+                    실행 취소 가능 {undoGestureCount}회
+                  </span>
+                )}
 
-              {isViewer && (
-                <span className="text-xs font-medium text-slate-500">VIEWER · 읽기 전용</span>
-              )}
+                {isSaving && (
+                  <span className="text-xs font-medium text-blue-600">
+                    저장 대기 {queuedSaveCount}개
+                  </span>
+                )}
+
+                {isViewer && (
+                  <span className="text-xs font-medium text-slate-500">VIEWER · 읽기 전용</span>
+                )}
+              </div>
             </div>
           </Card>
         )}
