@@ -40,6 +40,14 @@ const ERASER_LINE_WIDTH = 28;
 const STROKE_CHUNK_POINT_LIMIT = 800;
 const MIN_POINT_DISTANCE = 2;
 
+/*
+ * 선 지우기 모드에서
+ * 실제 선에서 몇 px 정도 떨어진 클릭까지 허용할지 결정합니다.
+ */
+const STROKE_HIT_TOLERANCE = 10;
+
+type EraserMode = "PIXEL" | "STROKE";
+
 interface DrawableStroke {
   tool: WhiteboardTool;
   color: string;
@@ -106,8 +114,11 @@ const drawStroke = (context: CanvasRenderingContext2D, stroke: DrawableStroke) =
   context.globalCompositeOperation = stroke.tool === "ERASER" ? "destination-out" : "source-over";
 
   context.strokeStyle = stroke.color;
+
   context.lineWidth = stroke.lineWidth;
+
   context.lineCap = "round";
+
   context.lineJoin = "round";
 
   context.beginPath();
@@ -136,8 +147,11 @@ const drawSegment = (
   context.globalCompositeOperation = tool === "ERASER" ? "destination-out" : "source-over";
 
   context.strokeStyle = color;
+
   context.lineWidth = lineWidth;
+
   context.lineCap = "round";
+
   context.lineJoin = "round";
 
   context.beginPath();
@@ -170,6 +184,93 @@ const getCanvasPoint = (
 
 const getPointDistance = (first: WhiteboardPoint, second: WhiteboardPoint) =>
   Math.hypot(second.x - first.x, second.y - first.y);
+
+/*
+ * 점 P와 선분 AB 사이의 최단거리
+ *
+ * 클릭한 위치가 실제 Stroke에 얼마나 가까운지
+ * 판정하기 위해 사용합니다.
+ */
+const getPointToSegmentDistance = (
+  point: WhiteboardPoint,
+  start: WhiteboardPoint,
+  end: WhiteboardPoint,
+) => {
+  const segmentX = end.x - start.x;
+
+  const segmentY = end.y - start.y;
+
+  const lengthSquared = segmentX * segmentX + segmentY * segmentY;
+
+  if (lengthSquared === 0) {
+    return getPointDistance(point, start);
+  }
+
+  const projection =
+    ((point.x - start.x) * segmentX + (point.y - start.y) * segmentY) / lengthSquared;
+
+  const clampedProjection = Math.max(0, Math.min(1, projection));
+
+  const closestPoint: WhiteboardPoint = {
+    x: start.x + clampedProjection * segmentX,
+
+    y: start.y + clampedProjection * segmentY,
+  };
+
+  return getPointDistance(point, closestPoint);
+};
+
+const isStrokeHit = (point: WhiteboardPoint, stroke: WhiteboardStrokeResponse) => {
+  if (stroke.tool !== "PEN" || stroke.points.length === 0) {
+    return false;
+  }
+
+  const hitDistance = stroke.lineWidth / 2 + STROKE_HIT_TOLERANCE;
+
+  if (stroke.points.length === 1) {
+    const firstPoint = stroke.points[0];
+
+    if (!firstPoint) {
+      return false;
+    }
+
+    return getPointDistance(point, firstPoint) <= hitDistance;
+  }
+
+  for (let index = 1; index < stroke.points.length; index += 1) {
+    const previousPoint = stroke.points[index - 1];
+
+    const currentPoint = stroke.points[index];
+
+    if (!previousPoint || !currentPoint) {
+      continue;
+    }
+
+    if (getPointToSegmentDistance(point, previousPoint, currentPoint) <= hitDistance) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+/*
+ * 가장 위에 그려진 선부터 찾습니다.
+ *
+ * strokes는 서버에서 생성 순서대로 오기 때문에
+ * 뒤에서부터 검사하면 가장 최근 PEN Stroke가 먼저 선택됩니다.
+ */
+const findStrokeAtPoint = (point: WhiteboardPoint, strokes: WhiteboardStrokeResponse[]) => {
+  for (let index = strokes.length - 1; index >= 0; index -= 1) {
+    const stroke = strokes[index];
+
+    if (stroke && isStrokeHit(point, stroke)) {
+      return stroke;
+    }
+  }
+
+  return null;
+};
 
 const getConnectionLabel = (state: WhiteboardConnectionState) => {
   switch (state) {
@@ -246,13 +347,6 @@ export default function WhiteboardPage() {
 
   const saveErrorShownRef = useRef(false);
 
-  /*
-   * 현재 브라우저 세션에서 사용자가 직접 그린 동작만
-   * Undo 히스토리에 저장합니다.
-   *
-   * 서버에 저장된 Stroke 전체를 Undo 대상으로 삼으면
-   * 다른 사용자의 작업까지 취소할 수 있으므로 그렇게 하지 않습니다.
-   */
   const undoHistoryRef = useRef<UndoGesture[]>([]);
 
   const [undoGestureCount, setUndoGestureCount] = useState(0);
@@ -261,7 +355,11 @@ export default function WhiteboardPage() {
 
   const [isUndoing, setIsUndoing] = useState(false);
 
+  const [deletingStrokeId, setDeletingStrokeId] = useState<number | null>(null);
+
   const [tool, setTool] = useState<WhiteboardTool>("PEN");
+
+  const [eraserMode, setEraserMode] = useState<EraserMode>("PIXEL");
 
   const [penColor, setPenColor] = useState(DEFAULT_PEN_COLOR);
 
@@ -301,6 +399,7 @@ export default function WhiteboardPage() {
 
       history.push({
         gestureId,
+
         strokeIds: [strokeId],
       });
 
@@ -431,10 +530,7 @@ export default function WhiteboardPage() {
 
     saveQueueRef.current = saveTask
       .catch(() => {
-        /*
-         * mutation의 onError에서 처리합니다.
-         * queue 자체는 계속 이어져야 합니다.
-         */
+        // mutation onError에서 처리
       })
       .finally(() => {
         setQueuedSaveCount((count) => Math.max(0, count - 1));
@@ -455,16 +551,51 @@ export default function WhiteboardPage() {
     activePointerIdRef.current = null;
   };
 
+  const handleDeleteWholeStroke = async (point: WhiteboardPoint) => {
+    if (!canEdit || deletingStrokeId !== null || isUndoing) {
+      return;
+    }
+
+    const targetStroke = findStrokeAtPoint(point, strokes);
+
+    if (!targetStroke) {
+      toast.info("지울 선을 클릭해주세요.");
+
+      return;
+    }
+
+    setDeletingStrokeId(targetStroke.id);
+
+    try {
+      /*
+       * 앞에서 저장 대기 중인 그림이 있으면
+       * 먼저 서버 저장을 마칩니다.
+       */
+      await saveQueueRef.current;
+
+      await deleteWhiteboardStroke(boardId, targetStroke.id);
+
+      queryClient.setQueryData<WhiteboardStrokeResponse[]>(whiteboardQueryKey, (current = []) =>
+        current.filter((stroke) => stroke.id !== targetStroke.id),
+      );
+
+      removeStrokeFromUndoHistory(targetStroke.id);
+    } catch {
+      toast.error("선을 삭제하지 못했습니다.");
+
+      await queryClient.invalidateQueries({
+        queryKey: whiteboardQueryKey,
+      });
+    } finally {
+      setDeletingStrokeId(null);
+    }
+  };
+
   const handleUndo = useCallback(async () => {
     if (!canEdit || isUndoing) {
       return;
     }
 
-    /*
-     * 그리는 도중 Ctrl+Z가 들어오면
-     * 미완성 화면 상태와 서버 상태가 엇갈릴 수 있으므로
-     * 마우스를 뗀 뒤 실행하도록 합니다.
-     */
     if (activeStrokeRef.current) {
       return;
     }
@@ -472,10 +603,6 @@ export default function WhiteboardPage() {
     setIsUndoing(true);
 
     try {
-      /*
-       * 긴 선의 마지막 조각이 아직 저장 중일 수 있으므로
-       * 저장 queue가 끝난 뒤 Undo 대상을 결정합니다.
-       */
       await saveQueueRef.current;
 
       const history = undoHistoryRef.current;
@@ -486,21 +613,10 @@ export default function WhiteboardPage() {
         return;
       }
 
-      /*
-       * 먼저 Undo 히스토리에서는 제거합니다.
-       * DELETE 후 WebSocket STROKE_DELETED가 되돌아와도
-       * 중복 처리되지 않습니다.
-       */
       undoHistoryRef.current = history.slice(0, -1);
 
       syncUndoGestureCount();
 
-      /*
-       * 한 번의 마우스 동작이 여러 Stroke로 나뉜 경우
-       * 모두 삭제해야 하나의 Undo가 됩니다.
-       *
-       * 뒤쪽 Stroke부터 삭제합니다.
-       */
       const strokeIds = [...gesture.strokeIds].reverse();
 
       for (const strokeId of strokeIds) {
@@ -610,10 +726,6 @@ export default function WhiteboardPage() {
         return;
       }
 
-      /*
-       * 검색창이나 다른 입력 요소에서 Ctrl+Z를 눌렀을 때는
-       * 브라우저 기본 텍스트 Undo를 그대로 사용합니다.
-       */
       if (isTextEditingTarget(event.target)) {
         return;
       }
@@ -641,7 +753,14 @@ export default function WhiteboardPage() {
   });
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!canEdit || !isValidBoardId || isStrokesLoading || isStrokesError || isUndoing) {
+    if (
+      !canEdit ||
+      !isValidBoardId ||
+      isStrokesLoading ||
+      isStrokesError ||
+      isUndoing ||
+      deletingStrokeId !== null
+    ) {
       return;
     }
 
@@ -652,6 +771,17 @@ export default function WhiteboardPage() {
     }
 
     const firstPoint = getCanvasPoint(canvas, event);
+
+    /*
+     * 선 지우기 모드는 그림을 시작하지 않고
+     * 클릭한 위치에서 가장 가까운 PEN Stroke를 찾아
+     * 전체 삭제합니다.
+     */
+    if (tool === "ERASER" && eraserMode === "STROKE") {
+      void handleDeleteWholeStroke(firstPoint);
+
+      return;
+    }
 
     const { color, lineWidth } = getCurrentStyle();
 
@@ -894,7 +1024,15 @@ export default function WhiteboardPage() {
 
   const isSaving = queuedSaveCount > 0;
 
-  const canUndo = canEdit && undoGestureCount > 0 && !isUndoing;
+  const canUndo = canEdit && undoGestureCount > 0 && !isUndoing && deletingStrokeId === null;
+
+  const isBusy = isUndoing || deletingStrokeId !== null;
+
+  const canvasCursorClass = !canEdit
+    ? "cursor-default"
+    : tool === "ERASER" && eraserMode === "STROKE"
+      ? "cursor-pointer"
+      : "cursor-crosshair";
 
   return (
     <>
@@ -923,7 +1061,7 @@ export default function WhiteboardPage() {
             <p className="mt-2 text-sm text-slate-500">
               {isViewer
                 ? "VIEWER 권한으로 참여 중입니다. 화이트보드는 조회만 할 수 있습니다."
-                : "펜과 지우개로 그리고 Ctrl+Z로 마지막 작업을 실행 취소할 수 있습니다."}
+                : "펜으로 그리고, 지우개 방식을 선택하거나 Ctrl+Z로 마지막 작업을 실행 취소할 수 있습니다."}
             </p>
           </div>
 
@@ -949,7 +1087,9 @@ export default function WhiteboardPage() {
             <span className="text-sm text-slate-500">
               {isSaving
                 ? `선 저장 중... (${queuedSaveCount})`
-                : `저장된 선 ${strokes.length.toLocaleString()}개`}
+                : deletingStrokeId !== null
+                  ? "선 삭제 중..."
+                  : `저장된 선 ${strokes.length.toLocaleString()}개`}
             </span>
           </div>
         </div>
@@ -971,7 +1111,7 @@ export default function WhiteboardPage() {
               type="button"
               variant={tool === "PEN" ? "primary" : "outline"}
               aria-pressed={tool === "PEN"}
-              disabled={!canEdit || isUndoing}
+              disabled={!canEdit || isBusy}
               onClick={() => setTool("PEN")}
             >
               PEN
@@ -981,11 +1121,41 @@ export default function WhiteboardPage() {
               type="button"
               variant={tool === "ERASER" ? "primary" : "outline"}
               aria-pressed={tool === "ERASER"}
-              disabled={!canEdit || isUndoing}
+              disabled={!canEdit || isBusy}
               onClick={() => setTool("ERASER")}
             >
               ERASER
             </Button>
+
+            {tool === "ERASER" && (
+              <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-1">
+                <button
+                  type="button"
+                  disabled={!canEdit || isBusy}
+                  onClick={() => setEraserMode("PIXEL")}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    eraserMode === "PIXEL"
+                      ? "bg-white text-blue-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  부분 지우기
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!canEdit || isBusy}
+                  onClick={() => setEraserMode("STROKE")}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    eraserMode === "STROKE"
+                      ? "bg-white text-blue-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  선 지우기
+                </button>
+              </div>
+            )}
 
             <Button
               type="button"
@@ -1005,7 +1175,7 @@ export default function WhiteboardPage() {
               <input
                 type="color"
                 value={penColor}
-                disabled={!canEdit || tool === "ERASER" || isUndoing}
+                disabled={!canEdit || tool === "ERASER" || isBusy}
                 onChange={(event) => setPenColor(event.target.value)}
                 className="h-10 w-12 cursor-pointer rounded-md border border-slate-300 bg-white p-1 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="펜 색상 선택"
@@ -1014,14 +1184,18 @@ export default function WhiteboardPage() {
 
             <div className="ml-auto flex items-center gap-3">
               <span className="text-xs text-slate-400">
-                PEN {PEN_LINE_WIDTH}px · ERASER {ERASER_LINE_WIDTH}px
+                {tool === "ERASER"
+                  ? eraserMode === "PIXEL"
+                    ? `부분 지우기 · ${ERASER_LINE_WIDTH}px`
+                    : "선 지우기 · 클릭"
+                  : `PEN · ${PEN_LINE_WIDTH}px`}
               </span>
 
               <Button
                 type="button"
                 variant="danger"
                 disabled={
-                  !canEdit || strokes.length === 0 || clearWhiteboardMutation.isPending || isUndoing
+                  !canEdit || strokes.length === 0 || clearWhiteboardMutation.isPending || isBusy
                 }
                 onClick={() => setClearDialogOpen(true)}
               >
@@ -1030,6 +1204,17 @@ export default function WhiteboardPage() {
             </div>
           </div>
         </Card>
+
+        {tool === "ERASER" && eraserMode === "STROKE" && canEdit && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+            <p className="text-sm font-medium text-blue-800">선 지우기 모드</p>
+
+            <p className="mt-1 text-xs leading-5 text-blue-600">
+              캔버스에서 지우고 싶은 선을 클릭하세요. 겹친 경우 가장 최근에 그린 선이 먼저
+              삭제됩니다.
+            </p>
+          </div>
+        )}
 
         {isError ? (
           <Card>
@@ -1062,9 +1247,7 @@ export default function WhiteboardPage() {
                 onPointerCancel={handlePointerCancel}
                 aria-label={`보드 ${boardId} 화이트보드`}
                 aria-disabled={!canEdit}
-                className={`h-auto w-full min-w-[900px] touch-none rounded-lg border border-slate-200 bg-white shadow-sm ${
-                  canEdit ? "cursor-crosshair" : "cursor-default"
-                }`}
+                className={`h-auto w-full min-w-[900px] touch-none rounded-lg border border-slate-200 bg-white shadow-sm ${canvasCursorClass}`}
               />
             </div>
 
@@ -1074,7 +1257,9 @@ export default function WhiteboardPage() {
                   ? canEdit
                     ? "아직 저장된 선이 없습니다. 캔버스에 바로 그려보세요."
                     : "아직 저장된 선이 없습니다."
-                  : "저장된 선을 불러왔습니다. 다른 참여자의 변경사항도 실시간으로 반영됩니다."}
+                  : tool === "ERASER" && eraserMode === "STROKE"
+                    ? "지우고 싶은 선을 클릭하면 선 전체가 삭제됩니다."
+                    : "저장된 선을 불러왔습니다. 다른 참여자의 변경사항도 실시간으로 반영됩니다."}
               </p>
 
               <div className="flex items-center gap-3">
