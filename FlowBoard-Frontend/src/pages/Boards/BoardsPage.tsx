@@ -1,21 +1,15 @@
-import {
-  useState,
-  type FormEvent,
-} from "react";
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { Link } from "react-router";
+import { useState, type FormEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams } from "react-router";
 import { toast } from "sonner";
 
+import { getBoardDetail } from "@/api/board";
 import {
-  createBoard,
-  getMyBoards,
-  type BoardListResponse,
-} from "@/api/board";
-import Badge from "@/components/ui/Badge";
+  createCard,
+  getCardsByColumn,
+  type CardCreateRequest,
+  type CardResponse,
+} from "@/api/card";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
@@ -24,383 +18,457 @@ import Modal from "@/components/ui/Modal";
 import Skeleton from "@/components/ui/Skeleton";
 import Textarea from "@/components/ui/Textarea";
 
-const getRoleVariant = (
-  role: BoardListResponse["myRole"],
-) => {
-  switch (role) {
-    case "OWNER":
-      return "success" as const;
+type CardsByColumn = Record<number, CardResponse[]>;
 
-    case "MEMBER":
-      return "default" as const;
-
-    case "VIEWER":
-      return "warning" as const;
+const formatDueDate = (dueDate: string | null) => {
+  if (!dueDate) {
+    return null;
   }
+
+  const date = new Date(dueDate);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "short",
+    day: "numeric",
+  }).format(date);
 };
 
-const getRoleLabel = (
-  role: BoardListResponse["myRole"],
-) => {
-  switch (role) {
-    case "OWNER":
-      return "소유자";
-
-    case "MEMBER":
-      return "멤버";
-
-    case "VIEWER":
-      return "조회 전용";
+const getDueDateClassName = (dueDate: string | null) => {
+  if (!dueDate) {
+    return "";
   }
+
+  const date = new Date(dueDate);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.getTime() < Date.now() ? "bg-red-50 text-red-600" : "bg-slate-100 text-slate-500";
 };
 
-export default function BoardsPage() {
-  const queryClient =
-    useQueryClient();
+export default function BoardPage() {
+  const { boardId: boardIdParam } = useParams<{
+    boardId: string;
+  }>();
 
-  const [
-    createOpen,
-    setCreateOpen,
-  ] = useState(false);
+  const boardId = Number(boardIdParam);
 
-  const [
-    title,
-    setTitle,
-  ] = useState("");
+  const isValidBoardId = Number.isInteger(boardId) && boardId > 0;
 
-  const [
-    description,
-    setDescription,
-  ] = useState("");
+  const queryClient = useQueryClient();
 
-  const {
-    data: boards = [],
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey: ["boards"],
-    queryFn: getMyBoards,
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+
+  const [createColumnId, setCreateColumnId] = useState<number | null>(null);
+
+  const [title, setTitle] = useState("");
+
+  const [description, setDescription] = useState("");
+
+  const [dueDate, setDueDate] = useState("");
+
+  const boardQuery = useQuery({
+    queryKey: ["boards", boardId],
+
+    queryFn: () => getBoardDetail(boardId),
+
+    enabled: isValidBoardId,
   });
 
-  const createMutation =
-    useMutation({
-      mutationFn: createBoard,
+  const board = boardQuery.data;
 
-      onSuccess: async () => {
-        await queryClient.invalidateQueries({
-          queryKey: ["boards"],
-        });
+  const canEdit = board?.myRole === "OWNER" || board?.myRole === "MEMBER";
 
-        toast.success(
-          "새 보드를 만들었습니다.",
-        );
+  const cardsQuery = useQuery({
+    queryKey: ["board", boardId, "cards", board?.columns.map((column) => column.id)],
 
-        setCreateOpen(false);
-        setTitle("");
-        setDescription("");
-      },
-
-      onError: () => {
-        toast.error(
-          "보드를 생성하지 못했습니다.",
-        );
-      },
-    });
-
-  const openCreateModal =
-    () => {
-      setTitle("");
-      setDescription("");
-      setCreateOpen(true);
-    };
-
-  const closeCreateModal =
-    () => {
-      if (createMutation.isPending) {
-        return;
+    queryFn: async (): Promise<CardsByColumn> => {
+      if (!board) {
+        return {};
       }
 
-      setCreateOpen(false);
-    };
+      const entries = await Promise.all(
+        board.columns.map(async (column) => {
+          const cards = await getCardsByColumn(boardId, column.id);
 
-  const handleSubmit = (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
+          return [column.id, cards] as const;
+        }),
+      );
+
+      return Object.fromEntries(entries);
+    },
+
+    enabled: isValidBoardId && Boolean(board),
+  });
+
+  const cardsByColumn = cardsQuery.data ?? {};
+
+  const createMutation = useMutation({
+    mutationFn: ({ columnId, data }: { columnId: number; data: CardCreateRequest }) =>
+      createCard(boardId, columnId, data),
+
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["board", boardId, "cards"],
+      });
+
+      toast.success("카드를 만들었습니다.");
+
+      setCreateModalOpen(false);
+
+      setCreateColumnId(null);
+
+      setTitle("");
+      setDescription("");
+      setDueDate("");
+    },
+
+    onError: () => {
+      toast.error("카드를 생성하지 못했습니다.");
+    },
+  });
+
+  const openCreateModal = (columnId: number) => {
+    if (!canEdit) {
+      return;
+    }
+
+    setCreateColumnId(columnId);
+
+    setTitle("");
+    setDescription("");
+    setDueDate("");
+
+    setCreateModalOpen(true);
+  };
+
+  const closeCreateModal = () => {
+    if (createMutation.isPending) {
+      return;
+    }
+
+    setCreateModalOpen(false);
+
+    setCreateColumnId(null);
+  };
+
+  const handleCreateCard = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const trimmedTitle =
-      title.trim();
+    if (!createColumnId) {
+      return;
+    }
 
-    const trimmedDescription =
-      description.trim();
+    const trimmedTitle = title.trim();
+
+    const trimmedDescription = description.trim();
 
     if (!trimmedTitle) {
-      toast.error(
-        "보드 제목을 입력해주세요.",
-      );
+      toast.error("카드 제목을 입력해주세요.");
 
       return;
     }
 
     createMutation.mutate({
-      title: trimmedTitle,
-      description:
-        trimmedDescription || null,
+      columnId: createColumnId,
+
+      data: {
+        title: trimmedTitle,
+
+        description: trimmedDescription || null,
+
+        /*
+         * datetime-local 값은
+         * yyyy-MM-ddTHH:mm 형식이며
+         * Spring LocalDateTime으로 그대로 전달 가능합니다.
+         */
+        dueDate: dueDate || null,
+      },
     });
   };
+
+  if (!isValidBoardId) {
+    return (
+      <section className="w-full px-6 py-10">
+        <Card>
+          <h1 className="text-xl font-bold text-slate-900">보드를 열 수 없습니다.</h1>
+
+          <p className="mt-2 text-sm text-slate-500">올바른 보드 ID가 필요합니다.</p>
+        </Card>
+      </section>
+    );
+  }
+
+  const isLoading = boardQuery.isLoading || cardsQuery.isLoading;
+
+  const isError = boardQuery.isError || cardsQuery.isError;
 
   return (
     <>
       <Modal
-        open={createOpen}
-        title="새 보드 만들기"
-        closeOnBackdrop={
-          !createMutation.isPending
-        }
-        closeOnEsc={
-          !createMutation.isPending
-        }
-        onClose={
-          closeCreateModal
-        }
+        open={createModalOpen}
+        title="새 카드 만들기"
+        closeOnBackdrop={!createMutation.isPending}
+        closeOnEsc={!createMutation.isPending}
+        onClose={closeCreateModal}
       >
-        <form
-          onSubmit={
-            handleSubmit
-          }
-        >
+        <form onSubmit={handleCreateCard}>
           <div className="space-y-5">
             <Input
-              label="보드 제목"
+              label="카드 제목"
               value={title}
               required
               autoFocus
               maxLength={100}
-              placeholder="예: FlowBoard 개발"
+              placeholder="예: 로그인 화면 구현"
               helperText={`${title.length}/100`}
-              disabled={
-                createMutation.isPending
-              }
-              onChange={(
-                event,
-              ) =>
-                setTitle(
-                  event.target.value,
-                )
-              }
+              disabled={createMutation.isPending}
+              onChange={(event) => setTitle(event.target.value)}
             />
 
             <div>
               <Textarea
-                id="board-description"
-                label="보드 설명"
+                id="card-description"
+                label="설명"
                 value={description}
-                maxLength={500}
-                placeholder="이 보드에서 진행할 작업을 간단히 적어주세요."
-                disabled={
-                  createMutation.isPending
-                }
-                onChange={(
-                  event,
-                ) =>
-                  setDescription(
-                    event.target.value,
-                  )
-                }
+                placeholder="카드에서 진행할 작업을 적어주세요."
+                disabled={createMutation.isPending}
+                onChange={(event) => setDescription(event.target.value)}
               />
-
-              <p className="mt-1 text-right text-xs text-slate-400">
-                {description.length}/500
-              </p>
             </div>
+
+            <Input
+              label="마감일"
+              type="datetime-local"
+              value={dueDate}
+              disabled={createMutation.isPending}
+              onChange={(event) => setDueDate(event.target.value)}
+            />
           </div>
 
           <div className="mt-7 flex justify-end gap-2">
             <Button
               type="button"
               variant="outline"
-              disabled={
-                createMutation.isPending
-              }
-              onClick={
-                closeCreateModal
-              }
+              disabled={createMutation.isPending}
+              onClick={closeCreateModal}
             >
               취소
             </Button>
 
-            <Button
-              type="submit"
-              loading={
-                createMutation.isPending
-              }
-              disabled={
-                !title.trim()
-              }
-            >
-              보드 만들기
+            <Button type="submit" loading={createMutation.isPending} disabled={!title.trim()}>
+              카드 만들기
             </Button>
           </div>
         </form>
       </Modal>
 
-      <section className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-10">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-blue-600">
-              WORKSPACE
-            </p>
+      <section className="w-full px-6 py-8">
+        {boardQuery.isLoading ? (
+          <div className="space-y-5">
+            <Skeleton className="h-8 w-52" />
+            <Skeleton className="h-5 w-80" />
 
-            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
-              내 보드
-            </h1>
-
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              직접 만든 보드와 초대받은 보드를 한곳에서 관리하세요.
-            </p>
+            <div className="grid gap-4 lg:grid-cols-3">
+              {Array.from({
+                length: 3,
+              }).map((_, index) => (
+                <Skeleton key={index} className="h-96 rounded-2xl" />
+              ))}
+            </div>
           </div>
-
-          <Button
-            type="button"
-            onClick={
-              openCreateModal
-            }
-          >
-            + 새 보드
-          </Button>
-        </div>
-
-        {isLoading ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({
-              length: 6,
-            }).map(
-              (_, index) => (
-                <Card
-                  key={index}
-                >
-                  <Skeleton className="h-5 w-20 rounded-full" />
-                  <Skeleton className="mt-5 h-7 w-2/3" />
-                  <Skeleton className="mt-3 h-4 w-full" />
-                  <Skeleton className="mt-2 h-4 w-4/5" />
-                  <Skeleton className="mt-8 h-10 w-full rounded-lg" />
-                </Card>
-              ),
-            )}
-          </div>
-        ) : isError ? (
+        ) : boardQuery.isError || !board ? (
           <Card>
-            <div className="flex flex-col items-start gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">
-                  보드 목록을 불러오지 못했습니다.
-                </h2>
+            <h1 className="text-xl font-bold text-slate-900">보드를 불러오지 못했습니다.</h1>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  로그인 상태와 백엔드 연결을 확인한 뒤 다시 시도해주세요.
-                </p>
-              </div>
+            <p className="mt-2 text-sm text-slate-500">접근 권한과 로그인 상태를 확인해주세요.</p>
 
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  void refetch()
-                }
-              >
+            <div className="mt-5">
+              <Button type="button" variant="outline" onClick={() => void boardQuery.refetch()}>
                 다시 불러오기
               </Button>
             </div>
           </Card>
-        ) : boards.length === 0 ? (
-          <EmptyState
-            title="아직 참여 중인 보드가 없습니다."
-            description="첫 보드를 만들면 할 일, 진행 중, 완료 컬럼이 자동으로 생성됩니다."
-            actionLabel="첫 보드 만들기"
-            onAction={
-              openCreateModal
-            }
-          />
         ) : (
           <>
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500">
-                참여 중인 보드{" "}
-                <strong className="font-semibold text-slate-900">
-                  {boards.length}
-                </strong>
-                개
-              </p>
+            <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                    {board.myRole}
+                  </span>
+
+                  <span className="text-xs text-slate-400">소유자 {board.ownerNickname}</span>
+                </div>
+
+                <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">
+                  {board.title}
+                </h1>
+
+                <p className="mt-2 max-w-3xl text-sm leading-6 whitespace-pre-wrap text-slate-500">
+                  {board.description || "보드 설명이 없습니다."}
+                </p>
+              </div>
+
+              <div className="text-sm text-slate-400">{board.columns.length}개 컬럼</div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {boards.map(
-                (board) => (
-                  <Card
-                    key={board.id}
-                    className="flex min-h-64 flex-col overflow-hidden"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <Badge
-                        variant={getRoleVariant(
-                          board.myRole,
+            {isError ? (
+              <Card>
+                <h2 className="font-semibold text-slate-900">카드 목록을 불러오지 못했습니다.</h2>
+
+                <p className="mt-1 text-sm text-slate-500">잠시 후 다시 시도해주세요.</p>
+
+                <div className="mt-4">
+                  <Button type="button" variant="outline" onClick={() => void cardsQuery.refetch()}>
+                    다시 불러오기
+                  </Button>
+                </div>
+              </Card>
+            ) : isLoading ? (
+              <div className="grid gap-4 lg:grid-cols-3">
+                {board.columns.map((column) => (
+                  <Skeleton key={column.id} className="h-96 rounded-2xl" />
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-start gap-4 overflow-x-auto pb-5">
+                {board.columns.map((column) => {
+                  const cards = cardsByColumn[column.id] ?? [];
+
+                  return (
+                    <section
+                      key={column.id}
+                      className="w-[330px] shrink-0 rounded-2xl border border-slate-200 bg-slate-100/80"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4">
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-sm font-bold text-slate-800">{column.title}</h2>
+
+                          <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-400 shadow-sm">
+                            {cards.length}
+                          </span>
+                        </div>
+
+                        {canEdit && (
+                          <button
+                            type="button"
+                            aria-label={`${column.title}에 카드 추가`}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-xl text-slate-400 transition-colors hover:bg-white hover:text-blue-600"
+                            onClick={() => openCreateModal(column.id)}
+                          >
+                            +
+                          </button>
                         )}
-                      >
-                        {getRoleLabel(
-                          board.myRole,
-                        )}
-                      </Badge>
-
-                      <span className="text-xs text-slate-400">
-                        Board #{board.id}
-                      </span>
-                    </div>
-
-                    <h2 className="mt-5 break-words text-xl font-bold text-slate-900">
-                      {board.title}
-                    </h2>
-
-                    <p className="mt-2 line-clamp-3 flex-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-500">
-                      {board.description ||
-                        "보드 설명이 없습니다."}
-                    </p>
-
-                    <div className="mt-6 border-t border-slate-100 pt-4">
-                      <p className="mb-4 text-xs text-slate-400">
-                        소유자{" "}
-                        <span className="font-medium text-slate-600">
-                          {board.ownerNickname}
-                        </span>
-                      </p>
-
-                      <div className="grid grid-cols-3 gap-2">
-                        <Link
-                          to={`/boards/${board.id}/whiteboard`}
-                          className="flex h-10 items-center justify-center rounded-lg bg-blue-600 px-2 text-center text-xs font-semibold text-white transition-colors hover:bg-blue-700"
-                        >
-                          화이트보드
-                        </Link>
-
-                        <Link
-                          to={`/boards/${board.id}/search`}
-                          className="flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-center text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
-                        >
-                          카드 검색
-                        </Link>
-
-                        <Link
-                          to={`/boards/${board.id}/activities`}
-                          className="flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-center text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
-                        >
-                          활동 로그
-                        </Link>
                       </div>
-                    </div>
-                  </Card>
-                ),
-              )}
-            </div>
+
+                      <div className="min-h-[420px] space-y-3 p-3">
+                        {cards.length === 0 ? (
+                          <div className="flex min-h-40 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/50 px-5 text-center">
+                            <p className="text-xs leading-5 text-slate-400">
+                              아직 카드가 없습니다.
+                              {canEdit && (
+                                <>
+                                  <br />
+                                  아래에서 첫 카드를 만들어보세요.
+                                </>
+                              )}
+                            </p>
+                          </div>
+                        ) : (
+                          cards.map((card) => {
+                            const formattedDueDate = formatDueDate(card.dueDate);
+
+                            return (
+                              <article
+                                key={card.id}
+                                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <h3 className="text-sm leading-5 font-semibold break-words text-slate-900">
+                                    {card.title}
+                                  </h3>
+
+                                  <button
+                                    type="button"
+                                    className="shrink-0 text-lg leading-none text-slate-300 hover:text-slate-500"
+                                    aria-label={`${card.title} 카드 메뉴`}
+                                  >
+                                    ···
+                                  </button>
+                                </div>
+
+                                {card.description && (
+                                  <p className="mt-2 line-clamp-3 text-xs leading-5 break-words whitespace-pre-wrap text-slate-500">
+                                    {card.description}
+                                  </p>
+                                )}
+
+                                <div className="mt-4 flex items-center justify-between gap-2">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[10px] font-bold text-white">
+                                      {card.createdByNickname.charAt(0).toUpperCase()}
+                                    </span>
+
+                                    <span className="truncate text-[11px] text-slate-400">
+                                      {card.createdByNickname}
+                                    </span>
+                                  </div>
+
+                                  {formattedDueDate && (
+                                    <span
+                                      className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold ${getDueDateClassName(
+                                        card.dueDate,
+                                      )}`}
+                                    >
+                                      마감 {formattedDueDate}
+                                    </span>
+                                  )}
+                                </div>
+                              </article>
+                            );
+                          })
+                        )}
+
+                        {canEdit && (
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/60 py-3 text-xs font-semibold text-slate-500 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600"
+                            onClick={() => openCreateModal(column.id)}
+                          >
+                            + 카드 추가
+                          </button>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+
+            {!canEdit && (
+              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-sm font-medium text-slate-700">VIEWER · 읽기 전용</p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  카드를 확인할 수 있지만 생성이나 수정은 할 수 없습니다.
+                </p>
+              </div>
+            )}
+
+            {board.columns.length === 0 && (
+              <div className="mt-5">
+                <EmptyState
+                  title="컬럼이 없습니다."
+                  description="이 보드에는 아직 사용할 수 있는 컬럼이 없습니다."
+                />
+              </div>
+            )}
           </>
         )}
       </section>

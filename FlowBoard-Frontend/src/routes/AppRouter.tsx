@@ -3,6 +3,7 @@ import { createBrowserRouter, RouterProvider } from "react-router";
 import BoardToolsLayout from "@/components/layout/BoardToolsLayout";
 import MainLayout from "@/components/layout/MainLayout";
 import ActivityPage from "@/pages/Activity/ActivityPage";
+import BoardPage from "@/pages/Board/BoardPage";
 import BoardsPage from "@/pages/Boards/BoardsPage";
 import CardSearchPage from "@/pages/CardSearch/CardSearchPage";
 import ErrorPage from "@/pages/ErrorPage";
@@ -47,6 +48,10 @@ const router = createBrowserRouter([
             path: "boards/:boardId",
             element: <BoardToolsLayout />,
             children: [
+              {
+                index: true,
+                element: <BoardPage />,
+              },
               {
                 path: "search",
                 element: <CardSearchPage />,
