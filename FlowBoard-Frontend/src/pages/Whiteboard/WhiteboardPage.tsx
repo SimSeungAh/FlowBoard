@@ -30,16 +30,7 @@ const DEFAULT_PEN_COLOR = "#111827";
 const PEN_LINE_WIDTH = 4;
 const ERASER_LINE_WIDTH = 28;
 
-/*
- * 백엔드의 한 Stroke 좌표 제한보다 충분히 여유 있게 끊습니다.
- * 사용자는 계속 누른 상태로 그릴 수 있지만 서버에는 여러 Stroke로 저장됩니다.
- */
 const STROKE_CHUNK_POINT_LIMIT = 800;
-
-/*
- * pointermove마다 모든 좌표를 저장하지 않고,
- * 이전 저장 좌표에서 일정 거리 이상 이동했을 때만 좌표를 추가합니다.
- */
 const MIN_POINT_DISTANCE = 2;
 
 interface DrawableStroke {
@@ -97,8 +88,11 @@ const drawStroke = (context: CanvasRenderingContext2D, stroke: DrawableStroke) =
   context.globalCompositeOperation = stroke.tool === "ERASER" ? "destination-out" : "source-over";
 
   context.strokeStyle = stroke.color;
+
   context.lineWidth = stroke.lineWidth;
+
   context.lineCap = "round";
+
   context.lineJoin = "round";
 
   context.beginPath();
@@ -127,8 +121,11 @@ const drawSegment = (
   context.globalCompositeOperation = tool === "ERASER" ? "destination-out" : "source-over";
 
   context.strokeStyle = color;
+
   context.lineWidth = lineWidth;
+
   context.lineCap = "round";
+
   context.lineJoin = "round";
 
   context.beginPath();
@@ -221,10 +218,6 @@ export default function WhiteboardPage() {
 
   const activePointerIdRef = useRef<number | null>(null);
 
-  /*
-   * 여러 조각이 동시에 POST되어 DB 저장 순서가 섞이지 않도록
-   * Promise queue로 반드시 앞 Stroke 저장이 끝난 다음 다음 Stroke를 저장합니다.
-   */
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const saveErrorShownRef = useRef(false);
@@ -339,11 +332,7 @@ export default function WhiteboardPage() {
 
     saveQueueRef.current = saveTask
       .catch(() => {
-        /*
-         * mutation의 onError에서
-         * 토스트와 캐시 재동기화를 처리합니다.
-         * 여기서는 queue가 끊기지 않도록 오류만 소비합니다.
-         */
+        // mutation onError에서 처리
       })
       .finally(() => {
         setQueuedSaveCount((count) => Math.max(0, count - 1));
@@ -385,12 +374,17 @@ export default function WhiteboardPage() {
           return;
         }
 
+        if (event.type === "STROKE_DELETED" && event.strokeId !== null) {
+          const deletedStrokeId = event.strokeId;
+
+          queryClient.setQueryData<WhiteboardStrokeResponse[]>(currentQueryKey, (current = []) =>
+            current.filter((stroke) => stroke.id !== deletedStrokeId),
+          );
+
+          return;
+        }
+
         if (event.type === "CLEARED") {
-          /*
-           * 다른 사용자가 전체 초기화한 순간
-           * 현재 그리고 있던 미완성 Stroke도 중단합니다.
-           * 그렇지 않으면 초기화 이전 좌표가 다시 저장될 수 있습니다.
-           */
           const canvas = canvasRef.current;
 
           const pointerId = activePointerIdRef.current;
@@ -464,7 +458,9 @@ export default function WhiteboardPage() {
       tool,
       color,
       lineWidth,
+
       points: [firstPoint],
+
       hasSavedChunk: false,
     };
   };
@@ -504,11 +500,6 @@ export default function WhiteboardPage() {
 
     const currentPoint = getCanvasPoint(canvas, event);
 
-    /*
-     * 너무 가까운 pointermove 좌표는 저장하지 않습니다.
-     * Canvas 렌더링과 서버 저장 데이터를 동일하게 유지하기 위해
-     * 실제 선도 샘플링된 좌표 기준으로 그립니다.
-     */
     if (getPointDistance(previousPoint, currentPoint) < MIN_POINT_DISTANCE) {
       return;
     }
@@ -529,11 +520,6 @@ export default function WhiteboardPage() {
       points: nextPoints,
     };
 
-    /*
-     * 한 Stroke가 너무 커지기 전에 자동 저장합니다.
-     * 마지막 좌표 하나를 다음 조각의 첫 좌표로 남겨
-     * 화면상 선이 끊겨 보이지 않게 합니다.
-     */
     if (nextPoints.length >= STROKE_CHUNK_POINT_LIMIT) {
       enqueueStrokeSave({
         tool: activeStroke.tool,
@@ -586,11 +572,6 @@ export default function WhiteboardPage() {
       return;
     }
 
-    /*
-     * 단순 클릭은 점 하나로 저장합니다.
-     * 단, 앞에서 800포인트 조각을 이미 저장했고
-     * 마지막 연결점 하나만 남은 경우에는 중복 점을 만들지 않습니다.
-     */
     if (points.length === 1) {
       if (hasSavedChunk) {
         return;
@@ -636,11 +617,6 @@ export default function WhiteboardPage() {
 
     activeStrokeRef.current = null;
 
-    /*
-     * 시스템에 의해 pointer가 취소됐더라도
-     * 이미 실제로 그린 좌표가 2개 이상이면
-     * 마지막 부분까지 저장해서 작업 손실을 줄입니다.
-     */
     if (canEdit && activeStroke && activeStroke.points.length > 1) {
       enqueueStrokeSave({
         tool: activeStroke.tool,
@@ -659,27 +635,16 @@ export default function WhiteboardPage() {
       return;
     }
 
-    /*
-     * 현재 그리고 있는 선이 있다면 초기화 전에 중단합니다.
-     */
     cancelActiveDrawing();
 
     try {
-      /*
-       * 앞에서 자동 분할되어 저장 대기 중인 Stroke가 있다면
-       * 저장이 모두 끝난 뒤 전체 초기화를 실행합니다.
-       *
-       * 그렇지 않으면:
-       * DELETE → 뒤늦게 queued POST 실행 → 선이 다시 살아나는
-       * 문제가 생길 수 있습니다.
-       */
       await saveQueueRef.current;
 
       await clearWhiteboardMutation.mutateAsync();
 
       setClearDialogOpen(false);
     } catch {
-      // mutation onError에서 사용자 메시지를 처리합니다.
+      // mutation onError에서 처리
     }
   };
 
@@ -810,7 +775,9 @@ export default function WhiteboardPage() {
 
             <div className="ml-auto flex items-center gap-3">
               <span className="text-xs text-slate-400">
-                PEN {PEN_LINE_WIDTH}px · ERASER {ERASER_LINE_WIDTH}px
+                PEN {PEN_LINE_WIDTH}
+                px · ERASER {ERASER_LINE_WIDTH}
+                px
               </span>
 
               <Button

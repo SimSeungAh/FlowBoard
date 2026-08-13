@@ -1,11 +1,8 @@
 import type { WhiteboardStrokeResponse } from "@/api/whiteboard";
 
-export type WhiteboardConnectionState =
-  | "connecting"
-  | "connected"
-  | "disconnected";
+export type WhiteboardConnectionState = "connecting" | "connected" | "disconnected";
 
-export type WhiteboardEventType = "STROKE_CREATED" | "CLEARED";
+export type WhiteboardEventType = "STROKE_CREATED" | "STROKE_DELETED" | "CLEARED";
 
 export interface WhiteboardWebSocketEvent {
   type: WhiteboardEventType;
@@ -17,8 +14,11 @@ export interface WhiteboardWebSocketEvent {
 
 interface ConnectWhiteboardWebSocketOptions {
   boardId: number;
+
   onEvent: (event: WhiteboardWebSocketEvent) => void;
+
   onConnectionStateChange?: (state: WhiteboardConnectionState) => void;
+
   onError?: (error: Error) => void;
 }
 
@@ -51,11 +51,7 @@ const buildWebSocketUrl = () => {
   return url.toString();
 };
 
-const createStompFrame = (
-  command: string,
-  headers: Record<string, string> = {},
-  body = "",
-) => {
+const createStompFrame = (command: string, headers: Record<string, string> = {}, body = "") => {
   const headerText = Object.entries(headers)
     .map(([key, value]) => `${key}:${value}`)
     .join("\n");
@@ -163,7 +159,9 @@ export const connectWhiteboardWebSocket = ({
     socket.send(
       createStompFrame("SUBSCRIBE", {
         id: subscriptionId,
+
         destination: `/topic/boards/${boardId}/whiteboard`,
+
         ack: "auto",
       }),
     );
@@ -206,9 +204,7 @@ export const connectWhiteboardWebSocket = ({
       case "ERROR":
         changeConnectionState("disconnected");
 
-        reportError(
-          new Error(frame.body || "WebSocket 서버에서 오류가 발생했습니다."),
-        );
+        reportError(new Error(frame.body || "WebSocket 서버에서 오류가 발생했습니다."));
 
         break;
 
@@ -262,9 +258,7 @@ export const connectWhiteboardWebSocket = ({
       changeConnectionState("disconnected");
 
       reportError(
-        error instanceof Error
-          ? error
-          : new Error("WebSocket 주소를 생성하지 못했습니다."),
+        error instanceof Error ? error : new Error("WebSocket 주소를 생성하지 못했습니다."),
       );
 
       return;
@@ -274,11 +268,7 @@ export const connectWhiteboardWebSocket = ({
 
     messageBuffer = "";
 
-    socket = new WebSocket(webSocketUrl, [
-      "v12.stomp",
-      "v11.stomp",
-      "v10.stomp",
-    ]);
+    socket = new WebSocket(webSocketUrl, ["v12.stomp", "v11.stomp", "v10.stomp"]);
 
     socket.onopen = () => {
       if (!socket) {
@@ -303,9 +293,7 @@ export const connectWhiteboardWebSocket = ({
     socket.onmessage = handleSocketMessage;
 
     socket.onerror = () => {
-      reportError(
-        new Error("화이트보드 WebSocket 연결 중 오류가 발생했습니다."),
-      );
+      reportError(new Error("화이트보드 WebSocket 연결 중 오류가 발생했습니다."));
     };
 
     socket.onclose = () => {
