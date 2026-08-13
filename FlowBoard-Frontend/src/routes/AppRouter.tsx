@@ -3,6 +3,7 @@ import { createBrowserRouter, RouterProvider } from "react-router";
 import BoardToolsLayout from "@/components/layout/BoardToolsLayout";
 import MainLayout from "@/components/layout/MainLayout";
 import ActivityPage from "@/pages/Activity/ActivityPage";
+import BoardsPage from "@/pages/Boards/BoardsPage";
 import CardSearchPage from "@/pages/CardSearch/CardSearchPage";
 import ErrorPage from "@/pages/ErrorPage";
 import HomePage from "@/pages/Home/HomePage";
@@ -37,6 +38,10 @@ const router = createBrowserRouter([
           {
             path: "mypage",
             element: <MyPage />,
+          },
+          {
+            path: "boards",
+            element: <BoardsPage />,
           },
           {
             path: "boards/:boardId",
