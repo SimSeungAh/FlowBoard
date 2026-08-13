@@ -19,6 +19,11 @@ export interface CardCreateRequest {
   dueDate?: string | null;
 }
 
+export interface CardMoveRequest {
+  targetColumnId: number;
+  targetIndex: number;
+}
+
 export const getCardsByColumn = async (
   boardId: number,
   columnId: number,
@@ -34,6 +39,12 @@ export const createCard = async (
   data: CardCreateRequest,
 ): Promise<CardResponse> => {
   const response = await api.post(`/boards/${boardId}/columns/${columnId}/cards`, data);
+
+  return response.data.data;
+};
+
+export const moveCard = async (cardId: number, data: CardMoveRequest): Promise<CardResponse> => {
+  const response = await api.patch(`/cards/${cardId}/move`, data);
 
   return response.data.data;
 };

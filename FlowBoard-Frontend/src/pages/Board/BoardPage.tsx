@@ -1,12 +1,32 @@
-import { useState, type FormEvent } from "react";
+import { useState, type CSSProperties, type FormEvent } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { toast } from "sonner";
 
-import { getBoardDetail } from "@/api/board";
+import { getBoardDetail, type BoardColumnResponse } from "@/api/board";
 import {
   createCard,
   getCardsByColumn,
+  moveCard,
   type CardCreateRequest,
   type CardResponse,
 } from "@/api/card";
@@ -19,6 +39,34 @@ import Skeleton from "@/components/ui/Skeleton";
 import Textarea from "@/components/ui/Textarea";
 
 type CardsByColumn = Record<number, CardResponse[]>;
+
+interface CardDragData {
+  type: "card";
+  cardId: number;
+  columnId: number;
+}
+
+interface ColumnDragData {
+  type: "column";
+  columnId: number;
+}
+
+interface SortableCardProps {
+  card: CardResponse;
+  canDrag: boolean;
+}
+
+interface KanbanColumnProps {
+  column: BoardColumnResponse;
+  cards: CardResponse[];
+  canEdit: boolean;
+  canDrag: boolean;
+  onCreateCard: (columnId: number) => void;
+}
+
+const getCardDndId = (cardId: number) => `card-${cardId}`;
+
+const getColumnDndId = (columnId: number) => `column-${columnId}`;
 
 const formatDueDate = (dueDate: string | null) => {
   if (!dueDate) {
@@ -51,6 +99,224 @@ const getDueDateClassName = (dueDate: string | null) => {
   return date.getTime() < Date.now() ? "bg-red-50 text-red-600" : "bg-slate-100 text-slate-500";
 };
 
+const insertCardAtIndex = (cards: CardResponse[], card: CardResponse, targetIndex: number) => {
+  const safeIndex = Math.max(0, Math.min(targetIndex, cards.length));
+
+  const nextCards = [...cards];
+
+  nextCards.splice(safeIndex, 0, card);
+
+  return nextCards;
+};
+
+function CardContent({
+  card,
+  showDragHandle = false,
+  dragHandleProps,
+}: {
+  card: CardResponse;
+  showDragHandle?: boolean;
+  dragHandleProps?: {
+    ref?: (element: HTMLButtonElement | null) => void;
+    attributes?: Record<string, unknown>;
+    listeners?: Record<string, unknown>;
+  };
+}) {
+  const formattedDueDate = formatDueDate(card.dueDate);
+
+  return (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-sm leading-5 font-semibold break-words text-slate-900">{card.title}</h3>
+
+        <div className="flex shrink-0 items-center gap-1">
+          {showDragHandle && (
+            <button
+              ref={dragHandleProps?.ref}
+              type="button"
+              aria-label={`${card.title} 카드 이동`}
+              className="flex h-7 w-7 cursor-grab touch-none items-center justify-center rounded-md text-base leading-none text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+              {...dragHandleProps?.attributes}
+              {...dragHandleProps?.listeners}
+            >
+              ⠿
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-500"
+            aria-label={`${card.title} 카드 메뉴`}
+          >
+            ···
+          </button>
+        </div>
+      </div>
+
+      {card.description && (
+        <p className="mt-2 line-clamp-3 text-xs leading-5 break-words whitespace-pre-wrap text-slate-500">
+          {card.description}
+        </p>
+      )}
+
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[10px] font-bold text-white">
+            {card.createdByNickname.charAt(0).toUpperCase()}
+          </span>
+
+          <span className="truncate text-[11px] text-slate-400">{card.createdByNickname}</span>
+        </div>
+
+        {formattedDueDate && (
+          <span
+            className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold ${getDueDateClassName(
+              card.dueDate,
+            )}`}
+          >
+            마감 {formattedDueDate}
+          </span>
+        )}
+      </div>
+    </>
+  );
+}
+
+function SortableCard({ card, canDrag }: SortableCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: getCardDndId(card.id),
+
+    data: {
+      type: "card",
+      cardId: card.id,
+      columnId: card.columnId,
+    } satisfies CardDragData,
+
+    disabled: !canDrag,
+  });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+
+    transition,
+
+    opacity: isDragging ? 0.35 : 1,
+
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  return (
+    <article
+      ref={setNodeRef}
+      style={style}
+      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+    >
+      <CardContent
+        card={card}
+        showDragHandle={canDrag}
+        dragHandleProps={{
+          ref: setActivatorNodeRef,
+
+          attributes: attributes as unknown as Record<string, unknown>,
+
+          listeners: listeners as unknown as Record<string, unknown>,
+        }}
+      />
+    </article>
+  );
+}
+
+function KanbanColumn({ column, cards, canEdit, canDrag, onCreateCard }: KanbanColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: getColumnDndId(column.id),
+
+    data: {
+      type: "column",
+      columnId: column.id,
+    } satisfies ColumnDragData,
+
+    disabled: !canDrag,
+  });
+
+  return (
+    <section
+      ref={setNodeRef}
+      className={`w-[330px] shrink-0 rounded-2xl border transition-colors ${
+        isOver && canDrag ? "border-blue-300 bg-blue-50/70" : "border-slate-200 bg-slate-100/80"
+      }`}
+    >
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-bold text-slate-800">{column.title}</h2>
+
+          <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-400 shadow-sm">
+            {cards.length}
+          </span>
+        </div>
+
+        {canEdit && (
+          <button
+            type="button"
+            aria-label={`${column.title}에 카드 추가`}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-xl text-slate-400 transition-colors hover:bg-white hover:text-blue-600"
+            onClick={() => onCreateCard(column.id)}
+          >
+            +
+          </button>
+        )}
+      </div>
+
+      <SortableContext
+        items={cards.map((card) => getCardDndId(card.id))}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="min-h-[420px] space-y-3 p-3">
+          {cards.length === 0 ? (
+            <div
+              className={`flex min-h-40 items-center justify-center rounded-xl border border-dashed px-5 text-center transition-colors ${
+                isOver && canDrag
+                  ? "border-blue-300 bg-blue-100/50"
+                  : "border-slate-300 bg-white/50"
+              }`}
+            >
+              <p className="text-xs leading-5 text-slate-400">
+                {isOver && canDrag ? "여기에 카드를 놓으세요." : "아직 카드가 없습니다."}
+
+                {!isOver && canEdit && (
+                  <>
+                    <br />
+                    아래에서 첫 카드를 만들어보세요.
+                  </>
+                )}
+              </p>
+            </div>
+          ) : (
+            cards.map((card) => <SortableCard key={card.id} card={card} canDrag={canDrag} />)
+          )}
+
+          {canEdit && (
+            <button
+              type="button"
+              className="flex w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/60 py-3 text-xs font-semibold text-slate-500 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600"
+              onClick={() => onCreateCard(column.id)}
+            >
+              + 카드 추가
+            </button>
+          )}
+        </div>
+      </SortableContext>
+    </section>
+  );
+}
+
 export default function BoardPage() {
   const { boardId: boardIdParam } = useParams<{
     boardId: string;
@@ -62,6 +328,18 @@ export default function BoardPage() {
 
   const queryClient = useQueryClient();
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 6,
+      },
+    }),
+
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
   const [createColumnId, setCreateColumnId] = useState<number | null>(null);
@@ -71,6 +349,10 @@ export default function BoardPage() {
   const [description, setDescription] = useState("");
 
   const [dueDate, setDueDate] = useState("");
+
+  const [activeCardId, setActiveCardId] = useState<number | null>(null);
+
+  const [movingCardId, setMovingCardId] = useState<number | null>(null);
 
   const boardQuery = useQuery({
     queryKey: ["boards", boardId],
@@ -82,10 +364,14 @@ export default function BoardPage() {
 
   const board = boardQuery.data;
 
+  const columnIds = board?.columns.map((column) => column.id) ?? [];
+
+  const cardsQueryKey = ["board", boardId, "cards", columnIds] as const;
+
   const canEdit = board?.myRole === "OWNER" || board?.myRole === "MEMBER";
 
   const cardsQuery = useQuery({
-    queryKey: ["board", boardId, "cards", board?.columns.map((column) => column.id)],
+    queryKey: cardsQueryKey,
 
     queryFn: async (): Promise<CardsByColumn> => {
       if (!board) {
@@ -107,6 +393,13 @@ export default function BoardPage() {
   });
 
   const cardsByColumn = cardsQuery.data ?? {};
+
+  const activeCard =
+    activeCardId === null
+      ? null
+      : (Object.values(cardsByColumn)
+          .flat()
+          .find((card) => card.id === activeCardId) ?? null);
 
   const createMutation = useMutation({
     mutationFn: ({ columnId, data }: { columnId: number; data: CardCreateRequest }) =>
@@ -182,14 +475,151 @@ export default function BoardPage() {
 
         description: trimmedDescription || null,
 
-        /*
-         * datetime-local 값은
-         * yyyy-MM-ddTHH:mm 형식이며
-         * Spring LocalDateTime으로 그대로 전달 가능합니다.
-         */
         dueDate: dueDate || null,
       },
     });
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const data = event.active.data.current as CardDragData | undefined;
+
+    if (!canEdit || !data || data.type !== "card") {
+      return;
+    }
+
+    setActiveCardId(data.cardId);
+  };
+
+  const handleDragCancel = () => {
+    setActiveCardId(null);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveCardId(null);
+
+    if (!canEdit || movingCardId !== null) {
+      return;
+    }
+
+    const { active, over } = event;
+
+    if (!over) {
+      return;
+    }
+
+    const activeData = active.data.current as CardDragData | undefined;
+
+    const overData = over.data.current as CardDragData | ColumnDragData | undefined;
+
+    if (!activeData || activeData.type !== "card" || !overData) {
+      return;
+    }
+
+    const cardId = activeData.cardId;
+
+    const sourceColumnId = activeData.columnId;
+
+    const targetColumnId = overData.columnId;
+
+    const sourceCards = cardsByColumn[sourceColumnId] ?? [];
+
+    const targetCards = cardsByColumn[targetColumnId] ?? [];
+
+    const activeCard = sourceCards.find((card) => card.id === cardId);
+
+    if (!activeCard) {
+      return;
+    }
+
+    const sourceIndex = sourceCards.findIndex((card) => card.id === cardId);
+
+    let targetIndex: number;
+
+    if (overData.type === "card") {
+      const overIndex = targetCards.findIndex((card) => card.id === overData.cardId);
+
+      targetIndex = overIndex >= 0 ? overIndex : targetCards.length;
+    } else if (sourceColumnId === targetColumnId) {
+      /*
+       * 같은 컬럼의 빈 영역으로 드롭하면
+       * 맨 마지막 위치로 이동합니다.
+       *
+       * 백엔드는 이동하는 카드 자신을 제외한 뒤
+       * targetIndex를 검사하기 때문에
+       * 현재 길이 - 1이 마지막 유효 인덱스입니다.
+       */
+      targetIndex = Math.max(0, targetCards.length - 1);
+    } else {
+      /*
+       * 다른 컬럼의 빈 영역으로 드롭하면
+       * 해당 컬럼 맨 마지막에 넣습니다.
+       */
+      targetIndex = targetCards.length;
+    }
+
+    if (sourceColumnId === targetColumnId && sourceIndex === targetIndex) {
+      return;
+    }
+
+    const previousCardsByColumn: CardsByColumn = Object.fromEntries(
+      Object.entries(cardsByColumn).map(([columnId, cards]) => [Number(columnId), [...cards]]),
+    );
+
+    const nextCardsByColumn: CardsByColumn = Object.fromEntries(
+      Object.entries(cardsByColumn).map(([columnId, cards]) => [Number(columnId), [...cards]]),
+    );
+
+    const sourceWithoutActive = sourceCards.filter((card) => card.id !== cardId);
+
+    const movedCard: CardResponse = {
+      ...activeCard,
+
+      columnId: targetColumnId,
+    };
+
+    if (sourceColumnId === targetColumnId) {
+      nextCardsByColumn[sourceColumnId] = insertCardAtIndex(
+        sourceWithoutActive,
+        movedCard,
+        targetIndex,
+      );
+    } else {
+      nextCardsByColumn[sourceColumnId] = sourceWithoutActive;
+
+      nextCardsByColumn[targetColumnId] = insertCardAtIndex(targetCards, movedCard, targetIndex);
+    }
+
+    /*
+     * 서버 응답을 기다리지 않고 먼저 화면을 이동시킵니다.
+     * API 실패 시 아래 catch에서 원래 상태로 되돌립니다.
+     */
+    queryClient.setQueryData<CardsByColumn>(cardsQueryKey, nextCardsByColumn);
+
+    setMovingCardId(cardId);
+
+    try {
+      await moveCard(cardId, {
+        targetColumnId,
+        targetIndex,
+      });
+
+      /*
+       * 서버에서 새 LexoRank가 계산되었으므로
+       * 최종 정렬 순서를 다시 받아옵니다.
+       */
+      await queryClient.invalidateQueries({
+        queryKey: ["board", boardId, "cards"],
+      });
+    } catch {
+      /*
+       * API 실패 시 화면도 이동 전 상태로 복구합니다.
+       */
+      queryClient.setQueryData<CardsByColumn>(cardsQueryKey, previousCardsByColumn);
+
+      toast.error("카드를 이동하지 못했습니다.");
+    } finally {
+      setMovingCardId(null);
+    }
   };
 
   if (!isValidBoardId) {
@@ -207,6 +637,8 @@ export default function BoardPage() {
   const isLoading = boardQuery.isLoading || cardsQuery.isLoading;
 
   const isError = boardQuery.isError || cardsQuery.isError;
+
+  const canDrag = Boolean(canEdit) && movingCardId === null;
 
   return (
     <>
@@ -231,16 +663,14 @@ export default function BoardPage() {
               onChange={(event) => setTitle(event.target.value)}
             />
 
-            <div>
-              <Textarea
-                id="card-description"
-                label="설명"
-                value={description}
-                placeholder="카드에서 진행할 작업을 적어주세요."
-                disabled={createMutation.isPending}
-                onChange={(event) => setDescription(event.target.value)}
-              />
-            </div>
+            <Textarea
+              id="card-description"
+              label="설명"
+              value={description}
+              placeholder="카드에서 진행할 작업을 적어주세요."
+              disabled={createMutation.isPending}
+              onChange={(event) => setDescription(event.target.value)}
+            />
 
             <Input
               label="마감일"
@@ -272,6 +702,7 @@ export default function BoardPage() {
         {boardQuery.isLoading ? (
           <div className="space-y-5">
             <Skeleton className="h-8 w-52" />
+
             <Skeleton className="h-5 w-80" />
 
             <div className="grid gap-4 lg:grid-cols-3">
@@ -315,7 +746,15 @@ export default function BoardPage() {
                 </p>
               </div>
 
-              <div className="text-sm text-slate-400">{board.columns.length}개 컬럼</div>
+              <div className="flex items-center gap-3">
+                {movingCardId !== null && (
+                  <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600">
+                    이동 저장 중...
+                  </span>
+                )}
+
+                <span className="text-sm text-slate-400">{board.columns.length}개 컬럼</span>
+              </div>
             </div>
 
             {isError ? (
@@ -337,118 +776,34 @@ export default function BoardPage() {
                 ))}
               </div>
             ) : (
-              <div className="flex items-start gap-4 overflow-x-auto pb-5">
-                {board.columns.map((column) => {
-                  const cards = cardsByColumn[column.id] ?? [];
-
-                  return (
-                    <section
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onDragCancel={handleDragCancel}
+              >
+                <div className="flex items-start gap-4 overflow-x-auto pb-5">
+                  {board.columns.map((column) => (
+                    <KanbanColumn
                       key={column.id}
-                      className="w-[330px] shrink-0 rounded-2xl border border-slate-200 bg-slate-100/80"
-                    >
-                      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4">
-                        <div className="flex items-center gap-2">
-                          <h2 className="text-sm font-bold text-slate-800">{column.title}</h2>
+                      column={column}
+                      cards={cardsByColumn[column.id] ?? []}
+                      canEdit={Boolean(canEdit)}
+                      canDrag={canDrag}
+                      onCreateCard={openCreateModal}
+                    />
+                  ))}
+                </div>
 
-                          <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-400 shadow-sm">
-                            {cards.length}
-                          </span>
-                        </div>
-
-                        {canEdit && (
-                          <button
-                            type="button"
-                            aria-label={`${column.title}에 카드 추가`}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-xl text-slate-400 transition-colors hover:bg-white hover:text-blue-600"
-                            onClick={() => openCreateModal(column.id)}
-                          >
-                            +
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="min-h-[420px] space-y-3 p-3">
-                        {cards.length === 0 ? (
-                          <div className="flex min-h-40 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/50 px-5 text-center">
-                            <p className="text-xs leading-5 text-slate-400">
-                              아직 카드가 없습니다.
-                              {canEdit && (
-                                <>
-                                  <br />
-                                  아래에서 첫 카드를 만들어보세요.
-                                </>
-                              )}
-                            </p>
-                          </div>
-                        ) : (
-                          cards.map((card) => {
-                            const formattedDueDate = formatDueDate(card.dueDate);
-
-                            return (
-                              <article
-                                key={card.id}
-                                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <h3 className="text-sm leading-5 font-semibold break-words text-slate-900">
-                                    {card.title}
-                                  </h3>
-
-                                  <button
-                                    type="button"
-                                    className="shrink-0 text-lg leading-none text-slate-300 hover:text-slate-500"
-                                    aria-label={`${card.title} 카드 메뉴`}
-                                  >
-                                    ···
-                                  </button>
-                                </div>
-
-                                {card.description && (
-                                  <p className="mt-2 line-clamp-3 text-xs leading-5 break-words whitespace-pre-wrap text-slate-500">
-                                    {card.description}
-                                  </p>
-                                )}
-
-                                <div className="mt-4 flex items-center justify-between gap-2">
-                                  <div className="flex min-w-0 items-center gap-2">
-                                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[10px] font-bold text-white">
-                                      {card.createdByNickname.charAt(0).toUpperCase()}
-                                    </span>
-
-                                    <span className="truncate text-[11px] text-slate-400">
-                                      {card.createdByNickname}
-                                    </span>
-                                  </div>
-
-                                  {formattedDueDate && (
-                                    <span
-                                      className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold ${getDueDateClassName(
-                                        card.dueDate,
-                                      )}`}
-                                    >
-                                      마감 {formattedDueDate}
-                                    </span>
-                                  )}
-                                </div>
-                              </article>
-                            );
-                          })
-                        )}
-
-                        {canEdit && (
-                          <button
-                            type="button"
-                            className="flex w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/60 py-3 text-xs font-semibold text-slate-500 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600"
-                            onClick={() => openCreateModal(column.id)}
-                          >
-                            + 카드 추가
-                          </button>
-                        )}
-                      </div>
-                    </section>
-                  );
-                })}
-              </div>
+                <DragOverlay>
+                  {activeCard ? (
+                    <div className="w-[306px] rotate-2 rounded-xl border border-blue-200 bg-white p-4 shadow-2xl">
+                      <CardContent card={activeCard} />
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             )}
 
             {!canEdit && (
@@ -456,7 +811,7 @@ export default function BoardPage() {
                 <p className="text-sm font-medium text-slate-700">VIEWER · 읽기 전용</p>
 
                 <p className="mt-1 text-xs text-slate-500">
-                  카드를 확인할 수 있지만 생성이나 수정은 할 수 없습니다.
+                  카드를 확인할 수 있지만 생성하거나 이동할 수 없습니다.
                 </p>
               </div>
             )}
