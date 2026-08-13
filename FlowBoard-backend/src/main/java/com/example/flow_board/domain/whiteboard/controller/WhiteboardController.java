@@ -103,6 +103,43 @@ public class WhiteboardController {
   }
 
   /**
+   * 화이트보드 개별 선 삭제
+   *
+   * OWNER / MEMBER만 가능합니다.
+   *
+   * Undo 및 선 단위 지우기에서 사용합니다.
+   */
+  @DeleteMapping(
+      "/strokes/{strokeId}"
+  )
+  @Operation(
+      summary = "화이트보드 개별 선 삭제",
+      description =
+          "특정 화이트보드 선을 삭제합니다. Undo와 선 단위 지우기에서 사용합니다."
+  )
+  public ApiResponse<Void> deleteStroke(
+      @AuthenticationPrincipal
+      CustomUserDetails userDetails,
+
+      @PathVariable
+      Long boardId,
+
+      @PathVariable
+      Long strokeId
+  ) {
+
+    whiteboardService.deleteStroke(
+        userDetails.getUser(),
+        boardId,
+        strokeId
+    );
+
+    return ApiResponse.success(
+        "화이트보드 선 삭제 성공"
+    );
+  }
+
+  /**
    * 화이트보드 전체 삭제
    *
    * OWNER / MEMBER만 가능합니다.

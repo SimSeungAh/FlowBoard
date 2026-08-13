@@ -43,7 +43,7 @@ public class WhiteboardService {
 
   /**
    * 화이트보드 선 저장
-   * <p>
+   *
    * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
@@ -127,7 +127,7 @@ public class WhiteboardService {
 
   /**
    * 화이트보드 선 전체 조회
-   * <p>
+   *
    * OWNER, MEMBER, VIEWER 모두 가능합니다.
    */
   public List<WhiteboardStrokeResponse> getStrokes(
@@ -160,8 +160,81 @@ public class WhiteboardService {
   }
 
   /**
+   * 화이트보드 개별 선 삭제
+   *
+   * OWNER와 MEMBER만 가능합니다.
+   *
+   * Undo 또는 선 단위 지우기에서 사용합니다.
+   */
+  @Transactional
+  public void deleteStroke(
+      User user,
+      Long boardId,
+      Long strokeId
+  ) {
+    Board board =
+        getBoardById(boardId);
+
+    boardPermissionService.validateWritePermission(
+        board,
+        user
+    );
+
+    WhiteboardStroke stroke =
+        whiteboardStrokeRepository
+            .findById(strokeId)
+            .orElseThrow(
+                () -> new CustomException(
+                    ErrorCode.WHITEBOARD_STROKE_NOT_FOUND
+                )
+            );
+
+    /*
+     * URL의 boardId와 실제 Stroke의 보드가
+     * 반드시 일치해야 합니다.
+     *
+     * 이를 검사하지 않으면
+     * 다른 보드의 strokeId를 이용해
+     * 잘못된 선을 삭제할 수 있습니다.
+     */
+    if (
+        !stroke.getBoard()
+            .getId()
+            .equals(board.getId())
+    ) {
+      throw new CustomException(
+          ErrorCode.WHITEBOARD_STROKE_NOT_FOUND
+      );
+    }
+
+    whiteboardStrokeRepository.delete(
+        stroke
+    );
+
+    /**
+     * 개별 선 삭제는 Undo/선 지우기에서
+     * 매우 자주 발생할 수 있으므로
+     * 활동 로그에는 매번 기록하지 않습니다.
+     *
+     * 기존 선 생성 로그도 5분 단위로 제한하고 있기 때문에
+     * 같은 취지로 활동 로그 과다 생성을 방지합니다.
+     */
+
+    /**
+     * DB 트랜잭션이 정상 커밋된 후
+     * 다른 참여자에게 해당 Stroke 삭제를 알립니다.
+     */
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.strokeDeleted(
+            board.getId(),
+            strokeId
+        )
+    );
+  }
+
+  /**
    * 화이트보드 전체 삭제
-   * <p>
+   *
    * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
