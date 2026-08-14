@@ -30,6 +30,7 @@ import {
   type CardCreateRequest,
   type CardResponse,
 } from "@/api/card";
+import CardDetailModal from "@/components/card/CardDetailModal";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
@@ -54,6 +55,7 @@ interface ColumnDragData {
 interface SortableCardProps {
   card: CardResponse;
   canDrag: boolean;
+  onOpenCard: (cardId: number) => void;
 }
 
 interface KanbanColumnProps {
@@ -62,6 +64,7 @@ interface KanbanColumnProps {
   canEdit: boolean;
   canDrag: boolean;
   onCreateCard: (columnId: number) => void;
+  onOpenCard: (cardId: number) => void;
 }
 
 const getCardDndId = (cardId: number) => `card-${cardId}`;
@@ -113,6 +116,7 @@ function CardContent({
   card,
   showDragHandle = false,
   dragHandleProps,
+  onOpenCard,
 }: {
   card: CardResponse;
   showDragHandle?: boolean;
@@ -121,6 +125,7 @@ function CardContent({
     attributes?: Record<string, unknown>;
     listeners?: Record<string, unknown>;
   };
+  onOpenCard?: () => void;
 }) {
   const formattedDueDate = formatDueDate(card.dueDate);
 
@@ -136,6 +141,7 @@ function CardContent({
               type="button"
               aria-label={`${card.title} 카드 이동`}
               className="flex h-7 w-7 cursor-grab touch-none items-center justify-center rounded-md text-base leading-none text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+              onClick={(event) => event.stopPropagation()}
               {...dragHandleProps?.attributes}
               {...dragHandleProps?.listeners}
             >
@@ -143,13 +149,19 @@ function CardContent({
             </button>
           )}
 
-          <button
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-500"
-            aria-label={`${card.title} 카드 메뉴`}
-          >
-            ···
-          </button>
+          {onOpenCard && (
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-500"
+              aria-label={`${card.title} 카드 상세`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenCard();
+              }}
+            >
+              ···
+            </button>
+          )}
         </div>
       </div>
 
@@ -182,7 +194,7 @@ function CardContent({
   );
 }
 
-function SortableCard({ card, canDrag }: SortableCardProps) {
+function SortableCard({ card, canDrag, onOpenCard }: SortableCardProps) {
   const {
     attributes,
     listeners,
@@ -217,11 +229,13 @@ function SortableCard({ card, canDrag }: SortableCardProps) {
     <article
       ref={setNodeRef}
       style={style}
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+      className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+      onClick={() => onOpenCard(card.id)}
     >
       <CardContent
         card={card}
         showDragHandle={canDrag}
+        onOpenCard={() => onOpenCard(card.id)}
         dragHandleProps={{
           ref: setActivatorNodeRef,
 
@@ -234,7 +248,14 @@ function SortableCard({ card, canDrag }: SortableCardProps) {
   );
 }
 
-function KanbanColumn({ column, cards, canEdit, canDrag, onCreateCard }: KanbanColumnProps) {
+function KanbanColumn({
+  column,
+  cards,
+  canEdit,
+  canDrag,
+  onCreateCard,
+  onOpenCard,
+}: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: getColumnDndId(column.id),
 
@@ -299,7 +320,9 @@ function KanbanColumn({ column, cards, canEdit, canDrag, onCreateCard }: KanbanC
               </p>
             </div>
           ) : (
-            cards.map((card) => <SortableCard key={card.id} card={card} canDrag={canDrag} />)
+            cards.map((card) => (
+              <SortableCard key={card.id} card={card} canDrag={canDrag} onOpenCard={onOpenCard} />
+            ))
           )}
 
           {canEdit && (
@@ -343,6 +366,8 @@ export default function BoardPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
   const [createColumnId, setCreateColumnId] = useState<number | null>(null);
+
+  const [selectedCardId, setSelectedCardId] = useState<number | null>(null);
 
   const [title, setTitle] = useState("");
 
@@ -480,6 +505,12 @@ export default function BoardPage() {
     });
   };
 
+  const handleCardChanged = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: ["board", boardId, "cards"],
+    });
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     const data = event.active.data.current as CardDragData | undefined;
 
@@ -540,20 +571,8 @@ export default function BoardPage() {
 
       targetIndex = overIndex >= 0 ? overIndex : targetCards.length;
     } else if (sourceColumnId === targetColumnId) {
-      /*
-       * 같은 컬럼의 빈 영역으로 드롭하면
-       * 맨 마지막 위치로 이동합니다.
-       *
-       * 백엔드는 이동하는 카드 자신을 제외한 뒤
-       * targetIndex를 검사하기 때문에
-       * 현재 길이 - 1이 마지막 유효 인덱스입니다.
-       */
       targetIndex = Math.max(0, targetCards.length - 1);
     } else {
-      /*
-       * 다른 컬럼의 빈 영역으로 드롭하면
-       * 해당 컬럼 맨 마지막에 넣습니다.
-       */
       targetIndex = targetCards.length;
     }
 
@@ -589,10 +608,6 @@ export default function BoardPage() {
       nextCardsByColumn[targetColumnId] = insertCardAtIndex(targetCards, movedCard, targetIndex);
     }
 
-    /*
-     * 서버 응답을 기다리지 않고 먼저 화면을 이동시킵니다.
-     * API 실패 시 아래 catch에서 원래 상태로 되돌립니다.
-     */
     queryClient.setQueryData<CardsByColumn>(cardsQueryKey, nextCardsByColumn);
 
     setMovingCardId(cardId);
@@ -603,17 +618,10 @@ export default function BoardPage() {
         targetIndex,
       });
 
-      /*
-       * 서버에서 새 LexoRank가 계산되었으므로
-       * 최종 정렬 순서를 다시 받아옵니다.
-       */
       await queryClient.invalidateQueries({
         queryKey: ["board", boardId, "cards"],
       });
     } catch {
-      /*
-       * API 실패 시 화면도 이동 전 상태로 복구합니다.
-       */
       queryClient.setQueryData<CardsByColumn>(cardsQueryKey, previousCardsByColumn);
 
       toast.error("카드를 이동하지 못했습니다.");
@@ -642,6 +650,14 @@ export default function BoardPage() {
 
   return (
     <>
+      <CardDetailModal
+        open={selectedCardId !== null}
+        cardId={selectedCardId}
+        canEdit={Boolean(canEdit)}
+        onClose={() => setSelectedCardId(null)}
+        onChanged={handleCardChanged}
+      />
+
       <Modal
         open={createModalOpen}
         title="새 카드 만들기"
@@ -792,6 +808,7 @@ export default function BoardPage() {
                       canEdit={Boolean(canEdit)}
                       canDrag={canDrag}
                       onCreateCard={openCreateModal}
+                      onOpenCard={setSelectedCardId}
                     />
                   ))}
                 </div>
@@ -811,7 +828,7 @@ export default function BoardPage() {
                 <p className="text-sm font-medium text-slate-700">VIEWER · 읽기 전용</p>
 
                 <p className="mt-1 text-xs text-slate-500">
-                  카드를 확인할 수 있지만 생성하거나 이동할 수 없습니다.
+                  카드를 확인할 수 있지만 생성, 수정, 삭제, 이동은 할 수 없습니다.
                 </p>
               </div>
             )}

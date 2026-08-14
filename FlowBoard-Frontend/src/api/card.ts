@@ -19,6 +19,12 @@ export interface CardCreateRequest {
   dueDate?: string | null;
 }
 
+export interface CardUpdateRequest {
+  title: string;
+  description?: string | null;
+  dueDate?: string | null;
+}
+
 export interface CardMoveRequest {
   targetColumnId: number;
   targetIndex: number;
@@ -33,6 +39,12 @@ export const getCardsByColumn = async (
   return response.data.data;
 };
 
+export const getCardDetail = async (cardId: number): Promise<CardResponse> => {
+  const response = await api.get(`/cards/${cardId}`);
+
+  return response.data.data;
+};
+
 export const createCard = async (
   boardId: number,
   columnId: number,
@@ -43,8 +55,21 @@ export const createCard = async (
   return response.data.data;
 };
 
+export const updateCard = async (
+  cardId: number,
+  data: CardUpdateRequest,
+): Promise<CardResponse> => {
+  const response = await api.patch(`/cards/${cardId}`, data);
+
+  return response.data.data;
+};
+
 export const moveCard = async (cardId: number, data: CardMoveRequest): Promise<CardResponse> => {
   const response = await api.patch(`/cards/${cardId}/move`, data);
 
   return response.data.data;
+};
+
+export const deleteCard = async (cardId: number): Promise<void> => {
+  await api.delete(`/cards/${cardId}`);
 };
