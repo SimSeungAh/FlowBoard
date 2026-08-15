@@ -32,9 +32,10 @@ import {
   removeTagFromCard,
 } from "@/api/tag";
 import Button from "@/components/ui/Button";
+import ChecklistSection from "@/components/card/ChecklistSection";
+import CommentSection from "@/components/card/CommentSection";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Input from "@/components/ui/Input";
-import Modal from "@/components/ui/Modal";
 import Textarea from "@/components/ui/Textarea";
 
 interface CardDetailModalProps {
@@ -1007,106 +1008,227 @@ export default function CardDetailModal({
       onClose();
     };
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handleKeyDown = (
+      event: KeyboardEvent,
+    ) => {
+      if (event.key === "Escape") {
+        handleClose();
+      }
+    };
+
+    window.addEventListener(
+      "keydown",
+      handleKeyDown,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown,
+      );
+    };
+  }, [
+    open,
+    updateMutation.isPending,
+    deleteMutation.isPending,
+    isAssigneeBusy,
+    isTagBusy,
+  ]);
+
+  if (!open) {
+    return (
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title="작업 삭제"
+        description={
+          card
+            ? `'${card.title}' 작업을 삭제합니다. 연결된 데이터도 함께 삭제될 수 있으며 되돌릴 수 없습니다.`
+            : "작업을 삭제합니다. 되돌릴 수 없습니다."
+        }
+        confirmText="삭제"
+        cancelText="취소"
+        loading={deleteMutation.isPending}
+        onConfirm={async () => {
+          await deleteMutation.mutateAsync();
+        }}
+        onCancel={() =>
+          setDeleteDialogOpen(false)
+        }
+      />
+    );
+  }
+
   return (
     <>
-      <Modal
-        open={open}
-        title={editMode ? "카드 수정" : "카드 상세"}
-        size="lg"
-        closeOnBackdrop={
-          !updateMutation.isPending &&
-          !deleteMutation.isPending &&
-          !isAssigneeBusy &&
-          !isTagBusy
-        }
-        closeOnEsc={
-          !updateMutation.isPending &&
-          !deleteMutation.isPending &&
-          !isAssigneeBusy &&
-          !isTagBusy
-        }
-        onClose={handleClose}
+      <div
+        className="fixed inset-0 z-40 bg-slate-950/10"
+        role="presentation"
+        onMouseDown={(event) => {
+          if (
+            event.target ===
+            event.currentTarget
+          ) {
+            handleClose();
+          }
+        }}
       >
-        <div className="max-h-[78vh] overflow-y-auto pr-1">
-          {cardQuery.isLoading ? (
-            <div className="flex min-h-64 items-center justify-center">
-              <div className="text-center">
-                <div className="mx-auto h-9 w-9 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
-                <p className="mt-4 text-sm text-slate-400">
-                  카드 정보를 불러오는 중...
-                </p>
-              </div>
+        <aside
+          role="dialog"
+          aria-modal="true"
+          aria-label={
+            editMode
+              ? "작업 수정"
+              : "작업 상세"
+          }
+          className="absolute inset-y-0 right-0 flex w-[640px] max-w-[calc(100vw-var(--flow-sidebar-width)-48px)] flex-col border-l border-[var(--flow-border)] bg-white shadow-[var(--flow-shadow-panel)]"
+          onMouseDown={(event) =>
+            event.stopPropagation()
+          }
+        >
+          {/* Panel header */}
+          <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-[var(--flow-border)] px-5">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="text-xs font-bold text-[var(--flow-primary)]">
+                {editMode
+                  ? "작업 수정"
+                  : "작업 상세"}
+              </span>
+
+              {card && (
+                <span className="rounded-md bg-[var(--flow-gray-100)] px-2 py-1 text-[9px] font-semibold text-[var(--flow-text-muted)]">
+                  #{card.id}
+                </span>
+              )}
             </div>
-          ) : cardQuery.isError || !card ? (
-            <div className="rounded-2xl border border-red-100 bg-red-50/60 px-6 py-10 text-center">
-              <h3 className="font-semibold text-slate-900">
-                카드 정보를 불러오지 못했습니다.
-              </h3>
 
-              <p className="mt-2 text-sm text-slate-500">
-                잠시 후 다시 시도해주세요.
-              </p>
+            <div className="flex items-center gap-1.5">
+              {!editMode &&
+                canEdit &&
+                card && (
+                  <button
+                    type="button"
+                    className="inline-flex h-8 items-center justify-center rounded-lg px-3 text-xs font-semibold text-[var(--flow-text-secondary)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text)]"
+                    onClick={startEdit}
+                  >
+                    수정
+                  </button>
+                )}
 
-              <div className="mt-5 flex justify-center">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void cardQuery.refetch()}
-                >
-                  다시 불러오기
-                </Button>
-              </div>
+              <button
+                type="button"
+                aria-label="작업 상세 닫기"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-lg leading-none text-[var(--flow-text-muted)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text)]"
+                onClick={handleClose}
+              >
+                ×
+              </button>
             </div>
-          ) : editMode ? (
-            <form onSubmit={handleSubmit}>
-              <div className="mx-auto max-w-3xl">
-                <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
-                      Card #{card.id}
-                    </span>
+          </header>
 
-                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 shadow-sm">
-                      Column #{card.columnId}
-                    </span>
-                  </div>
+          {/* Panel content */}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {cardQuery.isLoading ? (
+              <div className="flex min-h-[420px] items-center justify-center px-6">
+                <div className="text-center">
+                  <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[var(--flow-gray-200)] border-t-[var(--flow-primary)]" />
 
-                  <p className="mt-3 text-sm leading-6 text-slate-500">
-                    카드의 기본 정보만 수정합니다. 담당자와 태그는 상세 화면에서
-                    따로 관리할 수 있습니다.
+                  <p className="mt-4 text-xs text-[var(--flow-text-muted)]">
+                    작업 정보를 불러오는 중...
                   </p>
                 </div>
+              </div>
+            ) : cardQuery.isError ||
+              !card ? (
+              <div className="p-6">
+                <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-8 text-center">
+                  <h3 className="text-sm font-bold text-[var(--flow-text)]">
+                    작업 정보를 불러오지 못했습니다.
+                  </h3>
 
-                <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-                  <Input
-                    label="카드 제목"
-                    value={title}
-                    required
-                    maxLength={100}
-                    helperText={`${title.length}/100`}
-                    disabled={updateMutation.isPending}
-                    onChange={(event) => setTitle(event.target.value)}
-                  />
+                  <p className="mt-2 text-xs text-[var(--flow-text-muted)]">
+                    잠시 후 다시 시도해주세요.
+                  </p>
 
-                  <Textarea
-                    id="card-detail-description"
-                    label="설명"
-                    value={description}
-                    placeholder="카드 설명을 입력해주세요."
-                    disabled={updateMutation.isPending}
-                    onChange={(event) => setDescription(event.target.value)}
-                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-5"
+                    onClick={() =>
+                      void cardQuery.refetch()
+                    }
+                  >
+                    다시 불러오기
+                  </Button>
+                </div>
+              </div>
+            ) : editMode ? (
+              <form
+                className="flex min-h-full flex-col"
+                onSubmit={handleSubmit}
+              >
+                <div className="space-y-6 p-6">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--flow-primary)]">
+                      Basic information
+                    </p>
 
-                  <Input
-                    label="마감일"
-                    type="datetime-local"
-                    value={dueDate}
-                    disabled={updateMutation.isPending}
-                    onChange={(event) => setDueDate(event.target.value)}
-                  />
+                    <h2 className="mt-2 text-lg font-bold tracking-[-0.02em] text-[var(--flow-text)]">
+                      작업 기본 정보 수정
+                    </h2>
+
+                    <p className="mt-1.5 text-xs leading-5 text-[var(--flow-text-muted)]">
+                      제목, 설명, 마감일을 수정합니다. 담당자와 태그, 체크리스트는 상세 화면에서 관리합니다.
+                    </p>
+                  </div>
+
+                  <div className="space-y-5 rounded-xl border border-[var(--flow-border)] bg-white p-5">
+                    <Input
+                      label="작업 제목"
+                      value={title}
+                      required
+                      maxLength={100}
+                      helperText={`${title.length}/100`}
+                      disabled={updateMutation.isPending}
+                      onChange={(event) =>
+                        setTitle(
+                          event.target.value,
+                        )
+                      }
+                    />
+
+                    <Textarea
+                      id="card-detail-description"
+                      label="설명"
+                      value={description}
+                      placeholder="기획, 디자인, 구현, 테스트, 보안 검토 등 작업 내용을 정리해주세요."
+                      disabled={updateMutation.isPending}
+                      onChange={(event) =>
+                        setDescription(
+                          event.target.value,
+                        )
+                      }
+                    />
+
+                    <Input
+                      label="마감일"
+                      type="datetime-local"
+                      value={dueDate}
+                      disabled={updateMutation.isPending}
+                      onChange={(event) =>
+                        setDueDate(
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </div>
                 </div>
 
-                <div className="sticky bottom-0 z-10 mt-6 flex justify-end gap-2 border-t border-slate-200 bg-white/95 py-4 backdrop-blur">
+                <div className="sticky bottom-0 mt-auto flex shrink-0 items-center justify-end gap-2 border-t border-[var(--flow-border)] bg-white/95 px-6 py-4 backdrop-blur">
                   <Button
                     type="button"
                     variant="outline"
@@ -1124,223 +1246,186 @@ export default function CardDetailModal({
                     저장
                   </Button>
                 </div>
-              </div>
-            </form>
-          ) : (
-            <>
-              <header className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
-                        Card #{card.id}
-                      </span>
-
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500">
-                        Column #{card.columnId}
-                      </span>
-                    </div>
-
-                    <h3 className="mt-4 break-words text-2xl font-bold leading-tight text-slate-950 sm:text-3xl">
-                      {card.title}
-                    </h3>
-                  </div>
-
-                  {canEdit && (
-                    <Button type="button" variant="outline" onClick={startEdit}>
-                      수정
-                    </Button>
-                  )}
-                </div>
-              </header>
-
-              <div className="mt-6 grid gap-6 lg:grid-cols-3">
-                <main className="space-y-6 lg:col-span-2">
-                  <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-                    <div className="mb-4">
-                      <h4 className="text-sm font-semibold text-slate-900">
-                        설명
-                      </h4>
-                      <p className="mt-1 text-xs text-slate-400">
-                        카드 작업에 필요한 내용을 정리합니다.
-                      </p>
-                    </div>
-
-                    {card.description ? (
-                      <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
-                        {card.description}
-                      </p>
+              </form>
+            ) : (
+              <>
+                {/* Title */}
+                <section className="border-b border-[var(--flow-border)] px-6 py-6">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {cardTagsQuery.isLoading ? (
+                      <span className="h-6 w-20 animate-pulse rounded-md bg-[var(--flow-gray-100)]" />
                     ) : (
-                      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-7 text-center">
-                        <p className="text-sm text-slate-400">
-                          등록된 설명이 없습니다.
-                        </p>
-                      </div>
+                      cardTags.map((tag) => (
+                        <span
+                          key={tag.id}
+                          className="inline-flex h-6 items-center gap-1.5 rounded-md border border-[var(--flow-border)] bg-white px-2 text-[10px] font-semibold text-[var(--flow-text-secondary)]"
+                        >
+                          <span
+                            className="h-2 w-2 rounded-full"
+                            style={{
+                              backgroundColor:
+                                tag.color,
+                            }}
+                          />
+
+                          {tag.name}
+                        </span>
+                      ))
                     )}
-                  </section>
 
-                  <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-                    <div className="mb-5">
-                      <h4 className="text-sm font-semibold text-slate-900">
-                        카드 정보
-                      </h4>
-                      <p className="mt-1 text-xs text-slate-400">
-                        작성자와 일정 정보를 한눈에 확인합니다.
-                      </p>
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl bg-slate-50 px-4 py-4">
-                        <p className="text-[11px] font-medium text-slate-400">
-                          작성자
-                        </p>
-                        <p className="mt-1.5 text-sm font-semibold text-slate-700">
-                          {card.createdByNickname}
-                        </p>
-                      </div>
-
-                      <div className="rounded-xl bg-slate-50 px-4 py-4">
-                        <p className="text-[11px] font-medium text-slate-400">
-                          마감일
-                        </p>
-                        <p className="mt-1.5 text-sm font-semibold text-slate-700">
-                          {formatDateTime(card.dueDate)}
-                        </p>
-                      </div>
-
-                      <div className="rounded-xl bg-slate-50 px-4 py-4">
-                        <p className="text-[11px] font-medium text-slate-400">
-                          생성일
-                        </p>
-                        <p className="mt-1.5 text-sm text-slate-600">
-                          {formatDateTime(card.createdAt)}
-                        </p>
-                      </div>
-
-                      <div className="rounded-xl bg-slate-50 px-4 py-4">
-                        <p className="text-[11px] font-medium text-slate-400">
-                          최근 수정
-                        </p>
-                        <p className="mt-1.5 text-sm text-slate-600">
-                          {formatDateTime(card.updatedAt)}
-                        </p>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h4 className="text-sm font-semibold text-slate-900">
-                          체크리스트
-                        </h4>
-                        <p className="mt-1 text-xs text-slate-400">
-                          해야 할 작업을 작은 단계로 나눠 관리합니다.
-                        </p>
-                      </div>
-
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
-                        준비 중
-                      </span>
-                    </div>
-
-                    <div className="mt-5 min-h-28 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center">
-                      <p className="text-sm font-medium text-slate-500">
-                        체크리스트 영역
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-slate-400">
-                        기능 연결 시 이 영역에 체크리스트가 표시됩니다.
-                      </p>
-                    </div>
-                  </section>
-
-                  <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h4 className="text-sm font-semibold text-slate-900">
-                          댓글
-                        </h4>
-                        <p className="mt-1 text-xs text-slate-400">
-                          카드에 대한 의견과 진행 상황을 공유합니다.
-                        </p>
-                      </div>
-
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
-                        준비 중
-                      </span>
-                    </div>
-
-                    <div className="mt-5 min-h-32 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-5 py-9 text-center">
-                      <p className="text-sm font-medium text-slate-500">
-                        댓글 영역
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-slate-400">
-                        실시간 댓글 기능 연결 시 이 영역에 표시됩니다.
-                      </p>
-                    </div>
-                  </section>
-                </main>
-
-                <aside className="space-y-6">
-                  <section className="rounded-2xl border border-slate-200 bg-white">
-                    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
-                      <div>
-                        <h4 className="text-sm font-semibold text-slate-900">
-                          담당자
-                        </h4>
-                        <p className="mt-1 text-xs leading-5 text-slate-400">
-                          이 카드를 맡은 멤버를 관리합니다.
-                        </p>
-                      </div>
-
-                      {!assigneesQuery.isLoading && (
-                        <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-600">
-                          {assignees.length}명
+                    {cardTags.length === 0 &&
+                      !cardTagsQuery.isLoading && (
+                        <span className="rounded-md bg-[var(--flow-gray-100)] px-2 py-1 text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                          태그 없음
                         </span>
                       )}
+                  </div>
+
+                  <h2 className="mt-4 break-words text-[22px] font-bold leading-[1.35] tracking-[-0.025em] text-[var(--flow-text)]">
+                    {card.title}
+                  </h2>
+
+                  <div className="mt-5 grid grid-cols-3 gap-3">
+                    <div className="rounded-lg bg-[var(--flow-gray-50)] px-3 py-3">
+                      <p className="text-[9px] font-semibold text-[var(--flow-text-placeholder)]">
+                        작성자
+                      </p>
+
+                      <p className="mt-1 truncate text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                        {card.createdByNickname}
+                      </p>
                     </div>
 
-                    <div className="p-5">
-                      {assigneesQuery.isLoading ? (
-                        <p className="py-4 text-center text-sm text-slate-400">
-                          담당자를 불러오는 중...
-                        </p>
-                      ) : assigneesQuery.isError ? (
-                        <div className="rounded-xl bg-red-50 px-4 py-4">
-                          <p className="text-sm text-red-500">
-                            담당자 정보를 불러오지 못했습니다.
-                          </p>
+                    <div className="rounded-lg bg-[var(--flow-gray-50)] px-3 py-3">
+                      <p className="text-[9px] font-semibold text-[var(--flow-text-placeholder)]">
+                        마감일
+                      </p>
 
-                          <button
-                            type="button"
-                            className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700"
-                            onClick={() => void assigneesQuery.refetch()}
-                          >
-                            다시 불러오기
-                          </button>
-                        </div>
-                      ) : assignees.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-                          <p className="text-sm text-slate-500">
-                            지정된 담당자가 없습니다.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {assignees.map((assignee) => (
+                      <p className="mt-1 truncate text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                        {formatDateTime(
+                          card.dueDate,
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg bg-[var(--flow-gray-50)] px-3 py-3">
+                      <p className="text-[9px] font-semibold text-[var(--flow-text-placeholder)]">
+                        최근 수정
+                      </p>
+
+                      <p className="mt-1 truncate text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                        {formatDateTime(
+                          card.updatedAt,
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Description */}
+                <section className="border-b border-[var(--flow-border)] px-6 py-6">
+                  <div className="mb-4 flex items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-[var(--flow-text)]">
+                        설명
+                      </h3>
+
+                      <p className="mt-1 text-[11px] text-[var(--flow-text-muted)]">
+                        작업의 배경, 요구사항, 참고 내용을 자유롭게 정리합니다.
+                      </p>
+                    </div>
+                  </div>
+
+                  {card.description ? (
+                    <div className="rounded-lg bg-[var(--flow-gray-50)] px-4 py-4">
+                      <p className="whitespace-pre-wrap break-words text-[13px] leading-7 text-[var(--flow-text-secondary)]">
+                        {card.description}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-[var(--flow-border-strong)] bg-[var(--flow-gray-50)] px-4 py-6 text-center">
+                      <p className="text-xs text-[var(--flow-text-muted)]">
+                        등록된 설명이 없습니다.
+                      </p>
+
+                      {canEdit && (
+                        <button
+                          type="button"
+                          className="mt-2 text-xs font-semibold text-[var(--flow-primary)] hover:underline"
+                          onClick={startEdit}
+                        >
+                          설명 추가하기
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </section>
+
+                {/* Assignees */}
+                <section className="border-b border-[var(--flow-border)] px-6 py-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-[var(--flow-text)]">
+                        담당자
+                      </h3>
+
+                      <p className="mt-1 text-[11px] text-[var(--flow-text-muted)]">
+                        현재 작업을 함께 진행하는 멤버입니다.
+                      </p>
+                    </div>
+
+                    {!assigneesQuery.isLoading && (
+                      <span className="rounded-md bg-[var(--flow-primary-50)] px-2 py-1 text-[10px] font-bold text-[var(--flow-primary)]">
+                        {assignees.length}명
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-4">
+                    {assigneesQuery.isLoading ? (
+                      <p className="py-3 text-xs text-[var(--flow-text-muted)]">
+                        담당자를 불러오는 중...
+                      </p>
+                    ) : assigneesQuery.isError ? (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                        <p className="text-xs text-red-600">
+                          담당자 정보를 불러오지 못했습니다.
+                        </p>
+
+                        <button
+                          type="button"
+                          className="mt-2 text-xs font-semibold text-[var(--flow-primary)]"
+                          onClick={() =>
+                            void assigneesQuery.refetch()
+                          }
+                        >
+                          다시 불러오기
+                        </button>
+                      </div>
+                    ) : assignees.length === 0 ? (
+                      <p className="rounded-lg bg-[var(--flow-gray-50)] px-4 py-4 text-xs text-[var(--flow-text-muted)]">
+                        아직 지정된 담당자가 없습니다.
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {assignees.map(
+                          (assignee) => (
                             <div
                               key={assignee.id}
-                              className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5"
+                              className="flex items-center gap-2 rounded-lg border border-[var(--flow-border)] bg-white py-1.5 pl-1.5 pr-2"
                             >
-                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
-                                {assignee.nickname.charAt(0).toUpperCase()}
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--flow-primary)] text-[10px] font-bold text-white">
+                                {assignee.nickname
+                                  .charAt(0)
+                                  .toUpperCase()}
                               </span>
 
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-semibold text-slate-700">
+                              <div className="min-w-0">
+                                <p className="max-w-28 truncate text-[11px] font-semibold text-[var(--flow-text-secondary)]">
                                   {assignee.nickname}
                                 </p>
-                                <p className="truncate text-[11px] text-slate-400">
+
+                                <p className="max-w-28 truncate text-[9px] text-[var(--flow-text-placeholder)]">
                                   {assignee.email}
                                 </p>
                               </div>
@@ -1350,7 +1435,7 @@ export default function CardDetailModal({
                                   type="button"
                                   disabled={isAssigneeBusy}
                                   aria-label={`${assignee.nickname} 담당자 제거`}
-                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+                                  className="ml-1 flex h-5 w-5 items-center justify-center rounded text-sm text-[var(--flow-text-placeholder)] transition-colors hover:bg-[var(--flow-danger-soft)] hover:text-[var(--flow-danger)] disabled:opacity-40"
                                   onClick={() =>
                                     removeAssigneeMutation.mutate(
                                       assignee.userId,
@@ -1361,124 +1446,144 @@ export default function CardDetailModal({
                                 </button>
                               )}
                             </div>
-                          ))}
-                        </div>
-                      )}
+                          ),
+                        )}
+                      </div>
+                    )}
 
-                      {canEdit && (
-                        <div className="mt-5 border-t border-slate-100 pt-5">
+                    {canEdit && (
+                      <div className="mt-4 flex items-end gap-2">
+                        <div className="min-w-0 flex-1">
                           {membersQuery.isLoading ? (
-                            <p className="text-xs text-slate-400">
+                            <p className="py-2 text-xs text-[var(--flow-text-muted)]">
                               보드 멤버를 불러오는 중...
                             </p>
                           ) : membersQuery.isError ? (
                             <button
                               type="button"
-                              className="text-xs font-semibold text-blue-600"
-                              onClick={() => void membersQuery.refetch()}
+                              className="text-xs font-semibold text-[var(--flow-primary)]"
+                              onClick={() =>
+                                void membersQuery.refetch()
+                              }
                             >
                               보드 멤버 다시 불러오기
                             </button>
                           ) : availableMembers.length === 0 ? (
-                            <p className="text-xs leading-5 text-slate-400">
-                              추가할 수 있는 보드 멤버가 없습니다.
+                            <p className="py-2 text-xs text-[var(--flow-text-muted)]">
+                              추가할 수 있는 멤버가 없습니다.
                             </p>
                           ) : (
-                            <div className="space-y-2">
-                              <select
-                                value={selectedAssigneeUserId}
-                                disabled={isAssigneeBusy}
-                                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                onChange={(event) =>
-                                  setSelectedAssigneeUserId(event.target.value)
-                                }
-                              >
-                                <option value="">담당자를 선택하세요</option>
+                            <select
+                              value={selectedAssigneeUserId}
+                              disabled={isAssigneeBusy}
+                              className="h-9 w-full rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 text-xs text-[var(--flow-text-secondary)] outline-none transition-[border-color,box-shadow] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
+                              onChange={(event) =>
+                                setSelectedAssigneeUserId(
+                                  event.target.value,
+                                )
+                              }
+                            >
+                              <option value="">
+                                담당자 선택
+                              </option>
 
-                                {availableMembers.map((member) => (
+                              {availableMembers.map(
+                                (member) => (
                                   <option
                                     key={member.id}
                                     value={member.userId}
                                   >
-                                    {member.nickname} ·{" "}
-                                    {getRoleLabel(member.role)}
+                                    {member.nickname} · {getRoleLabel(member.role)}
                                   </option>
-                                ))}
-                              </select>
-
-                              <Button
-                                type="button"
-                                disabled={
-                                  !selectedAssigneeUserId || isAssigneeBusy
-                                }
-                                loading={addAssigneeMutation.isPending}
-                                onClick={handleAddAssignee}
-                              >
-                                담당자 추가
-                              </Button>
-                            </div>
+                                ),
+                              )}
+                            </select>
                           )}
                         </div>
-                      )}
-                    </div>
-                  </section>
 
-                  <section className="rounded-2xl border border-slate-200 bg-white">
-                    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
-                      <div>
-                        <h4 className="text-sm font-semibold text-slate-900">
-                          태그
-                        </h4>
-                        <p className="mt-1 text-xs leading-5 text-slate-400">
-                          종류와 우선순위를 구분합니다.
-                        </p>
+                        {availableMembers.length > 0 &&
+                          !membersQuery.isLoading &&
+                          !membersQuery.isError && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={
+                                !selectedAssigneeUserId ||
+                                isAssigneeBusy
+                              }
+                              loading={addAssigneeMutation.isPending}
+                              onClick={handleAddAssignee}
+                            >
+                              추가
+                            </Button>
+                          )}
                       </div>
+                    )}
+                  </div>
+                </section>
 
-                      {!cardTagsQuery.isLoading && (
-                        <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
-                          {cardTags.length}개
-                        </span>
-                      )}
+                {/* Tags */}
+                <section className="border-b border-[var(--flow-border)] px-6 py-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-[var(--flow-text)]">
+                        태그
+                      </h3>
+
+                      <p className="mt-1 text-[11px] text-[var(--flow-text-muted)]">
+                        작업 종류, 분야, 우선순위 등을 자유롭게 구분합니다.
+                      </p>
                     </div>
 
-                    <div className="p-5">
-                      {cardTagsQuery.isLoading ? (
-                        <p className="py-4 text-center text-sm text-slate-400">
-                          태그를 불러오는 중...
-                        </p>
-                      ) : cardTagsQuery.isError ? (
-                        <div className="rounded-xl bg-red-50 px-4 py-4">
-                          <p className="text-sm text-red-500">
-                            카드 태그를 불러오지 못했습니다.
-                          </p>
+                    {!cardTagsQuery.isLoading && (
+                      <span className="rounded-md bg-[var(--flow-gray-100)] px-2 py-1 text-[10px] font-bold text-[var(--flow-text-muted)]">
+                        {cardTags.length}개
+                      </span>
+                    )}
+                  </div>
 
-                          <button
-                            type="button"
-                            className="mt-2 text-xs font-semibold text-blue-600"
-                            onClick={() => void cardTagsQuery.refetch()}
-                          >
-                            다시 불러오기
-                          </button>
-                        </div>
-                      ) : cardTags.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-                          <p className="text-sm text-slate-500">
-                            등록된 태그가 없습니다.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {cardTags.map((tag) => (
+                  <div className="mt-4">
+                    {cardTagsQuery.isLoading ? (
+                      <p className="py-3 text-xs text-[var(--flow-text-muted)]">
+                        태그를 불러오는 중...
+                      </p>
+                    ) : cardTagsQuery.isError ? (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                        <p className="text-xs text-red-600">
+                          태그를 불러오지 못했습니다.
+                        </p>
+
+                        <button
+                          type="button"
+                          className="mt-2 text-xs font-semibold text-[var(--flow-primary)]"
+                          onClick={() =>
+                            void cardTagsQuery.refetch()
+                          }
+                        >
+                          다시 불러오기
+                        </button>
+                      </div>
+                    ) : cardTags.length === 0 ? (
+                      <p className="rounded-lg bg-[var(--flow-gray-50)] px-4 py-4 text-xs text-[var(--flow-text-muted)]">
+                        아직 등록된 태그가 없습니다.
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {cardTags.map(
+                          (tag) => (
                             <div
                               key={tag.id}
-                              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1.5 pl-2.5 pr-2"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--flow-border)] bg-white py-1.5 pl-2 pr-1.5"
                             >
                               <span
                                 className="h-2.5 w-2.5 rounded-full"
-                                style={{ backgroundColor: tag.color }}
+                                style={{
+                                  backgroundColor:
+                                    tag.color,
+                                }}
                               />
 
-                              <span className="max-w-28 truncate text-xs font-semibold text-slate-700">
+                              <span className="max-w-32 truncate text-[10px] font-semibold text-[var(--flow-text-secondary)]">
                                 {tag.name}
                               </span>
 
@@ -1487,168 +1592,233 @@ export default function CardDetailModal({
                                   type="button"
                                   disabled={isTagBusy}
                                   aria-label={`${tag.name} 태그 제거`}
-                                  className="flex h-5 w-5 items-center justify-center rounded-full text-sm text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+                                  className="flex h-5 w-5 items-center justify-center rounded text-sm text-[var(--flow-text-placeholder)] hover:bg-[var(--flow-danger-soft)] hover:text-[var(--flow-danger)] disabled:opacity-40"
                                   onClick={() =>
-                                    removeTagMutation.mutate(tag.id)
+                                    removeTagMutation.mutate(
+                                      tag.id,
+                                    )
                                   }
                                 >
                                   ×
                                 </button>
                               )}
                             </div>
-                          ))}
-                        </div>
-                      )}
+                          ),
+                        )}
+                      </div>
+                    )}
 
-                      {canEdit && (
-                        <>
-                          <div className="mt-5 border-t border-slate-100 pt-5">
+                    {canEdit && (
+                      <div className="mt-4 space-y-3 rounded-lg bg-[var(--flow-gray-50)] p-3.5">
+                        <div className="flex items-center gap-2">
+                          <div className="min-w-0 flex-1">
                             {boardTagsQuery.isLoading ? (
-                              <p className="text-xs text-slate-400">
+                              <p className="py-2 text-xs text-[var(--flow-text-muted)]">
                                 보드 태그를 불러오는 중...
                               </p>
                             ) : boardTagsQuery.isError ? (
                               <button
                                 type="button"
-                                className="text-xs font-semibold text-blue-600"
-                                onClick={() => void boardTagsQuery.refetch()}
+                                className="text-xs font-semibold text-[var(--flow-primary)]"
+                                onClick={() =>
+                                  void boardTagsQuery.refetch()
+                                }
                               >
                                 보드 태그 다시 불러오기
                               </button>
                             ) : availableTags.length === 0 ? (
-                              <p className="text-xs leading-5 text-slate-400">
-                                추가할 수 있는 기존 태그가 없습니다.
+                              <p className="py-2 text-xs text-[var(--flow-text-muted)]">
+                                추가 가능한 기존 태그가 없습니다.
                               </p>
                             ) : (
-                              <div className="space-y-2">
-                                <select
-                                  value={selectedTagId}
-                                  disabled={isTagBusy}
-                                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                  onChange={(event) =>
-                                    setSelectedTagId(event.target.value)
-                                  }
-                                >
-                                  <option value="">기존 태그 선택</option>
+                              <select
+                                value={selectedTagId}
+                                disabled={isTagBusy}
+                                className="h-9 w-full rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 text-xs text-[var(--flow-text-secondary)] outline-none transition-[border-color,box-shadow] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
+                                onChange={(event) =>
+                                  setSelectedTagId(
+                                    event.target.value,
+                                  )
+                                }
+                              >
+                                <option value="">
+                                  기존 태그 선택
+                                </option>
 
-                                  {availableTags.map((tag) => (
-                                    <option key={tag.id} value={tag.id}>
+                                {availableTags.map(
+                                  (tag) => (
+                                    <option
+                                      key={tag.id}
+                                      value={tag.id}
+                                    >
                                       {tag.name}
                                     </option>
-                                  ))}
-                                </select>
-
-                                <Button
-                                  type="button"
-                                  disabled={!selectedTagId || isTagBusy}
-                                  loading={addTagMutation.isPending}
-                                  onClick={handleAddTag}
-                                >
-                                  태그 추가
-                                </Button>
-                              </div>
+                                  ),
+                                )}
+                              </select>
                             )}
                           </div>
 
-                          <div className="mt-5 rounded-xl bg-slate-50 p-4">
-                            <p className="mb-3 text-xs font-semibold text-slate-600">
-                              새 태그 만들기
-                            </p>
-
-                            <div className="space-y-3">
-                              <Input
-                                label="태그 이름"
-                                value={newTagName}
-                                maxLength={30}
-                                placeholder="예: 긴급"
-                                disabled={isTagBusy}
-                                onChange={(event) =>
-                                  setNewTagName(event.target.value)
+                          {availableTags.length > 0 &&
+                            !boardTagsQuery.isLoading &&
+                            !boardTagsQuery.isError && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={
+                                  !selectedTagId ||
+                                  isTagBusy
                                 }
-                              />
+                                loading={addTagMutation.isPending}
+                                onClick={handleAddTag}
+                              >
+                                추가
+                              </Button>
+                            )}
+                        </div>
 
-                              <div className="flex items-end gap-2">
-                                <label className="flex shrink-0 flex-col gap-1.5 text-xs font-medium text-slate-600">
-                                  색상
-                                  <input
-                                    type="color"
-                                    value={newTagColor}
-                                    disabled={isTagBusy}
-                                    aria-label="새 태그 색상"
-                                    className="h-10 w-14 cursor-pointer rounded-lg border border-slate-300 bg-white p-1"
-                                    onChange={(event) =>
-                                      setNewTagColor(event.target.value)
-                                    }
-                                  />
-                                </label>
+                        <div className="border-t border-[var(--flow-border)] pt-3">
+                          <p className="mb-2 text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                            새 태그 만들기
+                          </p>
 
-                                <div className="flex-1">
-                                  <Button
-                                    type="button"
-                                    disabled={!newTagName.trim() || isTagBusy}
-                                    loading={createTagMutation.isPending}
-                                    onClick={handleCreateTag}
-                                  >
-                                    만들고 추가
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
+                          <div className="grid grid-cols-[1fr_44px_auto] gap-2">
+                            <input
+                              type="text"
+                              value={newTagName}
+                              maxLength={30}
+                              placeholder="예: QA, 보안, 디자인"
+                              disabled={isTagBusy}
+                              className="h-9 min-w-0 rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 text-xs text-[var(--flow-text)] outline-none placeholder:text-[var(--flow-text-placeholder)] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
+                              onChange={(event) =>
+                                setNewTagName(
+                                  event.target.value,
+                                )
+                              }
+                            />
+
+                            <input
+                              type="color"
+                              value={newTagColor}
+                              disabled={isTagBusy}
+                              aria-label="새 태그 색상"
+                              className="h-9 w-11 cursor-pointer rounded-lg border border-[var(--flow-border-strong)] bg-white p-1"
+                              onChange={(event) =>
+                                setNewTagColor(
+                                  event.target.value,
+                                )
+                              }
+                            />
+
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={
+                                !newTagName.trim() ||
+                                isTagBusy
+                              }
+                              loading={createTagMutation.isPending}
+                              onClick={handleCreateTag}
+                            >
+                              만들기
+                            </Button>
                           </div>
-                        </>
-                      )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
 
-                      {!canEdit && (
-                        <p className="mt-5 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-400">
-                          VIEWER 권한에서는 태그를 조회만 할 수 있습니다.
-                        </p>
-                      )}
-                    </div>
-                  </section>
-                </aside>
-              </div>
+                {/* Checklist */}
+                <section className="border-b border-[var(--flow-border)] px-6 py-6">
+                  <div className="mb-4">
+                    <h3 className="text-sm font-bold text-[var(--flow-text)]">
+                      체크리스트
+                    </h3>
 
-              <div className="sticky bottom-0 z-10 -mx-1 mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-1 py-4 backdrop-blur">
+                    <p className="mt-1 text-[11px] text-[var(--flow-text-muted)]">
+                      테스트 절차, 구현 단계, 검토 항목 등 필요한 단계를 관리합니다.
+                    </p>
+                  </div>
+
+                  <ChecklistSection
+                    cardId={card.id}
+                    canEdit={canEdit}
+                  />
+                </section>
+
+                {/* Comments */}
+                <section className="px-6 py-6">
+                  <div className="mb-4">
+                    <h3 className="text-sm font-bold text-[var(--flow-text)]">
+                      댓글
+                    </h3>
+
+                    <p className="mt-1 text-[11px] text-[var(--flow-text-muted)]">
+                      작업에 대한 의견, 리뷰 결과, 진행 상황을 실시간으로 공유합니다.
+                    </p>
+                  </div>
+
+                  <CommentSection
+                    boardId={boardId}
+                    cardId={card.id}
+                    canEdit={canEdit}
+                  />
+                </section>
+              </>
+            )}
+          </div>
+
+          {/* Panel footer */}
+          {!editMode &&
+            card && (
+              <footer className="flex h-[58px] shrink-0 items-center justify-between gap-3 border-t border-[var(--flow-border)] bg-white px-5">
                 <div>
                   {canEdit && (
-                    <Button
+                    <button
                       type="button"
-                      variant="danger"
-                      onClick={() => setDeleteDialogOpen(true)}
+                      className="inline-flex h-8 items-center rounded-lg px-3 text-xs font-semibold text-[var(--flow-danger)] transition-colors hover:bg-[var(--flow-danger-soft)]"
+                      onClick={() =>
+                        setDeleteDialogOpen(true)
+                      }
                     >
-                      카드 삭제
-                    </Button>
+                      작업 삭제
+                    </button>
                   )}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                   <Button
                     type="button"
                     variant="outline"
+                    size="sm"
                     onClick={handleClose}
                   >
                     닫기
                   </Button>
 
                   {canEdit && (
-                    <Button type="button" onClick={startEdit}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={startEdit}
+                    >
                       수정
                     </Button>
                   )}
                 </div>
-              </div>
-            </>
-          )}
-        </div>
-      </Modal>
+              </footer>
+            )}
+        </aside>
+      </div>
 
       <ConfirmDialog
         open={deleteDialogOpen}
-        title="카드 삭제"
+        title="작업 삭제"
         description={
           card
-            ? `'${card.title}' 카드를 삭제합니다. 연결된 데이터도 함께 삭제될 수 있으며 되돌릴 수 없습니다.`
-            : "카드를 삭제합니다. 되돌릴 수 없습니다."
+            ? `'${card.title}' 작업을 삭제합니다. 연결된 데이터도 함께 삭제될 수 있으며 되돌릴 수 없습니다.`
+            : "작업을 삭제합니다. 되돌릴 수 없습니다."
         }
         confirmText="삭제"
         cancelText="취소"
@@ -1656,7 +1826,9 @@ export default function CardDetailModal({
         onConfirm={async () => {
           await deleteMutation.mutateAsync();
         }}
-        onCancel={() => setDeleteDialogOpen(false)}
+        onCancel={() =>
+          setDeleteDialogOpen(false)
+        }
       />
     </>
   );

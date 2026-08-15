@@ -7,22 +7,37 @@ import { cn } from "@/utils/cn";
 interface CardProps {
   children: ReactNode;
   className?: string;
+  padding?:
+    | "none"
+    | "sm"
+    | "md"
+    | "lg";
 }
+
+const paddingClassName = {
+  none: "",
+  sm: "p-4",
+  md: "p-6",
+  lg: "p-7",
+};
 
 export default function Card({
   children,
   className,
+  padding = "md",
 }: CardProps) {
   return (
     <div
       className={cn(
         [
           "w-full",
-          "rounded-xl",
+          "rounded-[var(--flow-radius-lg)]",
           "border border-[var(--flow-border)]",
           "bg-[var(--flow-surface)]",
-          "p-5",
           "shadow-[var(--flow-shadow-xs)]",
+        ],
+        paddingClassName[
+          padding
         ],
         className,
       )}

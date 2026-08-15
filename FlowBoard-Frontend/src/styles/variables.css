@@ -1,22 +1,8 @@
 /*
- * FlowBoard Theme System
+ * FlowBoard Design System
  *
- * 사이트 UI 테마와 카드 태그 색상은 별개다.
- *
- * Theme:
- * - 버튼
- * - 활성 메뉴
- * - 포커스
- * - 선택 상태
- * - 링크
- * - 강조 영역
- *
- * Tag:
- * - Frontend
- * - Backend
- * - Bug
- * - Test
- * - 사용자 정의 태그
+ * Theme color = 사이트 UI 강조색
+ * Tag color   = 작업 분류용 별도 색상
  */
 
 :root,
@@ -70,131 +56,71 @@ html[data-theme="charcoal-lime"] {
 
 :root {
   /*
-   * Primary scale
-   *
-   * 각 테마의 Primary를 기준으로 자동 생성한다.
+   * Theme scale
    */
   --flow-primary-50:
-    color-mix(
-      in srgb,
-      var(--flow-primary) 7%,
-      white
-    );
+    color-mix(in srgb, var(--flow-primary) 6%, white);
 
   --flow-primary-100:
-    color-mix(
-      in srgb,
-      var(--flow-primary) 14%,
-      white
-    );
+    color-mix(in srgb, var(--flow-primary) 12%, white);
 
   --flow-primary-200:
-    color-mix(
-      in srgb,
-      var(--flow-primary) 25%,
-      white
-    );
+    color-mix(in srgb, var(--flow-primary) 22%, white);
 
   --flow-primary-300:
-    color-mix(
-      in srgb,
-      var(--flow-primary) 40%,
-      white
-    );
+    color-mix(in srgb, var(--flow-primary) 36%, white);
 
   --flow-primary-400:
-    color-mix(
-      in srgb,
-      var(--flow-primary) 65%,
-      white
-    );
+    color-mix(in srgb, var(--flow-primary) 58%, white);
 
   --flow-primary-500:
-    color-mix(
-      in srgb,
-      var(--flow-primary) 85%,
-      white
-    );
+    color-mix(in srgb, var(--flow-primary) 82%, white);
 
   --flow-primary-600:
     var(--flow-primary);
 
   --flow-primary-700:
-    color-mix(
-      in srgb,
-      var(--flow-primary) 84%,
-      black
-    );
+    color-mix(in srgb, var(--flow-primary) 84%, black);
 
   --flow-primary-800:
-    color-mix(
-      in srgb,
-      var(--flow-primary) 70%,
-      black
-    );
+    color-mix(in srgb, var(--flow-primary) 70%, black);
 
   --flow-primary-900:
-    color-mix(
-      in srgb,
-      var(--flow-primary) 58%,
-      black
-    );
+    color-mix(in srgb, var(--flow-primary) 58%, black);
 
-  /*
-   * Secondary / Accent
-   */
   --flow-secondary-hover:
-    color-mix(
-      in srgb,
-      var(--flow-secondary) 84%,
-      black
-    );
+    color-mix(in srgb, var(--flow-secondary) 84%, black);
 
   --flow-secondary-soft:
-    color-mix(
-      in srgb,
-      var(--flow-secondary) 8%,
-      white
-    );
+    color-mix(in srgb, var(--flow-secondary) 7%, white);
 
   --flow-accent-hover:
-    color-mix(
-      in srgb,
-      var(--flow-accent) 82%,
-      black
-    );
+    color-mix(in srgb, var(--flow-accent) 82%, black);
 
   --flow-accent-soft:
-    color-mix(
-      in srgb,
-      var(--flow-accent) 10%,
-      white
-    );
+    color-mix(in srgb, var(--flow-accent) 8%, white);
 
   /*
    * Neutral
    */
   --flow-white: #ffffff;
 
-  --flow-gray-25: #fcfcfd;
-  --flow-gray-50: #f8fafc;
-  --flow-gray-100: #f1f5f9;
-  --flow-gray-150: #eaf0f6;
-  --flow-gray-200: #e2e8f0;
-  --flow-gray-300: #cbd5e1;
-  --flow-gray-400: #94a3b8;
-  --flow-gray-500: #64748b;
-  --flow-gray-600: #475569;
-  --flow-gray-700: #334155;
-  --flow-gray-800: #1e293b;
-  --flow-gray-900: #0f172a;
-  --flow-gray-950: #020617;
+  --flow-gray-25: #fdfdfd;
+  --flow-gray-50: #fafbfc;
+  --flow-gray-100: #f5f7fa;
+  --flow-gray-150: #eef1f5;
+  --flow-gray-200: #e6eaf0;
+  --flow-gray-300: #d5dbe4;
+  --flow-gray-400: #a4adba;
+  --flow-gray-500: #747f8f;
+  --flow-gray-600: #556171;
+  --flow-gray-700: #394455;
+  --flow-gray-800: #252e3c;
+  --flow-gray-900: #151c28;
+  --flow-gray-950: #0b1018;
 
   /*
    * Semantic
-   *
-   * 성공/경고/오류는 테마와 관계없이
-   * 의미가 유지되어야 해서 고정한다.
    */
   --flow-success: #10b981;
   --flow-success-dark: #059669;
@@ -209,74 +135,103 @@ html[data-theme="charcoal-lime"] {
   --flow-danger-soft: #fef2f2;
 
   /*
-   * Application surfaces
+   * Surfaces
    *
-   * 테마가 바뀌어도 본문은 깔끔한
-   * White / Gray 계열을 유지한다.
+   * 너무 회색 업무툴처럼 보이지 않도록
+   * 페이지 배경과 카드의 대비를 약하게 잡는다.
    */
-  --flow-background: #f8fafc;
+  --flow-background: #fafbfc;
   --flow-surface: #ffffff;
-  --flow-surface-subtle: #f8fafc;
-  --flow-surface-muted: #f1f5f9;
+  --flow-surface-subtle: #fbfcfd;
+  --flow-surface-muted: #f6f8fa;
 
   /*
    * Text
    */
-  --flow-text: #0f172a;
-  --flow-text-secondary: #475569;
-  --flow-text-muted: #64748b;
-  --flow-text-placeholder: #94a3b8;
-  --flow-text-disabled: #cbd5e1;
+  --flow-text: #18202d;
+  --flow-text-secondary: #4e5969;
+  --flow-text-muted: #7b8492;
+  --flow-text-placeholder: #a5adb8;
+  --flow-text-disabled: #c7ccd4;
 
   /*
    * Border
    */
-  --flow-border: #e2e8f0;
-  --flow-border-strong: #cbd5e1;
+  --flow-border: #e8ebf0;
+  --flow-border-strong: #dce1e8;
 
   /*
    * Focus
    */
   --flow-focus-ring:
-    color-mix(
-      in srgb,
-      var(--flow-primary) 16%,
-      transparent
-    );
+    color-mix(in srgb, var(--flow-primary) 14%, transparent);
 
   /*
    * Radius
+   *
+   * 지나치게 각지지도,
+   * 모바일 앱처럼 둥글지도 않게.
    */
-  --flow-radius-sm: 6px;
-  --flow-radius-md: 8px;
-  --flow-radius-lg: 12px;
-  --flow-radius-xl: 16px;
+  --flow-radius-sm: 8px;
+  --flow-radius-md: 10px;
+  --flow-radius-lg: 14px;
+  --flow-radius-xl: 18px;
+  --flow-radius-2xl: 24px;
 
   /*
-   * Shadow
+   * Shadows
+   *
+   * border로 박스를 나누는 대신
+   * 필요한 곳에서만 아주 약하게 사용.
    */
   --flow-shadow-xs:
-    0 1px 2px rgba(15, 23, 42, 0.04);
+    0 1px 2px rgba(15, 23, 42, 0.025);
 
   --flow-shadow-sm:
-    0 1px 3px rgba(15, 23, 42, 0.06),
-    0 1px 2px rgba(15, 23, 42, 0.04);
+    0 2px 8px rgba(15, 23, 42, 0.045);
 
   --flow-shadow-md:
-    0 6px 18px rgba(15, 23, 42, 0.07),
-    0 2px 6px rgba(15, 23, 42, 0.04);
+    0 10px 30px rgba(15, 23, 42, 0.07);
+
+  --flow-shadow-lg:
+    0 20px 50px rgba(15, 23, 42, 0.1);
 
   --flow-shadow-panel:
-    -8px 0 24px rgba(15, 23, 42, 0.08);
+    -10px 0 35px rgba(15, 23, 42, 0.08);
 
   /*
    * Desktop layout
    */
   --flow-min-width: 1180px;
-  --flow-header-height: 64px;
-  --flow-sidebar-width: 224px;
-  --flow-page-padding: 24px;
-  --flow-content-max-width: 1600px;
+
+  --flow-header-height: 72px;
+  --flow-sidebar-width: 232px;
+
+  --flow-page-padding-x: 44px;
+  --flow-page-padding-y: 40px;
+
+  --flow-content-max-width: 1520px;
+
+  /*
+   * Spacing
+   */
+  --flow-space-xs: 6px;
+  --flow-space-sm: 10px;
+  --flow-space-md: 16px;
+  --flow-space-lg: 24px;
+  --flow-space-xl: 32px;
+  --flow-space-2xl: 44px;
+  --flow-space-3xl: 64px;
+
+  /*
+   * Typography
+   */
+  --flow-font-xs: 12px;
+  --flow-font-sm: 13px;
+  --flow-font-md: 15px;
+  --flow-font-lg: 18px;
+  --flow-font-xl: 24px;
+  --flow-font-2xl: 32px;
 
   /*
    * Transition
@@ -285,7 +240,7 @@ html[data-theme="charcoal-lime"] {
   --flow-transition: 180ms ease;
 
   /*
-   * Legacy compatibility
+   * Compatibility
    */
   --color-primary: var(--flow-primary);
   --color-secondary: var(--flow-secondary);
