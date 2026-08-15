@@ -31,9 +31,7 @@ const isWorkspacePath = (
 ) =>
   pathname === "/mypage" ||
   pathname === "/boards" ||
-  pathname.startsWith(
-    "/boards/",
-  );
+  pathname.startsWith("/boards/");
 
 const getBoardIdFromPath = (
   pathname: string,
@@ -68,11 +66,9 @@ function SidebarIcon({
   type: IconType;
 }) {
   const commonProps = {
-    viewBox:
-      "0 0 24 24",
+    viewBox: "0 0 24 24",
     fill: "none",
-    stroke:
-      "currentColor",
+    stroke: "currentColor",
     strokeWidth: 1.8,
     strokeLinecap:
       "round" as const,
@@ -92,32 +88,31 @@ function SidebarIcon({
             y="4"
             width="6"
             height="6"
-            rx="1"
+            rx="1.5"
           />
           <rect
             x="14"
             y="4"
             width="6"
             height="6"
-            rx="1"
+            rx="1.5"
           />
           <rect
             x="4"
             y="14"
             width="6"
             height="6"
-            rx="1"
+            rx="1.5"
           />
           <rect
             x="14"
             y="14"
             width="6"
             height="6"
-            rx="1"
+            rx="1.5"
           />
         </>
       );
-
       break;
 
     case "user":
@@ -126,12 +121,12 @@ function SidebarIcon({
           <circle
             cx="12"
             cy="8"
-            r="3"
+            r="3.2"
           />
+
           <path d="M5.5 19c.8-3.2 3-5 6.5-5s5.7 1.8 6.5 5" />
         </>
       );
-
       break;
 
     case "kanban":
@@ -144,6 +139,7 @@ function SidebarIcon({
             height="16"
             rx="1.5"
           />
+
           <rect
             x="9.5"
             y="4"
@@ -151,6 +147,7 @@ function SidebarIcon({
             height="11"
             rx="1.5"
           />
+
           <rect
             x="15.5"
             y="4"
@@ -160,7 +157,6 @@ function SidebarIcon({
           />
         </>
       );
-
       break;
 
     case "search":
@@ -171,10 +167,10 @@ function SidebarIcon({
             cy="10.5"
             r="5.5"
           />
+
           <path d="m15 15 4 4" />
         </>
       );
-
       break;
 
     case "whiteboard":
@@ -187,43 +183,19 @@ function SidebarIcon({
             height="13"
             rx="2"
           />
+
           <path d="M8 21h8" />
-          <path d="m9 12 2-2 2 1.5 3-3" />
+          <path d="m8 12 2-2 2 1.5 4-4" />
         </>
       );
-
       break;
 
     case "activity":
       content = (
         <>
-          <path d="M5 6h14" />
-          <path d="M5 12h14" />
-          <path d="M5 18h14" />
-          <circle
-            cx="7"
-            cy="6"
-            r=".75"
-            fill="currentColor"
-            stroke="none"
-          />
-          <circle
-            cx="7"
-            cy="12"
-            r=".75"
-            fill="currentColor"
-            stroke="none"
-          />
-          <circle
-            cx="7"
-            cy="18"
-            r=".75"
-            fill="currentColor"
-            stroke="none"
-          />
+          <path d="M4 12h3l2-5 4 10 2-5h5" />
         </>
       );
-
       break;
   }
 
@@ -231,7 +203,7 @@ function SidebarIcon({
     <svg
       {...commonProps}
       aria-hidden="true"
-      className="h-[18px] w-[18px]"
+      className="h-[19px] w-[19px]"
     >
       {content}
     </svg>
@@ -252,15 +224,15 @@ function SidebarLink({
       }) =>
         cn(
           [
-            "group flex h-9 items-center gap-3",
-            "rounded-lg px-3",
-            "text-sm font-medium",
+            "group flex min-h-11 items-center gap-3",
+            "rounded-xl px-3.5 py-2.5",
+            "text-[13px] font-semibold",
             "transition-colors",
           ],
           isActive
             ? [
                 "bg-[var(--flow-primary-50)]",
-                "text-[var(--flow-primary-700)]",
+                "text-[var(--flow-primary)]",
               ]
             : [
                 "text-[var(--flow-text-secondary)]",
@@ -270,9 +242,11 @@ function SidebarLink({
         )
       }
     >
-      <SidebarIcon
-        type={item.icon}
-      />
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+        <SidebarIcon
+          type={item.icon}
+        />
+      </span>
 
       <span>
         {item.label}
@@ -296,8 +270,7 @@ export default function MainLayout() {
     );
 
   /*
-   * 랜딩 / 로그인 / 회원가입은
-   * 기존 페이지 구조를 그대로 유지.
+   * 홈 / 로그인 / 회원가입
    */
   if (!workspace) {
     return (
@@ -313,24 +286,18 @@ export default function MainLayout() {
     );
   }
 
-  const workspaceItems: SidebarItem[] =
+  const generalItems: SidebarItem[] =
     [
       {
-        label:
-          "내 보드",
-        path:
-          "/boards",
-        icon:
-          "boards",
+        label: "내 보드",
+        path: "/boards",
+        icon: "boards",
         end: true,
       },
       {
-        label:
-          "마이페이지",
-        path:
-          "/mypage",
-        icon:
-          "user",
+        label: "마이페이지",
+        path: "/mypage",
+        icon: "user",
         end: true,
       },
     ];
@@ -339,37 +306,25 @@ export default function MainLayout() {
     boardId
       ? [
           {
-            label:
-              "칸반 보드",
-            path:
-              `/boards/${boardId}`,
-            icon:
-              "kanban",
+            label: "칸반 보드",
+            path: `/boards/${boardId}`,
+            icon: "kanban",
             end: true,
           },
           {
-            label:
-              "카드 검색",
-            path:
-              `/boards/${boardId}/search`,
-            icon:
-              "search",
+            label: "작업 검색",
+            path: `/boards/${boardId}/search`,
+            icon: "search",
           },
           {
-            label:
-              "화이트보드",
-            path:
-              `/boards/${boardId}/whiteboard`,
-            icon:
-              "whiteboard",
+            label: "화이트보드",
+            path: `/boards/${boardId}/whiteboard`,
+            icon: "whiteboard",
           },
           {
-            label:
-              "활동 로그",
-            path:
-              `/boards/${boardId}/activities`,
-            icon:
-              "activity",
+            label: "활동 기록",
+            path: `/boards/${boardId}/activities`,
+            icon: "activity",
           },
         ]
       : [];
@@ -380,14 +335,14 @@ export default function MainLayout() {
 
       <div className="flex min-h-[calc(100vh-var(--flow-header-height))] w-full">
         <aside className="sticky top-[var(--flow-header-height)] h-[calc(100vh-var(--flow-header-height))] w-[var(--flow-sidebar-width)] shrink-0 border-r border-[var(--flow-border)] bg-white">
-          <div className="flex h-full flex-col px-3 py-5">
+          <div className="flex h-full flex-col px-4 py-6">
             <div>
-              <p className="px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--flow-text-placeholder)]">
-                Workspace
+              <p className="mb-3 px-3 text-[12px] font-semibold text-[var(--flow-text-muted)]">
+                둘러보기
               </p>
 
-              <nav className="mt-2 space-y-1">
-                {workspaceItems.map(
+              <nav className="space-y-1.5">
+                {generalItems.map(
                   (item) => (
                     <SidebarLink
                       key={
@@ -403,18 +358,18 @@ export default function MainLayout() {
             </div>
 
             {boardId && (
-              <div className="mt-6 border-t border-[var(--flow-border)] pt-5">
-                <div className="flex items-center justify-between px-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--flow-text-placeholder)]">
-                    Current Board
+              <div className="mt-8 border-t border-[var(--flow-border)] pt-7">
+                <div className="mb-3 flex items-center justify-between px-3">
+                  <p className="text-[12px] font-semibold text-[var(--flow-text-muted)]">
+                    보드 도구
                   </p>
 
-                  <span className="rounded bg-[var(--flow-gray-100)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--flow-text-muted)]">
+                  <span className="text-[10px] font-medium text-[var(--flow-text-placeholder)]">
                     #{boardId}
                   </span>
                 </div>
 
-                <nav className="mt-2 space-y-1">
+                <nav className="space-y-1.5">
                   {boardItems.map(
                     (item) => (
                       <SidebarLink
@@ -431,20 +386,11 @@ export default function MainLayout() {
               </div>
             )}
 
-            <div className="mt-auto border-t border-[var(--flow-border)] pt-4">
-              <div className="rounded-lg bg-[var(--flow-gray-50)] px-3 py-3">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-[var(--flow-success)]" />
-
-                  <p className="text-xs font-semibold text-[var(--flow-text-secondary)]">
-                    FlowBoard
-                  </p>
-                </div>
-
-                <p className="mt-1 text-[10px] leading-4 text-[var(--flow-text-muted)]">
-                  실시간 협업 워크스페이스
-                </p>
-              </div>
+            <div className="mt-auto px-3 pb-2">
+              <p className="text-[11px] leading-5 text-[var(--flow-text-placeholder)]">
+                기획 · 디자인 · 개발 ·
+                테스트 · 보안 · 배포
+              </p>
             </div>
           </div>
         </aside>

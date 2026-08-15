@@ -21,7 +21,7 @@ const getConnectionLabel = (
 ) => {
   switch (state) {
     case "connected":
-      return "실시간 연결";
+      return "실시간 연결됨";
 
     case "connecting":
       return "연결 중";
@@ -122,10 +122,16 @@ export default function BoardToolsLayout() {
     !isValidBoardId
   ) {
     return (
-      <div className="p-6">
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-          <p className="text-sm font-medium text-red-700">
-            보드 정보를 확인할 수 없습니다.
+      <div className="p-10">
+        <div className="max-w-xl rounded-[var(--flow-radius-lg)] bg-white p-7 shadow-[var(--flow-shadow-sm)]">
+          <h1 className="text-lg font-bold text-[var(--flow-text)]">
+            보드를 찾을 수
+            없습니다.
+          </h1>
+
+          <p className="mt-2 text-sm leading-6 text-[var(--flow-text-muted)]">
+            보드 주소를 다시
+            확인해주세요.
           </p>
         </div>
       </div>
@@ -134,11 +140,11 @@ export default function BoardToolsLayout() {
 
   return (
     <div className="flex min-h-full w-full flex-col">
-      <div className="sticky top-[var(--flow-header-height)] z-30 flex h-12 shrink-0 items-center justify-between border-b border-[var(--flow-border)] bg-white px-6">
-        <div className="flex items-center gap-2 text-xs">
+      <div className="sticky top-[var(--flow-header-height)] z-30 flex h-12 shrink-0 items-center justify-between border-b border-[var(--flow-border)] bg-white/95 px-7 backdrop-blur">
+        <div className="flex items-center gap-3 text-[12px]">
           <Link
             to="/boards"
-            className="font-medium text-[var(--flow-text-muted)] transition-colors hover:text-[var(--flow-primary-600)]"
+            className="font-medium text-[var(--flow-text-muted)] transition-colors hover:text-[var(--flow-primary)]"
           >
             내 보드
           </Link>
@@ -152,14 +158,14 @@ export default function BoardToolsLayout() {
           </span>
         </div>
 
-        <div className="flex items-center gap-2 rounded-md border border-[var(--flow-border)] bg-[var(--flow-gray-50)] px-2.5 py-1.5">
+        <div className="flex items-center gap-2">
           <span
-            className={`h-1.5 w-1.5 rounded-full ${getConnectionDotClassName(
+            className={`h-2 w-2 rounded-full ${getConnectionDotClassName(
               connectionState,
             )}`}
           />
 
-          <span className="text-[10px] font-semibold text-[var(--flow-text-muted)]">
+          <span className="text-[11px] font-medium text-[var(--flow-text-muted)]">
             {getConnectionLabel(
               connectionState,
             )}
