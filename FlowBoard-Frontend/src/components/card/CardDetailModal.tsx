@@ -1011,11 +1011,7 @@ export default function CardDetailModal({
     <>
       <Modal
         open={open}
-        title={
-          editMode
-            ? "카드 수정"
-            : "카드 상세"
-        }
+        title={editMode ? "카드 수정" : "카드 상세"}
         size="lg"
         closeOnBackdrop={
           !updateMutation.isPending &&
@@ -1029,20 +1025,20 @@ export default function CardDetailModal({
           !isAssigneeBusy &&
           !isTagBusy
         }
-        onClose={
-          handleClose
-        }
+        onClose={handleClose}
       >
-        <div className="max-h-[75vh] overflow-y-auto pr-1">
+        <div className="max-h-[78vh] overflow-y-auto pr-1">
           {cardQuery.isLoading ? (
-            <div className="flex min-h-52 items-center justify-center">
-              <p className="text-sm text-slate-400">
-                카드 정보를 불러오는 중...
-              </p>
+            <div className="flex min-h-64 items-center justify-center">
+              <div className="text-center">
+                <div className="mx-auto h-9 w-9 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
+                <p className="mt-4 text-sm text-slate-400">
+                  카드 정보를 불러오는 중...
+                </p>
+              </div>
             </div>
-          ) : cardQuery.isError ||
-            !card ? (
-            <div className="py-8">
+          ) : cardQuery.isError || !card ? (
+            <div className="rounded-2xl border border-red-100 bg-red-50/60 px-6 py-10 text-center">
               <h3 className="font-semibold text-slate-900">
                 카드 정보를 불러오지 못했습니다.
               </h3>
@@ -1051,258 +1047,300 @@ export default function CardDetailModal({
                 잠시 후 다시 시도해주세요.
               </p>
 
-              <div className="mt-5">
+              <div className="mt-5 flex justify-center">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() =>
-                    void cardQuery.refetch()
-                  }
+                  onClick={() => void cardQuery.refetch()}
                 >
                   다시 불러오기
                 </Button>
               </div>
             </div>
           ) : editMode ? (
-            <form
-              onSubmit={
-                handleSubmit
-              }
-            >
-              <div className="space-y-5">
-                <Input
-                  label="카드 제목"
-                  value={title}
-                  required
-                  maxLength={100}
-                  helperText={`${title.length}/100`}
-                  disabled={
-                    updateMutation.isPending
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setTitle(
-                      event.target.value,
-                    )
-                  }
-                />
+            <form onSubmit={handleSubmit}>
+              <div className="mx-auto max-w-3xl">
+                <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                      Card #{card.id}
+                    </span>
 
-                <Textarea
-                  id="card-detail-description"
-                  label="설명"
-                  value={
-                    description
-                  }
-                  placeholder="카드 설명을 입력해주세요."
-                  disabled={
-                    updateMutation.isPending
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setDescription(
-                      event.target.value,
-                    )
-                  }
-                />
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 shadow-sm">
+                      Column #{card.columnId}
+                    </span>
+                  </div>
 
-                <Input
-                  label="마감일"
-                  type="datetime-local"
-                  value={
-                    dueDate
-                  }
-                  disabled={
-                    updateMutation.isPending
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setDueDate(
-                      event.target.value,
-                    )
-                  }
-                />
-              </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-500">
+                    카드의 기본 정보만 수정합니다. 담당자와 태그는 상세 화면에서
+                    따로 관리할 수 있습니다.
+                  </p>
+                </div>
 
-              <div className="mt-7 flex justify-end gap-2 border-t border-slate-100 pt-5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={
-                    updateMutation.isPending
-                  }
-                  onClick={
-                    cancelEdit
-                  }
-                >
-                  취소
-                </Button>
+                <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                  <Input
+                    label="카드 제목"
+                    value={title}
+                    required
+                    maxLength={100}
+                    helperText={`${title.length}/100`}
+                    disabled={updateMutation.isPending}
+                    onChange={(event) => setTitle(event.target.value)}
+                  />
 
-                <Button
-                  type="submit"
-                  loading={
-                    updateMutation.isPending
-                  }
-                  disabled={
-                    !title.trim()
-                  }
-                >
-                  저장
-                </Button>
+                  <Textarea
+                    id="card-detail-description"
+                    label="설명"
+                    value={description}
+                    placeholder="카드 설명을 입력해주세요."
+                    disabled={updateMutation.isPending}
+                    onChange={(event) => setDescription(event.target.value)}
+                  />
+
+                  <Input
+                    label="마감일"
+                    type="datetime-local"
+                    value={dueDate}
+                    disabled={updateMutation.isPending}
+                    onChange={(event) => setDueDate(event.target.value)}
+                  />
+                </div>
+
+                <div className="sticky bottom-0 z-10 mt-6 flex justify-end gap-2 border-t border-slate-200 bg-white/95 py-4 backdrop-blur">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={updateMutation.isPending}
+                    onClick={cancelEdit}
+                  >
+                    취소
+                  </Button>
+
+                  <Button
+                    type="submit"
+                    loading={updateMutation.isPending}
+                    disabled={!title.trim()}
+                  >
+                    저장
+                  </Button>
+                </div>
               </div>
             </form>
           ) : (
             <>
-              <div>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-medium text-blue-600">
-                      Card #{card.id}
-                    </p>
+              <header className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                        Card #{card.id}
+                      </span>
 
-                    <h3 className="mt-2 text-2xl font-bold leading-tight text-slate-950">
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500">
+                        Column #{card.columnId}
+                      </span>
+                    </div>
+
+                    <h3 className="mt-4 break-words text-2xl font-bold leading-tight text-slate-950 sm:text-3xl">
                       {card.title}
                     </h3>
                   </div>
 
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
-                    Column #{card.columnId}
-                  </span>
-                </div>
-
-                <div className="mt-6">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    설명
-                  </p>
-
-                  {card.description ? (
-                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
-                      {card.description}
-                    </p>
-                  ) : (
-                    <p className="mt-2 text-sm text-slate-400">
-                      등록된 설명이 없습니다.
-                    </p>
+                  {canEdit && (
+                    <Button type="button" variant="outline" onClick={startEdit}>
+                      수정
+                    </Button>
                   )}
                 </div>
+              </header>
 
-                <div className="mt-7 grid gap-4 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs font-medium text-slate-400">
-                      작성자
-                    </p>
-
-                    <p className="mt-1 text-sm font-semibold text-slate-700">
-                      {card.createdByNickname}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-medium text-slate-400">
-                      마감일
-                    </p>
-
-                    <p className="mt-1 text-sm font-semibold text-slate-700">
-                      {formatDateTime(
-                        card.dueDate,
-                      )}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-medium text-slate-400">
-                      생성일
-                    </p>
-
-                    <p className="mt-1 text-sm text-slate-600">
-                      {formatDateTime(
-                        card.createdAt,
-                      )}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-medium text-slate-400">
-                      최근 수정
-                    </p>
-
-                    <p className="mt-1 text-sm text-slate-600">
-                      {formatDateTime(
-                        card.updatedAt,
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                {/* 담당자 */}
-                <section className="mt-7 rounded-xl border border-slate-200">
-                  <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                    <div>
-                      <h4 className="text-sm font-semibold text-slate-800">
-                        담당자
+              <div className="mt-6 grid gap-6 lg:grid-cols-3">
+                <main className="space-y-6 lg:col-span-2">
+                  <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold text-slate-900">
+                        설명
                       </h4>
-
-                      <p className="mt-0.5 text-xs text-slate-400">
-                        이 카드의 작업 담당자를 지정합니다.
+                      <p className="mt-1 text-xs text-slate-400">
+                        카드 작업에 필요한 내용을 정리합니다.
                       </p>
                     </div>
 
-                    {!assigneesQuery.isLoading && (
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-                        {assignees.length}명
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="p-4">
-                    {assigneesQuery.isLoading ? (
-                      <p className="text-sm text-slate-400">
-                        담당자를 불러오는 중...
+                    {card.description ? (
+                      <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
+                        {card.description}
                       </p>
-                    ) : assigneesQuery.isError ? (
-                      <div>
-                        <p className="text-sm text-red-500">
-                          담당자 정보를 불러오지 못했습니다.
-                        </p>
-
-                        <button
-                          type="button"
-                          className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700"
-                          onClick={() =>
-                            void assigneesQuery.refetch()
-                          }
-                        >
-                          다시 불러오기
-                        </button>
-                      </div>
-                    ) : assignees.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center">
-                        <p className="text-sm text-slate-500">
-                          지정된 담당자가 없습니다.
-                        </p>
-                      </div>
                     ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {assignees.map(
-                          (assignee) => (
+                      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-7 text-center">
+                        <p className="text-sm text-slate-400">
+                          등록된 설명이 없습니다.
+                        </p>
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                    <div className="mb-5">
+                      <h4 className="text-sm font-semibold text-slate-900">
+                        카드 정보
+                      </h4>
+                      <p className="mt-1 text-xs text-slate-400">
+                        작성자와 일정 정보를 한눈에 확인합니다.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-medium text-slate-400">
+                          작성자
+                        </p>
+                        <p className="mt-1.5 text-sm font-semibold text-slate-700">
+                          {card.createdByNickname}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-medium text-slate-400">
+                          마감일
+                        </p>
+                        <p className="mt-1.5 text-sm font-semibold text-slate-700">
+                          {formatDateTime(card.dueDate)}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-medium text-slate-400">
+                          생성일
+                        </p>
+                        <p className="mt-1.5 text-sm text-slate-600">
+                          {formatDateTime(card.createdAt)}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-medium text-slate-400">
+                          최근 수정
+                        </p>
+                        <p className="mt-1.5 text-sm text-slate-600">
+                          {formatDateTime(card.updatedAt)}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900">
+                          체크리스트
+                        </h4>
+                        <p className="mt-1 text-xs text-slate-400">
+                          해야 할 작업을 작은 단계로 나눠 관리합니다.
+                        </p>
+                      </div>
+
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
+                        준비 중
+                      </span>
+                    </div>
+
+                    <div className="mt-5 min-h-28 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center">
+                      <p className="text-sm font-medium text-slate-500">
+                        체크리스트 영역
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-slate-400">
+                        기능 연결 시 이 영역에 체크리스트가 표시됩니다.
+                      </p>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900">
+                          댓글
+                        </h4>
+                        <p className="mt-1 text-xs text-slate-400">
+                          카드에 대한 의견과 진행 상황을 공유합니다.
+                        </p>
+                      </div>
+
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
+                        준비 중
+                      </span>
+                    </div>
+
+                    <div className="mt-5 min-h-32 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-5 py-9 text-center">
+                      <p className="text-sm font-medium text-slate-500">
+                        댓글 영역
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-slate-400">
+                        실시간 댓글 기능 연결 시 이 영역에 표시됩니다.
+                      </p>
+                    </div>
+                  </section>
+                </main>
+
+                <aside className="space-y-6">
+                  <section className="rounded-2xl border border-slate-200 bg-white">
+                    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900">
+                          담당자
+                        </h4>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">
+                          이 카드를 맡은 멤버를 관리합니다.
+                        </p>
+                      </div>
+
+                      {!assigneesQuery.isLoading && (
+                        <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-600">
+                          {assignees.length}명
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="p-5">
+                      {assigneesQuery.isLoading ? (
+                        <p className="py-4 text-center text-sm text-slate-400">
+                          담당자를 불러오는 중...
+                        </p>
+                      ) : assigneesQuery.isError ? (
+                        <div className="rounded-xl bg-red-50 px-4 py-4">
+                          <p className="text-sm text-red-500">
+                            담당자 정보를 불러오지 못했습니다.
+                          </p>
+
+                          <button
+                            type="button"
+                            className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                            onClick={() => void assigneesQuery.refetch()}
+                          >
+                            다시 불러오기
+                          </button>
+                        </div>
+                      ) : assignees.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+                          <p className="text-sm text-slate-500">
+                            지정된 담당자가 없습니다.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {assignees.map((assignee) => (
                             <div
                               key={assignee.id}
-                              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1.5 pl-2 pr-2.5"
+                              className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5"
                             >
-                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">
-                                {assignee.nickname
-                                  .charAt(0)
-                                  .toUpperCase()}
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                                {assignee.nickname.charAt(0).toUpperCase()}
                               </span>
 
-                              <div className="min-w-0">
-                                <p className="max-w-28 truncate text-xs font-semibold text-slate-700">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold text-slate-700">
                                   {assignee.nickname}
                                 </p>
-
-                                <p className="max-w-28 truncate text-[10px] text-slate-400">
+                                <p className="truncate text-[11px] text-slate-400">
                                   {assignee.email}
                                 </p>
                               </div>
@@ -1310,11 +1348,9 @@ export default function CardDetailModal({
                               {canEdit && (
                                 <button
                                   type="button"
-                                  disabled={
-                                    isAssigneeBusy
-                                  }
+                                  disabled={isAssigneeBusy}
                                   aria-label={`${assignee.nickname} 담당자 제거`}
-                                  className="ml-1 flex h-6 w-6 items-center justify-center rounded-full text-sm text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
                                   onClick={() =>
                                     removeAssigneeMutation.mutate(
                                       assignee.userId,
@@ -1325,370 +1361,260 @@ export default function CardDetailModal({
                                 </button>
                               )}
                             </div>
-                          ),
-                        )}
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      )}
 
-                    {canEdit && (
-                      <div className="mt-4 border-t border-slate-100 pt-4">
-                        {membersQuery.isLoading ? (
-                          <p className="text-xs text-slate-400">
-                            보드 멤버를 불러오는 중...
-                          </p>
-                        ) : membersQuery.isError ? (
-                          <button
-                            type="button"
-                            className="text-xs font-semibold text-blue-600"
-                            onClick={() =>
-                              void membersQuery.refetch()
-                            }
-                          >
-                            보드 멤버 다시 불러오기
-                          </button>
-                        ) : availableMembers.length === 0 ? (
-                          <p className="text-xs text-slate-400">
-                            추가할 수 있는 보드 멤버가 없습니다.
-                          </p>
-                        ) : (
-                          <div className="flex flex-col gap-2 sm:flex-row">
-                            <select
-                              value={
-                                selectedAssigneeUserId
-                              }
-                              disabled={
-                                isAssigneeBusy
-                              }
-                              className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700"
-                              onChange={(
-                                event,
-                              ) =>
-                                setSelectedAssigneeUserId(
-                                  event.target.value,
-                                )
-                              }
+                      {canEdit && (
+                        <div className="mt-5 border-t border-slate-100 pt-5">
+                          {membersQuery.isLoading ? (
+                            <p className="text-xs text-slate-400">
+                              보드 멤버를 불러오는 중...
+                            </p>
+                          ) : membersQuery.isError ? (
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-blue-600"
+                              onClick={() => void membersQuery.refetch()}
                             >
-                              <option value="">
-                                담당자를 선택하세요
-                              </option>
+                              보드 멤버 다시 불러오기
+                            </button>
+                          ) : availableMembers.length === 0 ? (
+                            <p className="text-xs leading-5 text-slate-400">
+                              추가할 수 있는 보드 멤버가 없습니다.
+                            </p>
+                          ) : (
+                            <div className="space-y-2">
+                              <select
+                                value={selectedAssigneeUserId}
+                                disabled={isAssigneeBusy}
+                                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                onChange={(event) =>
+                                  setSelectedAssigneeUserId(event.target.value)
+                                }
+                              >
+                                <option value="">담당자를 선택하세요</option>
 
-                              {availableMembers.map(
-                                (member) => (
+                                {availableMembers.map((member) => (
                                   <option
                                     key={member.id}
-                                    value={
-                                      member.userId
-                                    }
+                                    value={member.userId}
                                   >
                                     {member.nickname} ·{" "}
-                                    {getRoleLabel(
-                                      member.role,
-                                    )}
+                                    {getRoleLabel(member.role)}
                                   </option>
-                                ),
-                              )}
-                            </select>
+                                ))}
+                              </select>
 
-                            <Button
-                              type="button"
-                              disabled={
-                                !selectedAssigneeUserId ||
-                                isAssigneeBusy
-                              }
-                              loading={
-                                addAssigneeMutation.isPending
-                              }
-                              onClick={
-                                handleAddAssignee
-                              }
-                            >
-                              담당자 추가
-                            </Button>
-                          </div>
-                        )}
+                              <Button
+                                type="button"
+                                disabled={
+                                  !selectedAssigneeUserId || isAssigneeBusy
+                                }
+                                loading={addAssigneeMutation.isPending}
+                                onClick={handleAddAssignee}
+                              >
+                                담당자 추가
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 bg-white">
+                    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900">
+                          태그
+                        </h4>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">
+                          종류와 우선순위를 구분합니다.
+                        </p>
                       </div>
-                    )}
-                  </div>
-                </section>
 
-                {/* 태그 */}
-                <section className="mt-5 rounded-xl border border-slate-200">
-                  <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                    <div>
-                      <h4 className="text-sm font-semibold text-slate-800">
-                        태그
-                      </h4>
-
-                      <p className="mt-0.5 text-xs text-slate-400">
-                        카드의 종류나 우선순위를 태그로 구분합니다.
-                      </p>
+                      {!cardTagsQuery.isLoading && (
+                        <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">
+                          {cardTags.length}개
+                        </span>
+                      )}
                     </div>
 
-                    {!cardTagsQuery.isLoading && (
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-                        {cardTags.length}개
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="p-4">
-                    {cardTagsQuery.isLoading ? (
-                      <p className="text-sm text-slate-400">
-                        태그를 불러오는 중...
-                      </p>
-                    ) : cardTagsQuery.isError ? (
-                      <div>
-                        <p className="text-sm text-red-500">
-                          카드 태그를 불러오지 못했습니다.
+                    <div className="p-5">
+                      {cardTagsQuery.isLoading ? (
+                        <p className="py-4 text-center text-sm text-slate-400">
+                          태그를 불러오는 중...
                         </p>
+                      ) : cardTagsQuery.isError ? (
+                        <div className="rounded-xl bg-red-50 px-4 py-4">
+                          <p className="text-sm text-red-500">
+                            카드 태그를 불러오지 못했습니다.
+                          </p>
 
-                        <button
-                          type="button"
-                          className="mt-2 text-xs font-semibold text-blue-600"
-                          onClick={() =>
-                            void cardTagsQuery.refetch()
-                          }
-                        >
-                          다시 불러오기
-                        </button>
-                      </div>
-                    ) : cardTags.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center">
-                        <p className="text-sm text-slate-500">
-                          등록된 태그가 없습니다.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {cardTags.map(
-                          (tag) => (
+                          <button
+                            type="button"
+                            className="mt-2 text-xs font-semibold text-blue-600"
+                            onClick={() => void cardTagsQuery.refetch()}
+                          >
+                            다시 불러오기
+                          </button>
+                        </div>
+                      ) : cardTags.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+                          <p className="text-sm text-slate-500">
+                            등록된 태그가 없습니다.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {cardTags.map((tag) => (
                             <div
                               key={tag.id}
                               className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1.5 pl-2.5 pr-2"
                             >
                               <span
                                 className="h-2.5 w-2.5 rounded-full"
-                                style={{
-                                  backgroundColor:
-                                    tag.color,
-                                }}
+                                style={{ backgroundColor: tag.color }}
                               />
 
-                              <span className="text-xs font-semibold text-slate-700">
+                              <span className="max-w-28 truncate text-xs font-semibold text-slate-700">
                                 {tag.name}
                               </span>
 
                               {canEdit && (
                                 <button
                                   type="button"
-                                  disabled={
-                                    isTagBusy
-                                  }
+                                  disabled={isTagBusy}
                                   aria-label={`${tag.name} 태그 제거`}
                                   className="flex h-5 w-5 items-center justify-center rounded-full text-sm text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
                                   onClick={() =>
-                                    removeTagMutation.mutate(
-                                      tag.id,
-                                    )
+                                    removeTagMutation.mutate(tag.id)
                                   }
                                 >
                                   ×
                                 </button>
                               )}
                             </div>
-                          ),
-                        )}
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      )}
 
-                    {canEdit && (
-                      <>
-                        <div className="mt-4 border-t border-slate-100 pt-4">
-                          {boardTagsQuery.isLoading ? (
-                            <p className="text-xs text-slate-400">
-                              보드 태그를 불러오는 중...
-                            </p>
-                          ) : boardTagsQuery.isError ? (
-                            <button
-                              type="button"
-                              className="text-xs font-semibold text-blue-600"
-                              onClick={() =>
-                                void boardTagsQuery.refetch()
-                              }
-                            >
-                              보드 태그 다시 불러오기
-                            </button>
-                          ) : availableTags.length === 0 ? (
-                            <p className="text-xs text-slate-400">
-                              추가할 수 있는 기존 태그가 없습니다.
-                            </p>
-                          ) : (
-                            <div className="flex flex-col gap-2 sm:flex-row">
-                              <select
-                                value={
-                                  selectedTagId
-                                }
-                                disabled={
-                                  isTagBusy
-                                }
-                                className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700"
-                                onChange={(
-                                  event,
-                                ) =>
-                                  setSelectedTagId(
-                                    event.target.value,
-                                  )
-                                }
+                      {canEdit && (
+                        <>
+                          <div className="mt-5 border-t border-slate-100 pt-5">
+                            {boardTagsQuery.isLoading ? (
+                              <p className="text-xs text-slate-400">
+                                보드 태그를 불러오는 중...
+                              </p>
+                            ) : boardTagsQuery.isError ? (
+                              <button
+                                type="button"
+                                className="text-xs font-semibold text-blue-600"
+                                onClick={() => void boardTagsQuery.refetch()}
                               >
-                                <option value="">
-                                  기존 태그 선택
-                                </option>
+                                보드 태그 다시 불러오기
+                              </button>
+                            ) : availableTags.length === 0 ? (
+                              <p className="text-xs leading-5 text-slate-400">
+                                추가할 수 있는 기존 태그가 없습니다.
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                <select
+                                  value={selectedTagId}
+                                  disabled={isTagBusy}
+                                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                  onChange={(event) =>
+                                    setSelectedTagId(event.target.value)
+                                  }
+                                >
+                                  <option value="">기존 태그 선택</option>
 
-                                {availableTags.map(
-                                  (tag) => (
-                                    <option
-                                      key={tag.id}
-                                      value={tag.id}
-                                    >
+                                  {availableTags.map((tag) => (
+                                    <option key={tag.id} value={tag.id}>
                                       {tag.name}
                                     </option>
-                                  ),
-                                )}
-                              </select>
+                                  ))}
+                                </select>
 
-                              <Button
-                                type="button"
-                                disabled={
-                                  !selectedTagId ||
-                                  isTagBusy
-                                }
-                                loading={
-                                  addTagMutation.isPending
-                                }
-                                onClick={
-                                  handleAddTag
-                                }
-                              >
-                                태그 추가
-                              </Button>
-                            </div>
-                          )}
-                        </div>
+                                <Button
+                                  type="button"
+                                  disabled={!selectedTagId || isTagBusy}
+                                  loading={addTagMutation.isPending}
+                                  onClick={handleAddTag}
+                                >
+                                  태그 추가
+                                </Button>
+                              </div>
+                            )}
+                          </div>
 
-                        <div className="mt-4 rounded-lg bg-slate-50 p-3">
-                          <p className="mb-3 text-xs font-semibold text-slate-600">
-                            새 태그 만들기
-                          </p>
+                          <div className="mt-5 rounded-xl bg-slate-50 p-4">
+                            <p className="mb-3 text-xs font-semibold text-slate-600">
+                              새 태그 만들기
+                            </p>
 
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                            <div className="min-w-0 flex-1">
+                            <div className="space-y-3">
                               <Input
                                 label="태그 이름"
-                                value={
-                                  newTagName
-                                }
-                                maxLength={
-                                  30
-                                }
+                                value={newTagName}
+                                maxLength={30}
                                 placeholder="예: 긴급"
-                                disabled={
-                                  isTagBusy
-                                }
-                                onChange={(
-                                  event,
-                                ) =>
-                                  setNewTagName(
-                                    event.target.value,
-                                  )
+                                disabled={isTagBusy}
+                                onChange={(event) =>
+                                  setNewTagName(event.target.value)
                                 }
                               />
+
+                              <div className="flex items-end gap-2">
+                                <label className="flex shrink-0 flex-col gap-1.5 text-xs font-medium text-slate-600">
+                                  색상
+                                  <input
+                                    type="color"
+                                    value={newTagColor}
+                                    disabled={isTagBusy}
+                                    aria-label="새 태그 색상"
+                                    className="h-10 w-14 cursor-pointer rounded-lg border border-slate-300 bg-white p-1"
+                                    onChange={(event) =>
+                                      setNewTagColor(event.target.value)
+                                    }
+                                  />
+                                </label>
+
+                                <div className="flex-1">
+                                  <Button
+                                    type="button"
+                                    disabled={!newTagName.trim() || isTagBusy}
+                                    loading={createTagMutation.isPending}
+                                    onClick={handleCreateTag}
+                                  >
+                                    만들고 추가
+                                  </Button>
+                                </div>
+                              </div>
                             </div>
-
-                            <label className="flex shrink-0 flex-col gap-1.5 text-xs font-medium text-slate-600">
-                              색상
-
-                              <input
-                                type="color"
-                                value={
-                                  newTagColor
-                                }
-                                disabled={
-                                  isTagBusy
-                                }
-                                aria-label="새 태그 색상"
-                                className="h-10 w-14 cursor-pointer rounded-lg border border-slate-300 bg-white p-1"
-                                onChange={(
-                                  event,
-                                ) =>
-                                  setNewTagColor(
-                                    event.target.value,
-                                  )
-                                }
-                              />
-                            </label>
-
-                            <Button
-                              type="button"
-                              disabled={
-                                !newTagName.trim() ||
-                                isTagBusy
-                              }
-                              loading={
-                                createTagMutation.isPending
-                              }
-                              onClick={
-                                handleCreateTag
-                              }
-                            >
-                              만들고 추가
-                            </Button>
                           </div>
-                        </div>
-                      </>
-                    )}
+                        </>
+                      )}
 
-                    {!canEdit && (
-                      <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400">
-                        VIEWER 권한에서는 태그를 조회만 할 수 있습니다.
-                      </p>
-                    )}
-                  </div>
-                </section>
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border border-dashed border-slate-200 px-4 py-4">
-                    <p className="text-sm font-semibold text-slate-700">
-                      체크리스트
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-400">
-                      다음 작업에서 연결
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl border border-dashed border-slate-200 px-4 py-4">
-                    <p className="text-sm font-semibold text-slate-700">
-                      댓글
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-400">
-                      이후 실시간 댓글 연결
-                    </p>
-                  </div>
-                </div>
+                      {!canEdit && (
+                        <p className="mt-5 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-400">
+                          VIEWER 권한에서는 태그를 조회만 할 수 있습니다.
+                        </p>
+                      )}
+                    </div>
+                  </section>
+                </aside>
               </div>
 
-              <div className="mt-7 flex flex-wrap justify-between gap-3 border-t border-slate-100 pt-5">
+              <div className="sticky bottom-0 z-10 -mx-1 mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-1 py-4 backdrop-blur">
                 <div>
                   {canEdit && (
                     <Button
                       type="button"
                       variant="danger"
-                      onClick={() =>
-                        setDeleteDialogOpen(
-                          true,
-                        )
-                      }
+                      onClick={() => setDeleteDialogOpen(true)}
                     >
                       카드 삭제
                     </Button>
@@ -1699,20 +1625,13 @@ export default function CardDetailModal({
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={
-                      handleClose
-                    }
+                    onClick={handleClose}
                   >
                     닫기
                   </Button>
 
                   {canEdit && (
-                    <Button
-                      type="button"
-                      onClick={
-                        startEdit
-                      }
-                    >
+                    <Button type="button" onClick={startEdit}>
                       수정
                     </Button>
                   )}
@@ -1724,9 +1643,7 @@ export default function CardDetailModal({
       </Modal>
 
       <ConfirmDialog
-        open={
-          deleteDialogOpen
-        }
+        open={deleteDialogOpen}
         title="카드 삭제"
         description={
           card
@@ -1735,17 +1652,11 @@ export default function CardDetailModal({
         }
         confirmText="삭제"
         cancelText="취소"
-        loading={
-          deleteMutation.isPending
-        }
+        loading={deleteMutation.isPending}
         onConfirm={async () => {
           await deleteMutation.mutateAsync();
         }}
-        onCancel={() =>
-          setDeleteDialogOpen(
-            false,
-          )
-        }
+        onCancel={() => setDeleteDialogOpen(false)}
       />
     </>
   );
