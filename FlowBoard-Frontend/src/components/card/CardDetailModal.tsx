@@ -1085,34 +1085,34 @@ export default function CardDetailModal({
               ? "작업 수정"
               : "작업 상세"
           }
-          className="absolute inset-y-0 right-0 flex w-[640px] max-w-[calc(100vw-var(--flow-sidebar-width)-48px)] flex-col border-l border-[var(--flow-border)] bg-white shadow-[var(--flow-shadow-panel)]"
+          className="absolute inset-y-0 right-0 flex w-[700px] max-w-[calc(100vw-var(--flow-sidebar-width)-32px)] flex-col border-l border-[var(--flow-border)] bg-white shadow-[var(--flow-shadow-panel)]"
           onMouseDown={(event) =>
             event.stopPropagation()
           }
         >
           {/* Panel header */}
-          <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-[var(--flow-border)] px-5">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="text-xs font-bold text-[var(--flow-primary)]">
+          <header className="flex h-[72px] shrink-0 items-center justify-between gap-5 border-b border-[var(--flow-border)] px-8">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="text-[13px] font-bold text-[var(--flow-primary)]">
                 {editMode
                   ? "작업 수정"
                   : "작업 상세"}
               </span>
 
               {card && (
-                <span className="rounded-md bg-[var(--flow-gray-100)] px-2 py-1 text-[9px] font-semibold text-[var(--flow-text-muted)]">
+                <span className="rounded-lg bg-[var(--flow-gray-100)] px-2.5 py-1.5 text-[10px] font-semibold text-[var(--flow-text-muted)]">
                   #{card.id}
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-3">
               {!editMode &&
                 canEdit &&
                 card && (
                   <button
                     type="button"
-                    className="inline-flex h-8 items-center justify-center rounded-lg px-3 text-xs font-semibold text-[var(--flow-text-secondary)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text)]"
+                    className="inline-flex h-10 items-center justify-center rounded-xl px-4 text-[13px] font-semibold text-[var(--flow-text-secondary)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text)]"
                     onClick={startEdit}
                   >
                     수정
@@ -1122,7 +1122,7 @@ export default function CardDetailModal({
               <button
                 type="button"
                 aria-label="작업 상세 닫기"
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-lg leading-none text-[var(--flow-text-muted)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text)]"
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-xl leading-none text-[var(--flow-text-muted)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text)]"
                 onClick={handleClose}
               >
                 ×
@@ -1133,24 +1133,24 @@ export default function CardDetailModal({
           {/* Panel content */}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {cardQuery.isLoading ? (
-              <div className="flex min-h-[420px] items-center justify-center px-6">
+              <div className="flex min-h-[460px] items-center justify-center px-8">
                 <div className="text-center">
                   <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[var(--flow-gray-200)] border-t-[var(--flow-primary)]" />
 
-                  <p className="mt-4 text-xs text-[var(--flow-text-muted)]">
+                  <p className="mt-4 text-[13px] text-[var(--flow-text-muted)]">
                     작업 정보를 불러오는 중...
                   </p>
                 </div>
               </div>
             ) : cardQuery.isError ||
               !card ? (
-              <div className="p-6">
-                <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-8 text-center">
-                  <h3 className="text-sm font-bold text-[var(--flow-text)]">
+              <div className="p-8">
+                <div className="rounded-[var(--flow-radius-lg)] border border-red-200 bg-red-50 px-6 py-10 text-center">
+                  <h3 className="text-base font-bold text-[var(--flow-text)]">
                     작업 정보를 불러오지 못했습니다.
                   </h3>
 
-                  <p className="mt-2 text-xs text-[var(--flow-text-muted)]">
+                  <p className="mt-2 text-[13px] text-[var(--flow-text-muted)]">
                     잠시 후 다시 시도해주세요.
                   </p>
 
@@ -1171,22 +1171,22 @@ export default function CardDetailModal({
                 className="flex min-h-full flex-col"
                 onSubmit={handleSubmit}
               >
-                <div className="space-y-6 p-6">
+                <div className="space-y-8 p-8">
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--flow-primary)]">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--flow-primary)]">
                       Basic information
                     </p>
 
-                    <h2 className="mt-2 text-lg font-bold tracking-[-0.02em] text-[var(--flow-text)]">
+                    <h2 className="mt-2 text-[22px] font-bold tracking-[-0.02em] text-[var(--flow-text)]">
                       작업 기본 정보 수정
                     </h2>
 
-                    <p className="mt-1.5 text-xs leading-5 text-[var(--flow-text-muted)]">
+                    <p className="mt-2 text-[13px] leading-6 text-[var(--flow-text-muted)]">
                       제목, 설명, 마감일을 수정합니다. 담당자와 태그, 체크리스트는 상세 화면에서 관리합니다.
                     </p>
                   </div>
 
-                  <div className="space-y-5 rounded-xl border border-[var(--flow-border)] bg-white p-5">
+                  <div className="space-y-6 rounded-[var(--flow-radius-lg)] bg-[var(--flow-gray-50)] p-6">
                     <Input
                       label="작업 제목"
                       value={title}
@@ -1228,7 +1228,7 @@ export default function CardDetailModal({
                   </div>
                 </div>
 
-                <div className="sticky bottom-0 mt-auto flex shrink-0 items-center justify-end gap-2 border-t border-[var(--flow-border)] bg-white/95 px-6 py-4 backdrop-blur">
+                <div className="sticky bottom-0 mt-auto flex shrink-0 items-center justify-end gap-3 border-t border-[var(--flow-border)] bg-white/95 px-8 py-5 backdrop-blur">
                   <Button
                     type="button"
                     variant="outline"
@@ -1250,15 +1250,15 @@ export default function CardDetailModal({
             ) : (
               <>
                 {/* Title */}
-                <section className="border-b border-[var(--flow-border)] px-6 py-6">
-                  <div className="flex flex-wrap items-center gap-2">
+                <section className="border-b border-[var(--flow-border)] px-8 py-8">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     {cardTagsQuery.isLoading ? (
                       <span className="h-6 w-20 animate-pulse rounded-md bg-[var(--flow-gray-100)]" />
                     ) : (
                       cardTags.map((tag) => (
                         <span
                           key={tag.id}
-                          className="inline-flex h-6 items-center gap-1.5 rounded-md border border-[var(--flow-border)] bg-white px-2 text-[10px] font-semibold text-[var(--flow-text-secondary)]"
+                          className="inline-flex h-7 items-center gap-2 rounded-lg border border-[var(--flow-border)] bg-white px-2.5 text-[11px] font-semibold text-[var(--flow-text-secondary)]"
                         >
                           <span
                             className="h-2 w-2 rounded-full"
@@ -1275,45 +1275,45 @@ export default function CardDetailModal({
 
                     {cardTags.length === 0 &&
                       !cardTagsQuery.isLoading && (
-                        <span className="rounded-md bg-[var(--flow-gray-100)] px-2 py-1 text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                        <span className="rounded-lg bg-[var(--flow-gray-100)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--flow-text-muted)]">
                           태그 없음
                         </span>
                       )}
                   </div>
 
-                  <h2 className="mt-4 break-words text-[22px] font-bold leading-[1.35] tracking-[-0.025em] text-[var(--flow-text)]">
+                  <h2 className="mt-5 break-words text-[26px] font-bold leading-[1.4] tracking-[-0.025em] text-[var(--flow-text)]">
                     {card.title}
                   </h2>
 
-                  <div className="mt-5 grid grid-cols-3 gap-3">
-                    <div className="rounded-lg bg-[var(--flow-gray-50)] px-3 py-3">
-                      <p className="text-[9px] font-semibold text-[var(--flow-text-placeholder)]">
+                  <div className="mt-7 grid grid-cols-3 gap-4">
+                    <div className="rounded-xl bg-[var(--flow-gray-50)] px-4 py-4">
+                      <p className="text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
                         작성자
                       </p>
 
-                      <p className="mt-1 truncate text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                      <p className="mt-1.5 truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
                         {card.createdByNickname}
                       </p>
                     </div>
 
-                    <div className="rounded-lg bg-[var(--flow-gray-50)] px-3 py-3">
-                      <p className="text-[9px] font-semibold text-[var(--flow-text-placeholder)]">
+                    <div className="rounded-xl bg-[var(--flow-gray-50)] px-4 py-4">
+                      <p className="text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
                         마감일
                       </p>
 
-                      <p className="mt-1 truncate text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                      <p className="mt-1.5 truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
                         {formatDateTime(
                           card.dueDate,
                         )}
                       </p>
                     </div>
 
-                    <div className="rounded-lg bg-[var(--flow-gray-50)] px-3 py-3">
-                      <p className="text-[9px] font-semibold text-[var(--flow-text-placeholder)]">
+                    <div className="rounded-xl bg-[var(--flow-gray-50)] px-4 py-4">
+                      <p className="text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
                         최근 수정
                       </p>
 
-                      <p className="mt-1 truncate text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                      <p className="mt-1.5 truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
                         {formatDateTime(
                           card.updatedAt,
                         )}
@@ -1323,35 +1323,35 @@ export default function CardDetailModal({
                 </section>
 
                 {/* Description */}
-                <section className="border-b border-[var(--flow-border)] px-6 py-6">
-                  <div className="mb-4 flex items-center justify-between gap-4">
+                <section className="border-b border-[var(--flow-border)] px-8 py-8">
+                  <div className="mb-5 flex items-center justify-between gap-5">
                     <div>
-                      <h3 className="text-sm font-bold text-[var(--flow-text)]">
+                      <h3 className="text-base font-bold text-[var(--flow-text)]">
                         설명
                       </h3>
 
-                      <p className="mt-1 text-[11px] text-[var(--flow-text-muted)]">
+                      <p className="mt-1.5 text-[12px] leading-5 text-[var(--flow-text-muted)]">
                         작업의 배경, 요구사항, 참고 내용을 자유롭게 정리합니다.
                       </p>
                     </div>
                   </div>
 
                   {card.description ? (
-                    <div className="rounded-lg bg-[var(--flow-gray-50)] px-4 py-4">
-                      <p className="whitespace-pre-wrap break-words text-[13px] leading-7 text-[var(--flow-text-secondary)]">
+                    <div className="rounded-xl bg-[var(--flow-gray-50)] px-5 py-5">
+                      <p className="whitespace-pre-wrap break-words text-[14px] leading-7 text-[var(--flow-text-secondary)]">
                         {card.description}
                       </p>
                     </div>
                   ) : (
-                    <div className="rounded-lg border border-dashed border-[var(--flow-border-strong)] bg-[var(--flow-gray-50)] px-4 py-6 text-center">
-                      <p className="text-xs text-[var(--flow-text-muted)]">
+                    <div className="rounded-xl border border-dashed border-[var(--flow-border-strong)] bg-[var(--flow-gray-50)] px-5 py-8 text-center">
+                      <p className="text-[13px] text-[var(--flow-text-muted)]">
                         등록된 설명이 없습니다.
                       </p>
 
                       {canEdit && (
                         <button
                           type="button"
-                          className="mt-2 text-xs font-semibold text-[var(--flow-primary)] hover:underline"
+                          className="mt-3 text-[13px] font-semibold text-[var(--flow-primary)] hover:underline"
                           onClick={startEdit}
                         >
                           설명 추가하기
@@ -1362,39 +1362,39 @@ export default function CardDetailModal({
                 </section>
 
                 {/* Assignees */}
-                <section className="border-b border-[var(--flow-border)] px-6 py-6">
-                  <div className="flex items-start justify-between gap-4">
+                <section className="border-b border-[var(--flow-border)] px-8 py-8">
+                  <div className="flex items-start justify-between gap-5">
                     <div>
-                      <h3 className="text-sm font-bold text-[var(--flow-text)]">
+                      <h3 className="text-base font-bold text-[var(--flow-text)]">
                         담당자
                       </h3>
 
-                      <p className="mt-1 text-[11px] text-[var(--flow-text-muted)]">
+                      <p className="mt-1.5 text-[12px] leading-5 text-[var(--flow-text-muted)]">
                         현재 작업을 함께 진행하는 멤버입니다.
                       </p>
                     </div>
 
                     {!assigneesQuery.isLoading && (
-                      <span className="rounded-md bg-[var(--flow-primary-50)] px-2 py-1 text-[10px] font-bold text-[var(--flow-primary)]">
+                      <span className="rounded-lg bg-[var(--flow-primary-50)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--flow-primary)]">
                         {assignees.length}명
                       </span>
                     )}
                   </div>
 
-                  <div className="mt-4">
+                  <div className="mt-5">
                     {assigneesQuery.isLoading ? (
-                      <p className="py-3 text-xs text-[var(--flow-text-muted)]">
+                      <p className="py-3 text-[13px] text-[var(--flow-text-muted)]">
                         담당자를 불러오는 중...
                       </p>
                     ) : assigneesQuery.isError ? (
-                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-                        <p className="text-xs text-red-600">
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+                        <p className="text-[13px] text-red-600">
                           담당자 정보를 불러오지 못했습니다.
                         </p>
 
                         <button
                           type="button"
-                          className="mt-2 text-xs font-semibold text-[var(--flow-primary)]"
+                          className="mt-3 text-[13px] font-semibold text-[var(--flow-primary)]"
                           onClick={() =>
                             void assigneesQuery.refetch()
                           }
@@ -1403,29 +1403,29 @@ export default function CardDetailModal({
                         </button>
                       </div>
                     ) : assignees.length === 0 ? (
-                      <p className="rounded-lg bg-[var(--flow-gray-50)] px-4 py-4 text-xs text-[var(--flow-text-muted)]">
+                      <p className="rounded-xl bg-[var(--flow-gray-50)] px-5 py-5 text-[13px] text-[var(--flow-text-muted)]">
                         아직 지정된 담당자가 없습니다.
                       </p>
                     ) : (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-3">
                         {assignees.map(
                           (assignee) => (
                             <div
                               key={assignee.id}
-                              className="flex items-center gap-2 rounded-lg border border-[var(--flow-border)] bg-white py-1.5 pl-1.5 pr-2"
+                              className="flex items-center gap-3.5 rounded-xl border border-[var(--flow-border)] bg-white py-2 pl-2 pr-3"
                             >
-                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--flow-primary)] text-[10px] font-bold text-white">
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--flow-primary)] text-[11px] font-bold text-white">
                                 {assignee.nickname
                                   .charAt(0)
                                   .toUpperCase()}
                               </span>
 
                               <div className="min-w-0">
-                                <p className="max-w-28 truncate text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                                <p className="max-w-36 truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
                                   {assignee.nickname}
                                 </p>
 
-                                <p className="max-w-28 truncate text-[9px] text-[var(--flow-text-placeholder)]">
+                                <p className="max-w-36 truncate text-[10px] text-[var(--flow-text-placeholder)]">
                                   {assignee.email}
                                 </p>
                               </div>
@@ -1435,7 +1435,7 @@ export default function CardDetailModal({
                                   type="button"
                                   disabled={isAssigneeBusy}
                                   aria-label={`${assignee.nickname} 담당자 제거`}
-                                  className="ml-1 flex h-5 w-5 items-center justify-center rounded text-sm text-[var(--flow-text-placeholder)] transition-colors hover:bg-[var(--flow-danger-soft)] hover:text-[var(--flow-danger)] disabled:opacity-40"
+                                  className="ml-1 flex h-6 w-6 items-center justify-center rounded text-sm text-[var(--flow-text-placeholder)] transition-colors hover:bg-[var(--flow-danger-soft)] hover:text-[var(--flow-danger)] disabled:opacity-40"
                                   onClick={() =>
                                     removeAssigneeMutation.mutate(
                                       assignee.userId,
@@ -1452,10 +1452,10 @@ export default function CardDetailModal({
                     )}
 
                     {canEdit && (
-                      <div className="mt-4 flex items-end gap-2">
+                      <div className="mt-5 flex items-end gap-3">
                         <div className="min-w-0 flex-1">
                           {membersQuery.isLoading ? (
-                            <p className="py-2 text-xs text-[var(--flow-text-muted)]">
+                            <p className="py-2 text-[13px] text-[var(--flow-text-muted)]">
                               보드 멤버를 불러오는 중...
                             </p>
                           ) : membersQuery.isError ? (
@@ -1469,14 +1469,14 @@ export default function CardDetailModal({
                               보드 멤버 다시 불러오기
                             </button>
                           ) : availableMembers.length === 0 ? (
-                            <p className="py-2 text-xs text-[var(--flow-text-muted)]">
+                            <p className="py-2 text-[13px] text-[var(--flow-text-muted)]">
                               추가할 수 있는 멤버가 없습니다.
                             </p>
                           ) : (
                             <select
                               value={selectedAssigneeUserId}
                               disabled={isAssigneeBusy}
-                              className="h-9 w-full rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 text-xs text-[var(--flow-text-secondary)] outline-none transition-[border-color,box-shadow] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
+                              className="h-10 w-full rounded-xl border border-[var(--flow-border-strong)] bg-white px-3.5 text-[13px] text-[var(--flow-text-secondary)] outline-none transition-[border-color,box-shadow] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
                               onChange={(event) =>
                                 setSelectedAssigneeUserId(
                                   event.target.value,
@@ -1523,39 +1523,39 @@ export default function CardDetailModal({
                 </section>
 
                 {/* Tags */}
-                <section className="border-b border-[var(--flow-border)] px-6 py-6">
-                  <div className="flex items-start justify-between gap-4">
+                <section className="border-b border-[var(--flow-border)] px-8 py-8">
+                  <div className="flex items-start justify-between gap-5">
                     <div>
-                      <h3 className="text-sm font-bold text-[var(--flow-text)]">
+                      <h3 className="text-base font-bold text-[var(--flow-text)]">
                         태그
                       </h3>
 
-                      <p className="mt-1 text-[11px] text-[var(--flow-text-muted)]">
+                      <p className="mt-1.5 text-[12px] leading-5 text-[var(--flow-text-muted)]">
                         작업 종류, 분야, 우선순위 등을 자유롭게 구분합니다.
                       </p>
                     </div>
 
                     {!cardTagsQuery.isLoading && (
-                      <span className="rounded-md bg-[var(--flow-gray-100)] px-2 py-1 text-[10px] font-bold text-[var(--flow-text-muted)]">
+                      <span className="rounded-lg bg-[var(--flow-gray-100)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--flow-text-muted)]">
                         {cardTags.length}개
                       </span>
                     )}
                   </div>
 
-                  <div className="mt-4">
+                  <div className="mt-5">
                     {cardTagsQuery.isLoading ? (
-                      <p className="py-3 text-xs text-[var(--flow-text-muted)]">
+                      <p className="py-3 text-[13px] text-[var(--flow-text-muted)]">
                         태그를 불러오는 중...
                       </p>
                     ) : cardTagsQuery.isError ? (
-                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-                        <p className="text-xs text-red-600">
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+                        <p className="text-[13px] text-red-600">
                           태그를 불러오지 못했습니다.
                         </p>
 
                         <button
                           type="button"
-                          className="mt-2 text-xs font-semibold text-[var(--flow-primary)]"
+                          className="mt-3 text-[13px] font-semibold text-[var(--flow-primary)]"
                           onClick={() =>
                             void cardTagsQuery.refetch()
                           }
@@ -1564,26 +1564,26 @@ export default function CardDetailModal({
                         </button>
                       </div>
                     ) : cardTags.length === 0 ? (
-                      <p className="rounded-lg bg-[var(--flow-gray-50)] px-4 py-4 text-xs text-[var(--flow-text-muted)]">
+                      <p className="rounded-xl bg-[var(--flow-gray-50)] px-5 py-5 text-[13px] text-[var(--flow-text-muted)]">
                         아직 등록된 태그가 없습니다.
                       </p>
                     ) : (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-3">
                         {cardTags.map(
                           (tag) => (
                             <div
                               key={tag.id}
-                              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--flow-border)] bg-white py-1.5 pl-2 pr-1.5"
+                              className="inline-flex items-center gap-3 rounded-md border border-[var(--flow-border)] bg-white py-1.5 pl-2 pr-1.5"
                             >
                               <span
-                                className="h-2.5 w-2.5 rounded-full"
+                                className="h-3 w-3 rounded-full"
                                 style={{
                                   backgroundColor:
                                     tag.color,
                                 }}
                               />
 
-                              <span className="max-w-32 truncate text-[10px] font-semibold text-[var(--flow-text-secondary)]">
+                              <span className="max-w-40 truncate text-[11px] font-semibold text-[var(--flow-text-secondary)]">
                                 {tag.name}
                               </span>
 
@@ -1592,7 +1592,7 @@ export default function CardDetailModal({
                                   type="button"
                                   disabled={isTagBusy}
                                   aria-label={`${tag.name} 태그 제거`}
-                                  className="flex h-5 w-5 items-center justify-center rounded text-sm text-[var(--flow-text-placeholder)] hover:bg-[var(--flow-danger-soft)] hover:text-[var(--flow-danger)] disabled:opacity-40"
+                                  className="flex h-6 w-6 items-center justify-center rounded text-sm text-[var(--flow-text-placeholder)] hover:bg-[var(--flow-danger-soft)] hover:text-[var(--flow-danger)] disabled:opacity-40"
                                   onClick={() =>
                                     removeTagMutation.mutate(
                                       tag.id,
@@ -1609,11 +1609,11 @@ export default function CardDetailModal({
                     )}
 
                     {canEdit && (
-                      <div className="mt-4 space-y-3 rounded-lg bg-[var(--flow-gray-50)] p-3.5">
-                        <div className="flex items-center gap-2">
+                      <div className="mt-5 space-y-4 rounded-xl bg-[var(--flow-gray-50)] p-5">
+                        <div className="flex items-center gap-3">
                           <div className="min-w-0 flex-1">
                             {boardTagsQuery.isLoading ? (
-                              <p className="py-2 text-xs text-[var(--flow-text-muted)]">
+                              <p className="py-2 text-[13px] text-[var(--flow-text-muted)]">
                                 보드 태그를 불러오는 중...
                               </p>
                             ) : boardTagsQuery.isError ? (
@@ -1627,14 +1627,14 @@ export default function CardDetailModal({
                                 보드 태그 다시 불러오기
                               </button>
                             ) : availableTags.length === 0 ? (
-                              <p className="py-2 text-xs text-[var(--flow-text-muted)]">
+                              <p className="py-2 text-[13px] text-[var(--flow-text-muted)]">
                                 추가 가능한 기존 태그가 없습니다.
                               </p>
                             ) : (
                               <select
                                 value={selectedTagId}
                                 disabled={isTagBusy}
-                                className="h-9 w-full rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 text-xs text-[var(--flow-text-secondary)] outline-none transition-[border-color,box-shadow] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
+                                className="h-10 w-full rounded-xl border border-[var(--flow-border-strong)] bg-white px-3.5 text-[13px] text-[var(--flow-text-secondary)] outline-none transition-[border-color,box-shadow] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
                                 onChange={(event) =>
                                   setSelectedTagId(
                                     event.target.value,
@@ -1677,19 +1677,19 @@ export default function CardDetailModal({
                             )}
                         </div>
 
-                        <div className="border-t border-[var(--flow-border)] pt-3">
-                          <p className="mb-2 text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                        <div className="border-t border-[var(--flow-border)] pt-4">
+                          <p className="mb-3 text-[11px] font-semibold text-[var(--flow-text-muted)]">
                             새 태그 만들기
                           </p>
 
-                          <div className="grid grid-cols-[1fr_44px_auto] gap-2">
+                          <div className="grid grid-cols-[1fr_48px_auto] gap-3">
                             <input
                               type="text"
                               value={newTagName}
                               maxLength={30}
                               placeholder="예: QA, 보안, 디자인"
                               disabled={isTagBusy}
-                              className="h-9 min-w-0 rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 text-xs text-[var(--flow-text)] outline-none placeholder:text-[var(--flow-text-placeholder)] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
+                              className="h-10 min-w-0 rounded-xl border border-[var(--flow-border-strong)] bg-white px-3.5 text-[13px] text-[var(--flow-text)] outline-none placeholder:text-[var(--flow-text-placeholder)] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
                               onChange={(event) =>
                                 setNewTagName(
                                   event.target.value,
@@ -1702,7 +1702,7 @@ export default function CardDetailModal({
                               value={newTagColor}
                               disabled={isTagBusy}
                               aria-label="새 태그 색상"
-                              className="h-9 w-11 cursor-pointer rounded-lg border border-[var(--flow-border-strong)] bg-white p-1"
+                              className="h-10 w-12 cursor-pointer rounded-xl border border-[var(--flow-border-strong)] bg-white p-1"
                               onChange={(event) =>
                                 setNewTagColor(
                                   event.target.value,
@@ -1730,13 +1730,13 @@ export default function CardDetailModal({
                 </section>
 
                 {/* Checklist */}
-                <section className="border-b border-[var(--flow-border)] px-6 py-6">
-                  <div className="mb-4">
-                    <h3 className="text-sm font-bold text-[var(--flow-text)]">
+                <section className="border-b border-[var(--flow-border)] px-8 py-8">
+                  <div className="mb-5">
+                    <h3 className="text-base font-bold text-[var(--flow-text)]">
                       체크리스트
                     </h3>
 
-                    <p className="mt-1 text-[11px] text-[var(--flow-text-muted)]">
+                    <p className="mt-1.5 text-[12px] leading-5 text-[var(--flow-text-muted)]">
                       테스트 절차, 구현 단계, 검토 항목 등 필요한 단계를 관리합니다.
                     </p>
                   </div>
@@ -1749,12 +1749,12 @@ export default function CardDetailModal({
 
                 {/* Comments */}
                 <section className="px-6 py-6">
-                  <div className="mb-4">
-                    <h3 className="text-sm font-bold text-[var(--flow-text)]">
+                  <div className="mb-5">
+                    <h3 className="text-base font-bold text-[var(--flow-text)]">
                       댓글
                     </h3>
 
-                    <p className="mt-1 text-[11px] text-[var(--flow-text-muted)]">
+                    <p className="mt-1.5 text-[12px] leading-5 text-[var(--flow-text-muted)]">
                       작업에 대한 의견, 리뷰 결과, 진행 상황을 실시간으로 공유합니다.
                     </p>
                   </div>
@@ -1772,12 +1772,12 @@ export default function CardDetailModal({
           {/* Panel footer */}
           {!editMode &&
             card && (
-              <footer className="flex h-[58px] shrink-0 items-center justify-between gap-3 border-t border-[var(--flow-border)] bg-white px-5">
+              <footer className="flex h-[72px] shrink-0 items-center justify-between gap-4 border-t border-[var(--flow-border)] bg-white px-8">
                 <div>
                   {canEdit && (
                     <button
                       type="button"
-                      className="inline-flex h-8 items-center rounded-lg px-3 text-xs font-semibold text-[var(--flow-danger)] transition-colors hover:bg-[var(--flow-danger-soft)]"
+                      className="inline-flex h-10 items-center rounded-xl px-4 text-[13px] font-semibold text-[var(--flow-danger)] transition-colors hover:bg-[var(--flow-danger-soft)]"
                       onClick={() =>
                         setDeleteDialogOpen(true)
                       }
@@ -1787,7 +1787,7 @@ export default function CardDetailModal({
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <Button
                     type="button"
                     variant="outline"

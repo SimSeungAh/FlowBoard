@@ -31,7 +31,9 @@ const isWorkspacePath = (
 ) =>
   pathname === "/mypage" ||
   pathname === "/boards" ||
-  pathname.startsWith("/boards/");
+  pathname.startsWith(
+    "/boards/",
+  );
 
 const getBoardIdFromPath = (
   pathname: string,
@@ -66,9 +68,11 @@ function SidebarIcon({
   type: IconType;
 }) {
   const commonProps = {
-    viewBox: "0 0 24 24",
+    viewBox:
+      "0 0 24 24",
     fill: "none",
-    stroke: "currentColor",
+    stroke:
+      "currentColor",
     strokeWidth: 1.8,
     strokeLinecap:
       "round" as const,
@@ -90,6 +94,7 @@ function SidebarIcon({
             height="6"
             rx="1.5"
           />
+
           <rect
             x="14"
             y="4"
@@ -97,6 +102,7 @@ function SidebarIcon({
             height="6"
             rx="1.5"
           />
+
           <rect
             x="4"
             y="14"
@@ -104,6 +110,7 @@ function SidebarIcon({
             height="6"
             rx="1.5"
           />
+
           <rect
             x="14"
             y="14"
@@ -113,6 +120,7 @@ function SidebarIcon({
           />
         </>
       );
+
       break;
 
     case "user":
@@ -127,6 +135,7 @@ function SidebarIcon({
           <path d="M5.5 19c.8-3.2 3-5 6.5-5s5.7 1.8 6.5 5" />
         </>
       );
+
       break;
 
     case "kanban":
@@ -157,6 +166,7 @@ function SidebarIcon({
           />
         </>
       );
+
       break;
 
     case "search":
@@ -171,6 +181,7 @@ function SidebarIcon({
           <path d="m15 15 4 4" />
         </>
       );
+
       break;
 
     case "whiteboard":
@@ -185,17 +196,18 @@ function SidebarIcon({
           />
 
           <path d="M8 21h8" />
+
           <path d="m8 12 2-2 2 1.5 4-4" />
         </>
       );
+
       break;
 
     case "activity":
       content = (
-        <>
-          <path d="M4 12h3l2-5 4 10 2-5h5" />
-        </>
+        <path d="M4 12h3l2-5 4 10 2-5h5" />
       );
+
       break;
   }
 
@@ -225,7 +237,7 @@ function SidebarLink({
         cn(
           [
             "group flex min-h-11 items-center gap-3",
-            "rounded-xl px-3.5 py-2.5",
+            "rounded-xl px-3 py-2.5",
             "text-[13px] font-semibold",
             "transition-colors",
           ],
@@ -248,7 +260,7 @@ function SidebarLink({
         />
       </span>
 
-      <span>
+      <span className="whitespace-nowrap">
         {item.label}
       </span>
     </NavLink>
@@ -289,15 +301,21 @@ export default function MainLayout() {
   const generalItems: SidebarItem[] =
     [
       {
-        label: "내 보드",
-        path: "/boards",
-        icon: "boards",
+        label:
+          "내 보드",
+        path:
+          "/boards",
+        icon:
+          "boards",
         end: true,
       },
       {
-        label: "마이페이지",
-        path: "/mypage",
-        icon: "user",
+        label:
+          "마이페이지",
+        path:
+          "/mypage",
+        icon:
+          "user",
         end: true,
       },
     ];
@@ -306,25 +324,37 @@ export default function MainLayout() {
     boardId
       ? [
           {
-            label: "칸반 보드",
-            path: `/boards/${boardId}`,
-            icon: "kanban",
+            label:
+              "칸반 보드",
+            path:
+              `/boards/${boardId}`,
+            icon:
+              "kanban",
             end: true,
           },
           {
-            label: "작업 검색",
-            path: `/boards/${boardId}/search`,
-            icon: "search",
+            label:
+              "작업 검색",
+            path:
+              `/boards/${boardId}/search`,
+            icon:
+              "search",
           },
           {
-            label: "화이트보드",
-            path: `/boards/${boardId}/whiteboard`,
-            icon: "whiteboard",
+            label:
+              "화이트보드",
+            path:
+              `/boards/${boardId}/whiteboard`,
+            icon:
+              "whiteboard",
           },
           {
-            label: "활동 기록",
-            path: `/boards/${boardId}/activities`,
-            icon: "activity",
+            label:
+              "활동 기록",
+            path:
+              `/boards/${boardId}/activities`,
+            icon:
+              "activity",
           },
         ]
       : [];
@@ -387,10 +417,19 @@ export default function MainLayout() {
             )}
 
             <div className="mt-auto px-3 pb-2">
-              <p className="text-[11px] leading-5 text-[var(--flow-text-placeholder)]">
-                기획 · 디자인 · 개발 ·
-                테스트 · 보안 · 배포
-              </p>
+              <div className="rounded-xl bg-[var(--flow-gray-50)] px-3 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--flow-success)]" />
+
+                  <span className="whitespace-nowrap text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                    FlowBoard
+                  </span>
+                </div>
+
+                <p className="mt-1 whitespace-nowrap text-[10px] text-[var(--flow-text-placeholder)]">
+                  개발 협업 공간
+                </p>
+              </div>
             </div>
           </div>
         </aside>

@@ -59,46 +59,98 @@ html[data-theme="charcoal-lime"] {
    * Theme scale
    */
   --flow-primary-50:
-    color-mix(in srgb, var(--flow-primary) 6%, white);
+    color-mix(
+      in srgb,
+      var(--flow-primary) 6%,
+      white
+    );
 
   --flow-primary-100:
-    color-mix(in srgb, var(--flow-primary) 12%, white);
+    color-mix(
+      in srgb,
+      var(--flow-primary) 12%,
+      white
+    );
 
   --flow-primary-200:
-    color-mix(in srgb, var(--flow-primary) 22%, white);
+    color-mix(
+      in srgb,
+      var(--flow-primary) 22%,
+      white
+    );
 
   --flow-primary-300:
-    color-mix(in srgb, var(--flow-primary) 36%, white);
+    color-mix(
+      in srgb,
+      var(--flow-primary) 36%,
+      white
+    );
 
   --flow-primary-400:
-    color-mix(in srgb, var(--flow-primary) 58%, white);
+    color-mix(
+      in srgb,
+      var(--flow-primary) 58%,
+      white
+    );
 
   --flow-primary-500:
-    color-mix(in srgb, var(--flow-primary) 82%, white);
+    color-mix(
+      in srgb,
+      var(--flow-primary) 82%,
+      white
+    );
 
   --flow-primary-600:
     var(--flow-primary);
 
   --flow-primary-700:
-    color-mix(in srgb, var(--flow-primary) 84%, black);
+    color-mix(
+      in srgb,
+      var(--flow-primary) 84%,
+      black
+    );
 
   --flow-primary-800:
-    color-mix(in srgb, var(--flow-primary) 70%, black);
+    color-mix(
+      in srgb,
+      var(--flow-primary) 70%,
+      black
+    );
 
   --flow-primary-900:
-    color-mix(in srgb, var(--flow-primary) 58%, black);
+    color-mix(
+      in srgb,
+      var(--flow-primary) 58%,
+      black
+    );
 
   --flow-secondary-hover:
-    color-mix(in srgb, var(--flow-secondary) 84%, black);
+    color-mix(
+      in srgb,
+      var(--flow-secondary) 84%,
+      black
+    );
 
   --flow-secondary-soft:
-    color-mix(in srgb, var(--flow-secondary) 7%, white);
+    color-mix(
+      in srgb,
+      var(--flow-secondary) 7%,
+      white
+    );
 
   --flow-accent-hover:
-    color-mix(in srgb, var(--flow-accent) 82%, black);
+    color-mix(
+      in srgb,
+      var(--flow-accent) 82%,
+      black
+    );
 
   --flow-accent-soft:
-    color-mix(in srgb, var(--flow-accent) 8%, white);
+    color-mix(
+      in srgb,
+      var(--flow-accent) 8%,
+      white
+    );
 
   /*
    * Neutral
@@ -135,10 +187,7 @@ html[data-theme="charcoal-lime"] {
   --flow-danger-soft: #fef2f2;
 
   /*
-   * Surfaces
-   *
-   * 너무 회색 업무툴처럼 보이지 않도록
-   * 페이지 배경과 카드의 대비를 약하게 잡는다.
+   * Surface
    */
   --flow-background: #fafbfc;
   --flow-surface: #ffffff;
@@ -164,13 +213,14 @@ html[data-theme="charcoal-lime"] {
    * Focus
    */
   --flow-focus-ring:
-    color-mix(in srgb, var(--flow-primary) 14%, transparent);
+    color-mix(
+      in srgb,
+      var(--flow-primary) 14%,
+      transparent
+    );
 
   /*
    * Radius
-   *
-   * 지나치게 각지지도,
-   * 모바일 앱처럼 둥글지도 않게.
    */
   --flow-radius-sm: 8px;
   --flow-radius-md: 10px;
@@ -179,10 +229,7 @@ html[data-theme="charcoal-lime"] {
   --flow-radius-2xl: 24px;
 
   /*
-   * Shadows
-   *
-   * border로 박스를 나누는 대신
-   * 필요한 곳에서만 아주 약하게 사용.
+   * Shadow
    */
   --flow-shadow-xs:
     0 1px 2px rgba(15, 23, 42, 0.025);
@@ -201,8 +248,11 @@ html[data-theme="charcoal-lime"] {
 
   /*
    * Desktop layout
+   *
+   * 모바일 화면은 지원하지 않지만
+   * 일반적인 노트북 크기까지 대응한다.
    */
-  --flow-min-width: 1180px;
+  --flow-min-width: 1024px;
 
   --flow-header-height: 72px;
   --flow-sidebar-width: 232px;

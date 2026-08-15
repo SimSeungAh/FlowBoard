@@ -113,7 +113,7 @@ function SearchIcon() {
     <svg
       viewBox="0 0 24 24"
       aria-hidden="true"
-      className="h-4 w-4"
+      className="h-[18px] w-[18px]"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
@@ -136,13 +136,14 @@ function PlusIcon() {
     <svg
       viewBox="0 0 24 24"
       aria-hidden="true"
-      className="h-4 w-4"
+      className="h-[18px] w-[18px]"
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
     >
       <path d="M12 5v14" />
+
       <path d="M5 12h14" />
     </svg>
   );
@@ -192,14 +193,15 @@ function ArrowIcon() {
     <svg
       viewBox="0 0 24 24"
       aria-hidden="true"
-      className="h-4 w-4"
+      className="h-[18px] w-[18px]"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
     >
       <path d="M5 12h14" />
+
       <path d="m14 7 5 5-5 5" />
     </svg>
   );
@@ -281,12 +283,13 @@ export default function BoardsPage() {
               board.description ??
                 "",
               board.ownerNickname,
-            ].some((value) =>
-              value
-                .toLowerCase()
-                .includes(
-                  keyword,
-                ),
+            ].some(
+              (value) =>
+                value
+                  .toLowerCase()
+                  .includes(
+                    keyword,
+                  ),
             );
           },
         )
@@ -353,9 +356,11 @@ export default function BoardsPage() {
   const openCreateModal =
     () => {
       setTitle("");
+
       setDescription(
         "",
       );
+
       setCreateOpen(
         true,
       );
@@ -399,6 +404,7 @@ export default function BoardsPage() {
       {
         title:
           trimmedTitle,
+
         description:
           trimmedDescription ||
           null,
@@ -426,7 +432,7 @@ export default function BoardsPage() {
             handleSubmit
           }
         >
-          <div className="space-y-5">
+          <div className="space-y-7">
             <Input
               label="보드 제목"
               value={title}
@@ -436,6 +442,7 @@ export default function BoardsPage() {
                 100
               }
               placeholder="예: FlowBoard 개발"
+              helperText={`${title.length}/100`}
               disabled={
                 createMutation.isPending
               }
@@ -460,7 +467,7 @@ export default function BoardsPage() {
                 maxLength={
                   500
                 }
-                placeholder="프로젝트나 보드의 목적을 간단히 적어주세요."
+                placeholder="프로젝트의 목적이나 함께 진행할 내용을 간단히 적어주세요."
                 disabled={
                   createMutation.isPending
                 }
@@ -475,7 +482,7 @@ export default function BoardsPage() {
                 }
               />
 
-              <p className="mt-1.5 text-right text-[11px] text-[var(--flow-text-placeholder)]">
+              <p className="mt-2 text-right text-xs text-[var(--flow-text-placeholder)]">
                 {
                   description.length
                 }
@@ -484,7 +491,7 @@ export default function BoardsPage() {
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end gap-2 border-t border-[var(--flow-border)] pt-4">
+          <div className="mt-8 flex justify-end gap-3 border-t border-[var(--flow-border)] pt-6">
             <Button
               type="button"
               variant="outline"
@@ -513,18 +520,18 @@ export default function BoardsPage() {
         </form>
       </Modal>
 
-      <section className="mx-auto w-full max-w-[1440px] px-8 py-8">
-        {/* 상단 */}
-        <div className="flex items-end justify-between gap-8">
+      <section className="flow-page">
+        {/* Page header */}
+        <div className="flow-page-header">
           <div>
-            <h1 className="text-[26px] font-bold tracking-[-0.03em] text-[var(--flow-text)]">
+            <h1 className="flow-page-title">
               내 보드
             </h1>
 
-            <p className="mt-1.5 text-sm text-[var(--flow-text-muted)]">
+            <p className="flow-page-description">
               참여 중인 프로젝트를
-              찾고 바로 작업을
-              시작하세요.
+              확인하고 필요한 보드로
+              바로 이동하세요.
             </p>
           </div>
 
@@ -541,190 +548,214 @@ export default function BoardsPage() {
           </Button>
         </div>
 
-        {/* 검색 / 필터 */}
-        <div className="mt-7 flex items-center justify-between gap-6 border-b border-[var(--flow-border)] pb-5">
-          <div className="flex items-center gap-2">
-            {filterItems.map(
-              (item) => {
-                const active =
-                  item.value ===
-                  filter;
+        {/* Filter & Search */}
+        <section className="flow-section">
+          <div className="flow-board-toolbar">
+            <div className="flow-board-filters">
+              {filterItems.map(
+                (item) => {
+                  const active =
+                    item.value ===
+                    filter;
 
-                return (
-                  <button
-                    key={
-                      item.value
-                    }
-                    type="button"
-                    onClick={() =>
-                      setFilter(
-                        item.value,
-                      )
-                    }
-                    className={[
-                      "h-9 rounded-lg px-3.5 text-xs font-semibold transition-colors",
-                      active
-                        ? "bg-[var(--flow-primary-50)] text-[var(--flow-primary)]"
-                        : "text-[var(--flow-text-muted)] hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text)]",
-                    ].join(
-                      " ",
-                    )}
-                  >
-                    {
-                      item.label
-                    }
-                  </button>
-                );
-              },
-            )}
+                  return (
+                    <button
+                      key={
+                        item.value
+                      }
+                      type="button"
+                      onClick={() =>
+                        setFilter(
+                          item.value,
+                        )
+                      }
+                      className={[
+                        "min-h-10 whitespace-nowrap rounded-xl px-4 py-2",
+                        "text-[13px] font-semibold",
+                        "transition-colors",
+                        active
+                          ? "bg-[var(--flow-primary-50)] text-[var(--flow-primary)]"
+                          : "text-[var(--flow-text-muted)] hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text)]",
+                      ].join(
+                        " ",
+                      )}
+                    >
+                      {
+                        item.label
+                      }
+                    </button>
+                  );
+                },
+              )}
+            </div>
+
+            <div className="flow-board-search relative">
+              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--flow-text-placeholder)]">
+                <SearchIcon />
+              </span>
+
+              <input
+                type="search"
+                value={
+                  searchKeyword
+                }
+                placeholder="제목, 설명, 소유자로 검색"
+                className="h-11 w-full rounded-xl border border-[var(--flow-border-strong)] bg-white pl-11 pr-4 text-[13px] text-[var(--flow-text)] outline-none transition-[border-color,box-shadow] placeholder:text-[var(--flow-text-placeholder)] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
+                onChange={(
+                  event,
+                ) =>
+                  setSearchKeyword(
+                    event
+                      .target
+                      .value,
+                  )
+                }
+              />
+            </div>
           </div>
 
-          <div className="relative w-[320px]">
-            <span className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-[var(--flow-text-placeholder)]">
-              <SearchIcon />
-            </span>
+          <div className="mt-7 h-px bg-[var(--flow-border)]" />
+        </section>
 
-            <input
-              type="search"
-              value={
-                searchKeyword
-              }
-              placeholder="보드 검색"
-              className="h-9 w-full rounded-lg border border-[var(--flow-border-strong)] bg-white pl-9 pr-3 text-sm text-[var(--flow-text)] outline-none transition-[border-color,box-shadow] placeholder:text-[var(--flow-text-placeholder)] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
-              onChange={(
-                event,
-              ) =>
-                setSearchKeyword(
-                  event
-                    .target
-                    .value,
-                )
-              }
-            />
-          </div>
-        </div>
-
-        {/* 상태 */}
+        {/* Loading */}
         {isLoading ? (
-          <div className="mt-6 grid grid-cols-3 gap-5">
-            {Array.from({
-              length: 6,
-            }).map(
-              (
-                _,
-                index,
-              ) => (
-                <div
-                  key={
-                    index
-                  }
-                  className="rounded-xl border border-[var(--flow-border)] bg-white p-5"
-                >
-                  <div className="flex justify-between">
-                    <Skeleton className="h-5 w-16" />
-                    <Skeleton className="h-4 w-12" />
+          <section className="flow-section">
+            <div className="flow-board-grid">
+              {Array.from({
+                length: 4,
+              }).map(
+                (
+                  _,
+                  index,
+                ) => (
+                  <div
+                    key={
+                      index
+                    }
+                    className="min-h-[220px] rounded-[var(--flow-radius-lg)] border border-[var(--flow-border)] bg-white p-7"
+                  >
+                    <div className="flex items-center justify-between">
+                      <Skeleton className="h-10 w-28" />
+
+                      <Skeleton className="h-4 w-14" />
+                    </div>
+
+                    <Skeleton className="mt-6 h-6 w-1/2" />
+
+                    <Skeleton className="mt-3 h-4 w-full" />
+
+                    <Skeleton className="mt-2 h-4 w-4/5" />
+
+                    <div className="mt-8 flex items-center justify-between">
+                      <Skeleton className="h-4 w-48" />
+
+                      <Skeleton className="h-10 w-32" />
+                    </div>
                   </div>
-
-                  <Skeleton className="mt-5 h-6 w-2/3" />
-
-                  <Skeleton className="mt-3 h-4 w-full" />
-
-                  <Skeleton className="mt-2 h-4 w-4/5" />
-
-                  <Skeleton className="mt-8 h-9 w-full" />
-                </div>
-              ),
-            )}
-          </div>
+                ),
+              )}
+            </div>
+          </section>
         ) : isError ? (
-          <div className="mt-6 rounded-xl border border-red-200 bg-white p-6">
-            <h2 className="text-sm font-bold text-[var(--flow-text)]">
-              보드 목록을
-              불러오지 못했습니다.
-            </h2>
+          <section className="flow-section">
+            <div className="max-w-2xl rounded-[var(--flow-radius-lg)] bg-white p-7 shadow-[var(--flow-shadow-sm)]">
+              <h2 className="text-lg font-bold text-[var(--flow-text)]">
+                보드 목록을
+                불러오지 못했습니다.
+              </h2>
 
-            <p className="mt-1 text-xs text-[var(--flow-text-muted)]">
-              로그인 상태와 백엔드
-              연결을 확인해주세요.
-            </p>
+              <p className="mt-2 text-[13px] leading-6 text-[var(--flow-text-muted)]">
+                로그인 상태와 백엔드
+                연결을 확인한 뒤 다시
+                시도해주세요.
+              </p>
 
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-4"
-              onClick={() =>
-                void refetch()
-              }
-            >
-              다시 불러오기
-            </Button>
-          </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-6"
+                onClick={() =>
+                  void refetch()
+                }
+              >
+                다시 불러오기
+              </Button>
+            </div>
+          </section>
         ) : boards.length ===
           0 ? (
-          <div className="mt-6">
+          <section className="flow-section">
             <EmptyState
               title="아직 참여 중인 보드가 없습니다."
-              description="새 보드를 만들어 프로젝트의 작업 흐름을 시작해보세요."
+              description="첫 보드를 만들고 프로젝트의 다양한 작업을 자유롭게 정리해보세요."
               actionLabel="새 보드 만들기"
               onAction={
                 openCreateModal
               }
             />
-          </div>
+          </section>
         ) : filteredBoards.length ===
           0 ? (
-          <div className="mt-6 flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--flow-border-strong)] bg-white">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[var(--flow-gray-100)] text-[var(--flow-text-muted)]">
-              <SearchIcon />
-            </div>
+          <section className="flow-section">
+            <div className="flex min-h-[320px] flex-col items-center justify-center rounded-[var(--flow-radius-lg)] bg-white px-10 py-12 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--flow-gray-100)] text-[var(--flow-text-muted)]">
+                <SearchIcon />
+              </div>
 
-            <p className="mt-4 text-sm font-semibold text-[var(--flow-text)]">
-              조건에 맞는 보드가
-              없습니다.
-            </p>
-
-            <p className="mt-1 text-xs text-[var(--flow-text-muted)]">
-              검색어나 필터를
-              변경해보세요.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="mt-6 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-[var(--flow-text)]">
-                {filter ===
-                "ALL"
-                  ? "전체 보드"
-                  : filterItems.find(
-                      (
-                        item,
-                      ) =>
-                        item.value ===
-                        filter,
-                    )
-                      ?.label}
+              <h2 className="mt-5 text-base font-bold text-[var(--flow-text)]">
+                조건에 맞는 보드가
+                없습니다.
               </h2>
 
-              <p className="text-xs text-[var(--flow-text-muted)]">
+              <p className="mt-2 text-[13px] leading-6 text-[var(--flow-text-muted)]">
+                검색어나 권한 필터를
+                변경해보세요.
+              </p>
+            </div>
+          </section>
+        ) : (
+          <section className="flow-section">
+            <div className="flow-section-header">
+              <div>
+                <h2 className="flow-section-title">
+                  {filter ===
+                  "ALL"
+                    ? "최근 보드"
+                    : filterItems.find(
+                        (
+                          item,
+                        ) =>
+                          item.value ===
+                          filter,
+                      )
+                        ?.label}
+                </h2>
+
+                <p className="flow-section-description">
+                  최근 수정된
+                  보드부터 표시됩니다.
+                </p>
+              </div>
+
+              <span className="whitespace-nowrap text-[13px] font-medium text-[var(--flow-text-muted)]">
                 {
                   filteredBoards.length
                 }
                 개
-              </p>
+              </span>
             </div>
 
-            {/* 보드 카드 */}
-            <div className="mt-3 grid grid-cols-3 gap-5">
+            <div className="flow-board-grid">
               {filteredBoards.map(
                 (board) => (
                   <article
                     key={
                       board.id
                     }
-                    className="group relative flex min-h-[230px] flex-col overflow-hidden rounded-xl border border-[var(--flow-border)] bg-white shadow-[var(--flow-shadow-xs)] transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:border-[var(--flow-primary-200)] hover:shadow-[var(--flow-shadow-sm)]"
+                    className="group relative overflow-hidden rounded-[var(--flow-radius-lg)] border border-[var(--flow-border)] bg-white shadow-[var(--flow-shadow-xs)] transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:border-[var(--flow-primary-200)] hover:shadow-[var(--flow-shadow-sm)]"
                   >
                     <div
-                      className="h-[4px] w-full"
+                      className="h-[5px] w-full"
                       style={{
                         background:
                           board.backgroundColor ||
@@ -732,12 +763,13 @@ export default function BoardsPage() {
                       }}
                     />
 
-                    <div className="flex flex-1 flex-col p-5">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--flow-primary-50)] text-[var(--flow-primary)]">
+                    <div className="p-7">
+                      {/* Top */}
+                      <div className="flex items-start justify-between gap-6">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--flow-primary-50)] text-[var(--flow-primary)]">
                             <BoardIcon />
-                          </div>
+                          </span>
 
                           <Badge
                             variant={getRoleVariant(
@@ -750,73 +782,62 @@ export default function BoardsPage() {
                           </Badge>
                         </div>
 
-                        <span className="text-[10px] font-medium text-[var(--flow-text-placeholder)]">
-                          #
+                        <span className="whitespace-nowrap pt-1 text-xs font-medium text-[var(--flow-text-placeholder)]">
+                          Board #
                           {
                             board.id
                           }
                         </span>
                       </div>
 
+                      {/* Content */}
                       <Link
                         to={`/boards/${board.id}`}
-                        className="mt-4 block rounded-md outline-none focus-visible:ring-4 focus-visible:ring-[var(--flow-focus-ring)]"
+                        className="mt-5 block rounded-lg outline-none focus-visible:ring-4 focus-visible:ring-[var(--flow-focus-ring)]"
                       >
-                        <h3 className="line-clamp-1 text-[17px] font-bold tracking-[-0.02em] text-[var(--flow-text)] transition-colors group-hover:text-[var(--flow-primary)]">
+                        <h3 className="line-clamp-1 text-xl font-bold tracking-[-0.025em] text-[var(--flow-text)] transition-colors group-hover:text-[var(--flow-primary)]">
                           {
                             board.title
                           }
                         </h3>
 
-                        <p className="mt-2 line-clamp-2 min-h-[40px] text-xs leading-5 text-[var(--flow-text-muted)]">
+                        <p className="mt-2.5 line-clamp-2 min-h-[44px] max-w-[760px] text-[13px] leading-[1.75] text-[var(--flow-text-muted)]">
                           {board.description ||
                             "보드 설명이 없습니다."}
                         </p>
                       </Link>
 
-                      <div className="mt-4 flex items-center justify-between border-t border-[var(--flow-border)] pt-3">
-                        <p className="text-[10px] text-[var(--flow-text-muted)]">
-                          소유자{" "}
-                          <strong className="font-semibold text-[var(--flow-text-secondary)]">
-                            {
-                              board.ownerNickname
-                            }
-                          </strong>
-                        </p>
-
-                        <p className="text-[10px] text-[var(--flow-text-placeholder)]">
-                          {formatUpdatedAt(
-                            board.updatedAt,
-                          )}
-                        </p>
-                      </div>
-
-                      <div className="mt-auto flex items-center gap-2 pt-4">
-                        <Link
-                          to={`/boards/${board.id}`}
-                          className="flex h-9 flex-1 items-center justify-between rounded-lg bg-[var(--flow-primary-50)] px-3 text-xs font-semibold text-[var(--flow-primary)] transition-colors hover:bg-[var(--flow-primary-100)]"
-                        >
-                          <span>
-                            보드 열기
+                      {/* Bottom */}
+                      <div className="mt-7 flex items-end justify-between gap-8 border-t border-[var(--flow-border)] pt-5">
+                        <div className="flex min-w-0 items-center gap-5 text-xs text-[var(--flow-text-muted)]">
+                          <span className="whitespace-nowrap">
+                            소유자{" "}
+                            <strong className="font-semibold text-[var(--flow-text-secondary)]">
+                              {
+                                board.ownerNickname
+                              }
+                            </strong>
                           </span>
 
+                          <span className="h-3.5 w-px shrink-0 bg-[var(--flow-border)]" />
+
+                          <span className="whitespace-nowrap">
+                            최근 수정{" "}
+                            <strong className="font-medium text-[var(--flow-text-secondary)]">
+                              {formatUpdatedAt(
+                                board.updatedAt,
+                              )}
+                            </strong>
+                          </span>
+                        </div>
+
+                        <Link
+                          to={`/boards/${board.id}`}
+                          className="inline-flex h-10 shrink-0 items-center justify-center gap-4 whitespace-nowrap rounded-xl bg-[var(--flow-primary-50)] px-5 text-[13px] font-semibold text-[var(--flow-primary)] transition-colors hover:bg-[var(--flow-primary-100)]"
+                        >
+                          보드 열기
+
                           <ArrowIcon />
-                        </Link>
-
-                        <Link
-                          to={`/boards/${board.id}/search`}
-                          title="카드 검색"
-                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--flow-border)] bg-white text-[var(--flow-text-muted)] transition-colors hover:border-[var(--flow-primary-200)] hover:bg-[var(--flow-primary-50)] hover:text-[var(--flow-primary)]"
-                        >
-                          <SearchIcon />
-                        </Link>
-
-                        <Link
-                          to={`/boards/${board.id}/whiteboard`}
-                          title="화이트보드"
-                          className="flex h-9 items-center justify-center rounded-lg border border-[var(--flow-border)] bg-white px-3 text-[10px] font-semibold text-[var(--flow-text-muted)] transition-colors hover:border-[var(--flow-primary-200)] hover:bg-[var(--flow-primary-50)] hover:text-[var(--flow-primary)]"
-                        >
-                          화이트보드
                         </Link>
                       </div>
                     </div>
@@ -824,7 +845,7 @@ export default function BoardsPage() {
                 ),
               )}
             </div>
-          </>
+          </section>
         )}
       </section>
     </>
