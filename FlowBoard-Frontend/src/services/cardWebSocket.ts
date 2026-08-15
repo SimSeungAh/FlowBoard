@@ -1,23 +1,23 @@
-import type { WhiteboardStrokeResponse } from "@/api/whiteboard";
+import type { CardResponse } from "@/api/card";
 
-export type WhiteboardConnectionState = "connecting" | "connected" | "disconnected";
+export type CardConnectionState = "connecting" | "connected" | "disconnected";
 
-export type WhiteboardEventType = "STROKE_CREATED" | "STROKE_DELETED" | "CLEARED";
+export type CardEventType = "CREATED" | "UPDATED" | "DELETED" | "MOVED";
 
-export interface WhiteboardWebSocketEvent {
-  type: WhiteboardEventType;
+export interface CardWebSocketEvent {
+  type: CardEventType;
   boardId: number;
-  strokeId: number | null;
-  stroke: WhiteboardStrokeResponse | null;
+  cardId: number;
+  card: CardResponse | null;
   occurredAt: string;
 }
 
-interface ConnectWhiteboardWebSocketOptions {
+interface ConnectCardWebSocketOptions {
   boardId: number;
 
-  onEvent: (event: WhiteboardWebSocketEvent) => void;
+  onEvent: (event: CardWebSocketEvent) => void;
 
-  onConnectionStateChange?: (state: WhiteboardConnectionState) => void;
+  onConnectionStateChange?: (state: CardConnectionState) => void;
 
   onError?: (error: Error) => void;
 }
@@ -107,12 +107,12 @@ const parseStompFrame = (rawFrame: string): ParsedStompFrame | null => {
   };
 };
 
-export const connectWhiteboardWebSocket = ({
+export const connectCardWebSocket = ({
   boardId,
   onEvent,
   onConnectionStateChange,
   onError,
-}: ConnectWhiteboardWebSocketOptions) => {
+}: ConnectCardWebSocketOptions) => {
   let socket: WebSocket | null = null;
 
   let reconnectTimer: number | null = null;
@@ -121,9 +121,9 @@ export const connectWhiteboardWebSocket = ({
 
   let messageBuffer = "";
 
-  const subscriptionId = `whiteboard-${boardId}`;
+  const subscriptionId = `cards-${boardId}`;
 
-  const changeConnectionState = (state: WhiteboardConnectionState) => {
+  const changeConnectionState = (state: CardConnectionState) => {
     onConnectionStateChange?.(state);
   };
 
@@ -160,7 +160,7 @@ export const connectWhiteboardWebSocket = ({
       createStompFrame("SUBSCRIBE", {
         id: subscriptionId,
 
-        destination: `/topic/boards/${boardId}/whiteboard`,
+        destination: `/topic/boards/${boardId}/cards`,
 
         ack: "auto",
       }),
@@ -169,7 +169,7 @@ export const connectWhiteboardWebSocket = ({
 
   const handleMessageFrame = (frame: ParsedStompFrame) => {
     try {
-      const event = JSON.parse(frame.body) as WhiteboardWebSocketEvent;
+      const event = JSON.parse(frame.body) as CardWebSocketEvent;
 
       if (event.boardId !== boardId) {
         return;
@@ -177,7 +177,7 @@ export const connectWhiteboardWebSocket = ({
 
       onEvent(event);
     } catch {
-      reportError(new Error("화이트보드 실시간 데이터를 해석하지 못했습니다."));
+      reportError(new Error("카드 실시간 데이터를 해석하지 못했습니다."));
     }
   };
 
@@ -204,7 +204,7 @@ export const connectWhiteboardWebSocket = ({
       case "ERROR":
         changeConnectionState("disconnected");
 
-        reportError(new Error(frame.body || "WebSocket 서버에서 오류가 발생했습니다."));
+        reportError(new Error(frame.body || "카드 WebSocket 서버 오류가 발생했습니다."));
 
         break;
 
@@ -293,7 +293,7 @@ export const connectWhiteboardWebSocket = ({
     socket.onmessage = handleSocketMessage;
 
     socket.onerror = () => {
-      reportError(new Error("화이트보드 WebSocket 연결 중 오류가 발생했습니다."));
+      reportError(new Error("카드 WebSocket 연결 중 오류가 발생했습니다."));
     };
 
     socket.onclose = () => {
@@ -327,7 +327,6 @@ export const connectWhiteboardWebSocket = ({
     }
 
     socket = null;
-
     messageBuffer = "";
 
     changeConnectionState("disconnected");

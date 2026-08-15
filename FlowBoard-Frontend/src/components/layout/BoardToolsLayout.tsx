@@ -1,105 +1,236 @@
-import { NavLink, Outlet, useParams } from "react-router";
+import {
+  useEffect,
+  useState,
+} from "react";
+import {
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
+  NavLink,
+  Outlet,
+  useParams,
+} from "react-router";
 
+import {
+  connectCardWebSocket,
+  type CardConnectionState,
+} from "@/services/cardWebSocket";
 import { cn } from "@/utils/cn";
 
-interface BoardToolMenu {
+interface BoardMenuItem {
   label: string;
-  description: string;
   path: string;
+  end?: boolean;
 }
 
-const boardToolMenus: BoardToolMenu[] = [
-  {
-    label: "카드 검색",
-    description: "검색 및 필터",
-    path: "search",
-  },
-  {
-    label: "화이트보드",
-    description: "실시간 드로잉",
-    path: "whiteboard",
-  },
-  {
-    label: "활동 로그",
-    description: "보드 변경 기록",
-    path: "activities",
-  },
-];
+const getConnectionLabel = (
+  state: CardConnectionState,
+) => {
+  switch (state) {
+    case "connected":
+      return "카드 실시간 연결";
+
+    case "connecting":
+      return "실시간 연결 중";
+
+    case "disconnected":
+      return "실시간 연결 끊김";
+  }
+};
+
+const getConnectionDotClassName = (
+  state: CardConnectionState,
+) => {
+  switch (state) {
+    case "connected":
+      return "bg-emerald-500";
+
+    case "connecting":
+      return "bg-amber-400";
+
+    case "disconnected":
+      return "bg-red-500";
+  }
+};
 
 export default function BoardToolsLayout() {
-  const { boardId } = useParams<{
+  const {
+    boardId: boardIdParam,
+  } = useParams<{
     boardId: string;
   }>();
 
-  const numericBoardId = Number(boardId);
+  const queryClient =
+    useQueryClient();
 
-  const isValidBoardId = Number.isInteger(numericBoardId) && numericBoardId > 0;
+  const [
+    connectionState,
+    setConnectionState,
+  ] =
+    useState<CardConnectionState>(
+      "connecting",
+    );
+
+  const boardId =
+    Number(boardIdParam);
+
+  const isValidBoardId =
+    Number.isInteger(
+      boardId,
+    ) &&
+    boardId > 0;
+
+  useEffect(() => {
+    if (!isValidBoardId) {
+      return;
+    }
+
+    const disconnect =
+      connectCardWebSocket({
+        boardId,
+
+        onConnectionStateChange:
+          setConnectionState,
+
+        onEvent: () => {
+          /*
+           * 백엔드 이벤트는 트랜잭션 COMMIT 이후 전달됩니다.
+           *
+           * CREATED / UPDATED / DELETED / MOVED
+           * 어느 이벤트가 오더라도 현재 보드의 카드 목록을
+           * 다시 조회하면 서버의 최종 LexoRank 상태와 정확히 맞습니다.
+           */
+          void queryClient.invalidateQueries({
+            queryKey: [
+              "board",
+              boardId,
+              "cards",
+            ],
+          });
+        },
+
+        onError: (
+          error,
+        ) => {
+          console.error(
+            "[Card WebSocket]",
+            error,
+          );
+        },
+      });
+
+    return disconnect;
+  }, [
+    boardId,
+    isValidBoardId,
+    queryClient,
+  ]);
+
+  if (
+    !boardIdParam ||
+    !isValidBoardId
+  ) {
+    return (
+      <div className="mx-auto w-full max-w-7xl px-6 py-10">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+          <p className="text-sm font-medium text-red-700">
+            보드 정보를 확인할 수 없습니다.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const basePath =
+    `/boards/${boardId}`;
+
+  const menuItems: BoardMenuItem[] =
+    [
+      {
+        label: "보드",
+        path: basePath,
+        end: true,
+      },
+      {
+        label: "카드 검색",
+        path:
+          `${basePath}/search`,
+      },
+      {
+        label: "화이트보드",
+        path:
+          `${basePath}/whiteboard`,
+      },
+      {
+        label: "활동 로그",
+        path:
+          `${basePath}/activities`,
+      },
+    ];
 
   return (
-    <div className="flex w-full flex-col items-center">
-      {isValidBoardId && (
-        <div className="w-full border-b border-slate-200 bg-white">
-          <div className="mx-auto w-full max-w-7xl px-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 py-4">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                  Board #{numericBoardId}
-                </p>
+    <div className="flex w-full flex-col">
+      <div className="sticky top-16 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-7xl items-center px-6">
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+            {menuItems.map(
+              (item) => (
+                <NavLink
+                  key={
+                    item.path
+                  }
+                  to={
+                    item.path
+                  }
+                  end={
+                    item.end
+                  }
+                  className={({
+                    isActive,
+                  }) =>
+                    cn(
+                      "relative flex h-14 shrink-0 items-center px-4 text-sm font-medium transition-colors",
+                      isActive
+                        ? "text-blue-600"
+                        : "text-slate-500 hover:text-slate-900",
+                    )
+                  }
+                >
+                  {({
+                    isActive,
+                  }) => (
+                    <>
+                      {
+                        item.label
+                      }
 
-                <p className="mt-1 text-sm font-semibold text-slate-700">
-                  보드 도구
-                </p>
-              </div>
+                      {isActive && (
+                        <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-blue-600" />
+                      )}
+                    </>
+                  )}
+                </NavLink>
+              ),
+            )}
+          </div>
 
-              <nav
-                className="flex flex-wrap items-center gap-2"
-                aria-label="보드 기능 메뉴"
-              >
-                {boardToolMenus.map((menu) => (
-                  <NavLink
-                    key={menu.path}
-                    to={`/boards/${numericBoardId}/${menu.path}`}
-                    className={({ isActive }) =>
-                      cn(
-                        "group rounded-lg border px-4 py-2.5 transition-colors",
-                        isActive
-                          ? "border-blue-600 bg-blue-50 text-blue-700"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50",
-                      )
-                    }
-                  >
-                    {({ isActive }) => (
-                      <div className="flex flex-col">
-                        <span
-                          className={cn(
-                            "text-sm font-semibold",
-                            isActive
-                              ? "text-blue-700"
-                              : "text-slate-700 group-hover:text-slate-900",
-                          )}
-                        >
-                          {menu.label}
-                        </span>
+          <div className="ml-4 hidden shrink-0 items-center gap-2 rounded-full bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500 sm:flex">
+            <span
+              className={`h-2 w-2 rounded-full ${getConnectionDotClassName(
+                connectionState,
+              )}`}
+            />
 
-                        <span
-                          className={cn(
-                            "mt-0.5 text-xs",
-                            isActive ? "text-blue-500" : "text-slate-400",
-                          )}
-                        >
-                          {menu.description}
-                        </span>
-                      </div>
-                    )}
-                  </NavLink>
-                ))}
-              </nav>
-            </div>
+            {getConnectionLabel(
+              connectionState,
+            )}
           </div>
         </div>
-      )}
+      </div>
 
-      <Outlet />
+      <main className="flex w-full justify-center">
+        <Outlet />
+      </main>
     </div>
   );
 }

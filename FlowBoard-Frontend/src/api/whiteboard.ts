@@ -41,12 +41,13 @@ export const createWhiteboardStroke = async (
   boardId: number,
   data: WhiteboardStrokeCreateRequest,
 ): Promise<WhiteboardStrokeResponse> => {
-  const response = await api.post(
-    `/boards/${boardId}/whiteboard/strokes`,
-    data,
-  );
+  const response = await api.post(`/boards/${boardId}/whiteboard/strokes`, data);
 
   return response.data.data;
+};
+
+export const deleteWhiteboardStroke = async (boardId: number, strokeId: number): Promise<void> => {
+  await api.delete(`/boards/${boardId}/whiteboard/strokes/${strokeId}`);
 };
 
 export const clearWhiteboard = async (boardId: number): Promise<void> => {

@@ -35,6 +35,25 @@ public record WhiteboardWebSocketEvent(
   }
 
   /**
+   * 개별 선 삭제 이벤트
+   *
+   * 삭제된 선 자체의 전체 데이터는 필요하지 않고
+   * strokeId만 전달합니다.
+   */
+  public static WhiteboardWebSocketEvent strokeDeleted(
+      Long boardId,
+      Long strokeId
+  ) {
+    return new WhiteboardWebSocketEvent(
+        WhiteboardEventType.STROKE_DELETED,
+        boardId,
+        strokeId,
+        null,
+        LocalDateTime.now()
+    );
+  }
+
+  /**
    * 화이트보드 전체 삭제 이벤트
    */
   public static WhiteboardWebSocketEvent cleared(

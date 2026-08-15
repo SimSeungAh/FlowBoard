@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -12,6 +13,7 @@ import { getBoardDetail } from "@/api/board";
 import {
   clearWhiteboard,
   createWhiteboardStroke,
+  deleteWhiteboardStroke,
   getWhiteboardStrokes,
   type WhiteboardPoint,
   type WhiteboardStrokeCreateRequest,
@@ -35,11 +37,37 @@ const DEFAULT_PEN_COLOR = "#111827";
 const PEN_LINE_WIDTH = 4;
 const ERASER_LINE_WIDTH = 28;
 
+const STROKE_CHUNK_POINT_LIMIT = 800;
+const MIN_POINT_DISTANCE = 2;
+
+/*
+ * 선 지우기 모드에서
+ * 실제 선에서 몇 px 정도 떨어진 클릭까지 허용할지 결정합니다.
+ */
+const STROKE_HIT_TOLERANCE = 10;
+
+type EraserMode = "PIXEL" | "STROKE";
+
 interface DrawableStroke {
   tool: WhiteboardTool;
   color: string;
   lineWidth: number;
   points: WhiteboardPoint[];
+}
+
+interface ActiveStroke extends DrawableStroke {
+  gestureId: string;
+  hasSavedChunk: boolean;
+}
+
+interface UndoGesture {
+  gestureId: string;
+  strokeIds: number[];
+}
+
+interface CreateStrokeMutationVariables {
+  request: WhiteboardStrokeCreateRequest;
+  gestureId: string;
 }
 
 const drawDot = (context: CanvasRenderingContext2D, stroke: DrawableStroke) => {
@@ -51,8 +79,7 @@ const drawDot = (context: CanvasRenderingContext2D, stroke: DrawableStroke) => {
 
   context.save();
 
-  context.globalCompositeOperation =
-    stroke.tool === "ERASER" ? "destination-out" : "source-over";
+  context.globalCompositeOperation = stroke.tool === "ERASER" ? "destination-out" : "source-over";
 
   context.fillStyle = stroke.color;
 
@@ -65,10 +92,7 @@ const drawDot = (context: CanvasRenderingContext2D, stroke: DrawableStroke) => {
   context.restore();
 };
 
-const drawStroke = (
-  context: CanvasRenderingContext2D,
-  stroke: DrawableStroke,
-) => {
+const drawStroke = (context: CanvasRenderingContext2D, stroke: DrawableStroke) => {
   if (stroke.points.length === 0) {
     return;
   }
@@ -87,12 +111,14 @@ const drawStroke = (
 
   context.save();
 
-  context.globalCompositeOperation =
-    stroke.tool === "ERASER" ? "destination-out" : "source-over";
+  context.globalCompositeOperation = stroke.tool === "ERASER" ? "destination-out" : "source-over";
 
   context.strokeStyle = stroke.color;
+
   context.lineWidth = stroke.lineWidth;
+
   context.lineCap = "round";
+
   context.lineJoin = "round";
 
   context.beginPath();
@@ -118,12 +144,14 @@ const drawSegment = (
 ) => {
   context.save();
 
-  context.globalCompositeOperation =
-    tool === "ERASER" ? "destination-out" : "source-over";
+  context.globalCompositeOperation = tool === "ERASER" ? "destination-out" : "source-over";
 
   context.strokeStyle = color;
+
   context.lineWidth = lineWidth;
+
   context.lineCap = "round";
+
   context.lineJoin = "round";
 
   context.beginPath();
@@ -152,6 +180,96 @@ const getCanvasPoint = (
 
     y: (event.clientY - rect.top) * scaleY,
   };
+};
+
+const getPointDistance = (first: WhiteboardPoint, second: WhiteboardPoint) =>
+  Math.hypot(second.x - first.x, second.y - first.y);
+
+/*
+ * 점 P와 선분 AB 사이의 최단거리
+ *
+ * 클릭한 위치가 실제 Stroke에 얼마나 가까운지
+ * 판정하기 위해 사용합니다.
+ */
+const getPointToSegmentDistance = (
+  point: WhiteboardPoint,
+  start: WhiteboardPoint,
+  end: WhiteboardPoint,
+) => {
+  const segmentX = end.x - start.x;
+
+  const segmentY = end.y - start.y;
+
+  const lengthSquared = segmentX * segmentX + segmentY * segmentY;
+
+  if (lengthSquared === 0) {
+    return getPointDistance(point, start);
+  }
+
+  const projection =
+    ((point.x - start.x) * segmentX + (point.y - start.y) * segmentY) / lengthSquared;
+
+  const clampedProjection = Math.max(0, Math.min(1, projection));
+
+  const closestPoint: WhiteboardPoint = {
+    x: start.x + clampedProjection * segmentX,
+
+    y: start.y + clampedProjection * segmentY,
+  };
+
+  return getPointDistance(point, closestPoint);
+};
+
+const isStrokeHit = (point: WhiteboardPoint, stroke: WhiteboardStrokeResponse) => {
+  if (stroke.tool !== "PEN" || stroke.points.length === 0) {
+    return false;
+  }
+
+  const hitDistance = stroke.lineWidth / 2 + STROKE_HIT_TOLERANCE;
+
+  if (stroke.points.length === 1) {
+    const firstPoint = stroke.points[0];
+
+    if (!firstPoint) {
+      return false;
+    }
+
+    return getPointDistance(point, firstPoint) <= hitDistance;
+  }
+
+  for (let index = 1; index < stroke.points.length; index += 1) {
+    const previousPoint = stroke.points[index - 1];
+
+    const currentPoint = stroke.points[index];
+
+    if (!previousPoint || !currentPoint) {
+      continue;
+    }
+
+    if (getPointToSegmentDistance(point, previousPoint, currentPoint) <= hitDistance) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+/*
+ * 가장 위에 그려진 선부터 찾습니다.
+ *
+ * strokes는 서버에서 생성 순서대로 오기 때문에
+ * 뒤에서부터 검사하면 가장 최근 PEN Stroke가 먼저 선택됩니다.
+ */
+const findStrokeAtPoint = (point: WhiteboardPoint, strokes: WhiteboardStrokeResponse[]) => {
+  for (let index = strokes.length - 1; index >= 0; index -= 1) {
+    const stroke = strokes[index];
+
+    if (stroke && isStrokeHit(point, stroke)) {
+      return stroke;
+    }
+  }
+
+  return null;
 };
 
 const getConnectionLabel = (state: WhiteboardConnectionState) => {
@@ -186,8 +304,7 @@ const appendStrokeIfMissing = (
 ) => {
   const alreadyExists = current.some(
     (stroke) =>
-      stroke.id === incomingStroke.id ||
-      stroke.clientStrokeId === incomingStroke.clientStrokeId,
+      stroke.id === incomingStroke.id || stroke.clientStrokeId === incomingStroke.clientStrokeId,
   );
 
   if (alreadyExists) {
@@ -195,6 +312,18 @@ const appendStrokeIfMissing = (
   }
 
   return [...current, incomingStroke];
+};
+
+const isTextEditingTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
 };
 
 export default function WhiteboardPage() {
@@ -210,22 +339,91 @@ export default function WhiteboardPage() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const drawingRef = useRef(false);
+  const activeStrokeRef = useRef<ActiveStroke | null>(null);
 
-  const currentPointsRef = useRef<WhiteboardPoint[]>([]);
+  const activePointerIdRef = useRef<number | null>(null);
+
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const saveErrorShownRef = useRef(false);
+
+  const undoHistoryRef = useRef<UndoGesture[]>([]);
+
+  const [undoGestureCount, setUndoGestureCount] = useState(0);
+
+  const [queuedSaveCount, setQueuedSaveCount] = useState(0);
+
+  const [isUndoing, setIsUndoing] = useState(false);
+
+  const [deletingStrokeId, setDeletingStrokeId] = useState<number | null>(null);
 
   const [tool, setTool] = useState<WhiteboardTool>("PEN");
 
+  const [eraserMode, setEraserMode] = useState<EraserMode>("PIXEL");
+
   const [penColor, setPenColor] = useState(DEFAULT_PEN_COLOR);
 
-  const [connectionState, setConnectionState] =
-    useState<WhiteboardConnectionState>("connecting");
+  const [connectionState, setConnectionState] = useState<WhiteboardConnectionState>("connecting");
 
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
   const whiteboardQueryKey = ["whiteboard", boardId, "strokes"] as const;
 
   const boardQueryKey = ["boards", boardId] as const;
+
+  const syncUndoGestureCount = useCallback(() => {
+    setUndoGestureCount(undoHistoryRef.current.length);
+  }, []);
+
+  const clearUndoHistory = useCallback(() => {
+    undoHistoryRef.current = [];
+
+    syncUndoGestureCount();
+  }, [syncUndoGestureCount]);
+
+  const registerStrokeForGesture = useCallback(
+    (gestureId: string, strokeId: number) => {
+      const history = undoHistoryRef.current;
+
+      const existingGesture = history.find((gesture) => gesture.gestureId === gestureId);
+
+      if (existingGesture) {
+        if (!existingGesture.strokeIds.includes(strokeId)) {
+          existingGesture.strokeIds.push(strokeId);
+        }
+
+        syncUndoGestureCount();
+
+        return;
+      }
+
+      history.push({
+        gestureId,
+
+        strokeIds: [strokeId],
+      });
+
+      syncUndoGestureCount();
+    },
+    [syncUndoGestureCount],
+  );
+
+  const removeStrokeFromUndoHistory = useCallback(
+    (strokeId: number) => {
+      const nextHistory = undoHistoryRef.current
+        .map((gesture) => ({
+          ...gesture,
+
+          strokeIds: gesture.strokeIds.filter((id) => id !== strokeId),
+        }))
+        .filter((gesture) => gesture.strokeIds.length > 0);
+
+      undoHistoryRef.current = nextHistory;
+
+      syncUndoGestureCount();
+    },
+    [syncUndoGestureCount],
+  );
 
   const {
     data: board,
@@ -258,20 +456,25 @@ export default function WhiteboardPage() {
   const isViewer = board?.myRole === "VIEWER";
 
   const createStrokeMutation = useMutation({
-    mutationFn: (data: WhiteboardStrokeCreateRequest) =>
-      createWhiteboardStroke(boardId, data),
+    mutationFn: ({ request }: CreateStrokeMutationVariables) =>
+      createWhiteboardStroke(boardId, request),
 
-    onSuccess: (savedStroke) => {
-      queryClient.setQueryData<WhiteboardStrokeResponse[]>(
-        whiteboardQueryKey,
-        (current = []) => appendStrokeIfMissing(current, savedStroke),
+    onSuccess: (savedStroke, variables) => {
+      saveErrorShownRef.current = false;
+
+      queryClient.setQueryData<WhiteboardStrokeResponse[]>(whiteboardQueryKey, (current = []) =>
+        appendStrokeIfMissing(current, savedStroke),
       );
+
+      registerStrokeForGesture(variables.gestureId, savedStroke.id);
     },
 
     onError: async () => {
-      toast.error(
-        "선을 저장하지 못했습니다. 저장된 화이트보드를 다시 불러옵니다.",
-      );
+      if (!saveErrorShownRef.current) {
+        saveErrorShownRef.current = true;
+
+        toast.error("일부 선을 저장하지 못했습니다. 저장된 화이트보드를 다시 동기화합니다.");
+      }
 
       await queryClient.invalidateQueries({
         queryKey: whiteboardQueryKey,
@@ -283,10 +486,9 @@ export default function WhiteboardPage() {
     mutationFn: () => clearWhiteboard(boardId),
 
     onSuccess: () => {
-      queryClient.setQueryData<WhiteboardStrokeResponse[]>(
-        whiteboardQueryKey,
-        [],
-      );
+      queryClient.setQueryData<WhiteboardStrokeResponse[]>(whiteboardQueryKey, []);
+
+      clearUndoHistory();
 
       toast.success("화이트보드를 초기화했습니다.");
     },
@@ -295,6 +497,145 @@ export default function WhiteboardPage() {
       toast.error("화이트보드를 초기화하지 못했습니다.");
     },
   });
+
+  const enqueueStrokeSave = (stroke: DrawableStroke, gestureId: string) => {
+    if (stroke.points.length === 0) {
+      return;
+    }
+
+    const request: WhiteboardStrokeCreateRequest = {
+      clientStrokeId: crypto.randomUUID(),
+
+      tool: stroke.tool,
+
+      color: stroke.color,
+
+      lineWidth: stroke.lineWidth,
+
+      points: stroke.points.map((point) => ({
+        x: point.x,
+
+        y: point.y,
+      })),
+    };
+
+    setQueuedSaveCount((count) => count + 1);
+
+    const saveTask = saveQueueRef.current.then(async () => {
+      await createStrokeMutation.mutateAsync({
+        request,
+        gestureId,
+      });
+    });
+
+    saveQueueRef.current = saveTask
+      .catch(() => {
+        // mutation onError에서 처리
+      })
+      .finally(() => {
+        setQueuedSaveCount((count) => Math.max(0, count - 1));
+      });
+  };
+
+  const cancelActiveDrawing = () => {
+    const canvas = canvasRef.current;
+
+    const pointerId = activePointerIdRef.current;
+
+    if (canvas && pointerId !== null && canvas.hasPointerCapture(pointerId)) {
+      canvas.releasePointerCapture(pointerId);
+    }
+
+    activeStrokeRef.current = null;
+
+    activePointerIdRef.current = null;
+  };
+
+  const handleDeleteWholeStroke = async (point: WhiteboardPoint) => {
+    if (!canEdit || deletingStrokeId !== null || isUndoing) {
+      return;
+    }
+
+    const targetStroke = findStrokeAtPoint(point, strokes);
+
+    if (!targetStroke) {
+      toast.info("지울 선을 클릭해주세요.");
+
+      return;
+    }
+
+    setDeletingStrokeId(targetStroke.id);
+
+    try {
+      /*
+       * 앞에서 저장 대기 중인 그림이 있으면
+       * 먼저 서버 저장을 마칩니다.
+       */
+      await saveQueueRef.current;
+
+      await deleteWhiteboardStroke(boardId, targetStroke.id);
+
+      queryClient.setQueryData<WhiteboardStrokeResponse[]>(whiteboardQueryKey, (current = []) =>
+        current.filter((stroke) => stroke.id !== targetStroke.id),
+      );
+
+      removeStrokeFromUndoHistory(targetStroke.id);
+    } catch {
+      toast.error("선을 삭제하지 못했습니다.");
+
+      await queryClient.invalidateQueries({
+        queryKey: whiteboardQueryKey,
+      });
+    } finally {
+      setDeletingStrokeId(null);
+    }
+  };
+
+  const handleUndo = useCallback(async () => {
+    if (!canEdit || isUndoing) {
+      return;
+    }
+
+    if (activeStrokeRef.current) {
+      return;
+    }
+
+    setIsUndoing(true);
+
+    try {
+      await saveQueueRef.current;
+
+      const history = undoHistoryRef.current;
+
+      const gesture = history[history.length - 1];
+
+      if (!gesture || gesture.strokeIds.length === 0) {
+        return;
+      }
+
+      undoHistoryRef.current = history.slice(0, -1);
+
+      syncUndoGestureCount();
+
+      const strokeIds = [...gesture.strokeIds].reverse();
+
+      for (const strokeId of strokeIds) {
+        await deleteWhiteboardStroke(boardId, strokeId);
+
+        queryClient.setQueryData<WhiteboardStrokeResponse[]>(whiteboardQueryKey, (current = []) =>
+          current.filter((stroke) => stroke.id !== strokeId),
+        );
+      }
+    } catch {
+      toast.error("실행 취소 중 문제가 발생했습니다. 화이트보드를 다시 동기화합니다.");
+
+      await queryClient.invalidateQueries({
+        queryKey: whiteboardQueryKey,
+      });
+    } finally {
+      setIsUndoing(false);
+    }
+  }, [boardId, canEdit, isUndoing, queryClient, syncUndoGestureCount, whiteboardQueryKey]);
 
   useEffect(() => {
     if (!isValidBoardId) {
@@ -310,23 +651,41 @@ export default function WhiteboardPage() {
 
       onEvent: (event) => {
         if (event.type === "STROKE_CREATED" && event.stroke) {
-          queryClient.setQueryData<WhiteboardStrokeResponse[]>(
-            currentQueryKey,
-            (current = []) =>
-              appendStrokeIfMissing(
-                current,
-                event.stroke as WhiteboardStrokeResponse,
-              ),
+          queryClient.setQueryData<WhiteboardStrokeResponse[]>(currentQueryKey, (current = []) =>
+            appendStrokeIfMissing(current, event.stroke as WhiteboardStrokeResponse),
           );
 
           return;
         }
 
-        if (event.type === "CLEARED") {
-          queryClient.setQueryData<WhiteboardStrokeResponse[]>(
-            currentQueryKey,
-            [],
+        if (event.type === "STROKE_DELETED" && event.strokeId !== null) {
+          const deletedStrokeId = event.strokeId;
+
+          queryClient.setQueryData<WhiteboardStrokeResponse[]>(currentQueryKey, (current = []) =>
+            current.filter((stroke) => stroke.id !== deletedStrokeId),
           );
+
+          removeStrokeFromUndoHistory(deletedStrokeId);
+
+          return;
+        }
+
+        if (event.type === "CLEARED") {
+          const canvas = canvasRef.current;
+
+          const pointerId = activePointerIdRef.current;
+
+          if (canvas && pointerId !== null && canvas.hasPointerCapture(pointerId)) {
+            canvas.releasePointerCapture(pointerId);
+          }
+
+          activeStrokeRef.current = null;
+
+          activePointerIdRef.current = null;
+
+          queryClient.setQueryData<WhiteboardStrokeResponse[]>(currentQueryKey, []);
+
+          clearUndoHistory();
         }
       },
 
@@ -336,7 +695,7 @@ export default function WhiteboardPage() {
     });
 
     return disconnect;
-  }, [boardId, isValidBoardId, queryClient]);
+  }, [boardId, clearUndoHistory, isValidBoardId, queryClient, removeStrokeFromUndoHistory]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -358,6 +717,35 @@ export default function WhiteboardPage() {
     }
   }, [strokes]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isUndoShortcut =
+        (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z";
+
+      if (!isUndoShortcut) {
+        return;
+      }
+
+      if (isTextEditingTarget(event.target)) {
+        return;
+      }
+
+      if (!canEdit || undoHistoryRef.current.length === 0 || activeStrokeRef.current) {
+        return;
+      }
+
+      event.preventDefault();
+
+      void handleUndo();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [canEdit, handleUndo]);
+
   const getCurrentStyle = () => ({
     color: tool === "PEN" ? penColor : "#FFFFFF",
 
@@ -365,7 +753,14 @@ export default function WhiteboardPage() {
   });
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!canEdit || !isValidBoardId || isStrokesLoading || isStrokesError) {
+    if (
+      !canEdit ||
+      !isValidBoardId ||
+      isStrokesLoading ||
+      isStrokesError ||
+      isUndoing ||
+      deletingStrokeId !== null
+    ) {
       return;
     }
 
@@ -375,15 +770,52 @@ export default function WhiteboardPage() {
       return;
     }
 
+    const firstPoint = getCanvasPoint(canvas, event);
+
+    /*
+     * 선 지우기 모드는 그림을 시작하지 않고
+     * 클릭한 위치에서 가장 가까운 PEN Stroke를 찾아
+     * 전체 삭제합니다.
+     */
+    if (tool === "ERASER" && eraserMode === "STROKE") {
+      void handleDeleteWholeStroke(firstPoint);
+
+      return;
+    }
+
+    const { color, lineWidth } = getCurrentStyle();
+
     canvas.setPointerCapture(event.pointerId);
 
-    drawingRef.current = true;
+    activePointerIdRef.current = event.pointerId;
 
-    currentPointsRef.current = [getCanvasPoint(canvas, event)];
+    activeStrokeRef.current = {
+      gestureId: crypto.randomUUID(),
+
+      tool,
+
+      color,
+
+      lineWidth,
+
+      points: [firstPoint],
+
+      hasSavedChunk: false,
+    };
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!canEdit || !drawingRef.current) {
+    if (!canEdit) {
+      return;
+    }
+
+    const activeStroke = activeStrokeRef.current;
+
+    if (!activeStroke) {
+      return;
+    }
+
+    if (activePointerIdRef.current !== event.pointerId) {
       return;
     }
 
@@ -399,84 +831,157 @@ export default function WhiteboardPage() {
       return;
     }
 
-    const points = currentPointsRef.current;
-
-    const previousPoint = points[points.length - 1];
-
-    const currentPoint = getCanvasPoint(canvas, event);
+    const previousPoint = activeStroke.points[activeStroke.points.length - 1];
 
     if (!previousPoint) {
       return;
     }
 
-    const { color, lineWidth } = getCurrentStyle();
+    const currentPoint = getCanvasPoint(canvas, event);
 
-    drawSegment(context, previousPoint, currentPoint, tool, color, lineWidth);
+    if (getPointDistance(previousPoint, currentPoint) < MIN_POINT_DISTANCE) {
+      return;
+    }
 
-    currentPointsRef.current = [...points, currentPoint];
+    drawSegment(
+      context,
+      previousPoint,
+      currentPoint,
+      activeStroke.tool,
+      activeStroke.color,
+      activeStroke.lineWidth,
+    );
+
+    const nextPoints = [...activeStroke.points, currentPoint];
+
+    activeStrokeRef.current = {
+      ...activeStroke,
+
+      points: nextPoints,
+    };
+
+    if (nextPoints.length >= STROKE_CHUNK_POINT_LIMIT) {
+      enqueueStrokeSave(
+        {
+          tool: activeStroke.tool,
+
+          color: activeStroke.color,
+
+          lineWidth: activeStroke.lineWidth,
+
+          points: nextPoints,
+        },
+        activeStroke.gestureId,
+      );
+
+      activeStrokeRef.current = {
+        gestureId: activeStroke.gestureId,
+
+        tool: activeStroke.tool,
+
+        color: activeStroke.color,
+
+        lineWidth: activeStroke.lineWidth,
+
+        points: [currentPoint],
+
+        hasSavedChunk: true,
+      };
+    }
   };
 
   const finishStroke = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!canEdit || !drawingRef.current) {
+    if (activePointerIdRef.current !== event.pointerId) {
       return;
     }
 
     const canvas = canvasRef.current;
 
-    const points = currentPointsRef.current;
-
-    drawingRef.current = false;
-
-    currentPointsRef.current = [];
+    const activeStroke = activeStrokeRef.current;
 
     if (canvas?.hasPointerCapture(event.pointerId)) {
       canvas.releasePointerCapture(event.pointerId);
     }
 
-    if (!canvas || points.length === 0) {
+    activePointerIdRef.current = null;
+
+    activeStrokeRef.current = null;
+
+    if (!canEdit || !canvas || !activeStroke) {
       return;
     }
 
-    const { color, lineWidth } = getCurrentStyle();
+    const { points, hasSavedChunk, gestureId, ...strokeStyle } = activeStroke;
+
+    if (points.length === 0) {
+      return;
+    }
 
     if (points.length === 1) {
+      if (hasSavedChunk) {
+        return;
+      }
+
       const context = canvas.getContext("2d");
 
       if (context) {
         drawDot(context, {
-          tool,
-          color,
-          lineWidth,
+          ...strokeStyle,
           points,
         });
       }
+
+      enqueueStrokeSave(
+        {
+          ...strokeStyle,
+          points,
+        },
+        gestureId,
+      );
+
+      return;
     }
 
-    createStrokeMutation.mutate({
-      clientStrokeId: crypto.randomUUID(),
-
-      tool,
-
-      color,
-
-      lineWidth,
-
-      points,
-    });
+    enqueueStrokeSave(
+      {
+        ...strokeStyle,
+        points,
+      },
+      gestureId,
+    );
   };
 
   const handlePointerCancel = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    drawingRef.current = false;
-
-    currentPointsRef.current = [];
+    if (activePointerIdRef.current !== event.pointerId) {
+      return;
+    }
 
     const canvas = canvasRef.current;
+
+    const activeStroke = activeStrokeRef.current;
 
     if (canvas?.hasPointerCapture(event.pointerId)) {
       canvas.releasePointerCapture(event.pointerId);
     }
 
-    void refetchStrokes();
+    activePointerIdRef.current = null;
+
+    activeStrokeRef.current = null;
+
+    if (canEdit && activeStroke && activeStroke.points.length > 1) {
+      enqueueStrokeSave(
+        {
+          tool: activeStroke.tool,
+
+          color: activeStroke.color,
+
+          lineWidth: activeStroke.lineWidth,
+
+          points: activeStroke.points,
+        },
+        activeStroke.gestureId,
+      );
+    }
   };
 
   const handleClearWhiteboard = async () => {
@@ -484,12 +989,16 @@ export default function WhiteboardPage() {
       return;
     }
 
+    cancelActiveDrawing();
+
     try {
+      await saveQueueRef.current;
+
       await clearWhiteboardMutation.mutateAsync();
 
       setClearDialogOpen(false);
     } catch {
-      // mutation onError에서 사용자 메시지를 처리합니다.
+      // mutation onError에서 처리
     }
   };
 
@@ -501,13 +1010,9 @@ export default function WhiteboardPage() {
     return (
       <section className="w-full max-w-4xl px-6 py-10">
         <Card>
-          <h1 className="text-xl font-bold text-slate-900">
-            화이트보드를 열 수 없습니다.
-          </h1>
+          <h1 className="text-xl font-bold text-slate-900">화이트보드를 열 수 없습니다.</h1>
 
-          <p className="mt-2 text-sm text-slate-500">
-            올바른 보드 ID가 필요합니다.
-          </p>
+          <p className="mt-2 text-sm text-slate-500">올바른 보드 ID가 필요합니다.</p>
         </Card>
       </section>
     );
@@ -516,6 +1021,18 @@ export default function WhiteboardPage() {
   const isLoading = isBoardLoading || isStrokesLoading;
 
   const isError = isBoardError || isStrokesError;
+
+  const isSaving = queuedSaveCount > 0;
+
+  const canUndo = canEdit && undoGestureCount > 0 && !isUndoing && deletingStrokeId === null;
+
+  const isBusy = isUndoing || deletingStrokeId !== null;
+
+  const canvasCursorClass = !canEdit
+    ? "cursor-default"
+    : tool === "ERASER" && eraserMode === "STROKE"
+      ? "cursor-pointer"
+      : "cursor-crosshair";
 
   return (
     <>
@@ -539,14 +1056,12 @@ export default function WhiteboardPage() {
               {board ? board.title : `Board #${boardId}`}
             </p>
 
-            <h1 className="mt-1 text-3xl font-bold text-slate-900">
-              화이트보드
-            </h1>
+            <h1 className="mt-1 text-3xl font-bold text-slate-900">화이트보드</h1>
 
             <p className="mt-2 text-sm text-slate-500">
               {isViewer
                 ? "VIEWER 권한으로 참여 중입니다. 화이트보드는 조회만 할 수 있습니다."
-                : "펜과 지우개로 자유롭게 그리고, 저장된 그림은 참여자와 실시간으로 동기화됩니다."}
+                : "펜으로 그리고, 지우개 방식을 선택하거나 Ctrl+Z로 마지막 작업을 실행 취소할 수 있습니다."}
             </p>
           </div>
 
@@ -554,9 +1069,7 @@ export default function WhiteboardPage() {
             {board && (
               <span
                 className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                  isViewer
-                    ? "bg-slate-100 text-slate-600"
-                    : "bg-blue-50 text-blue-700"
+                  isViewer ? "bg-slate-100 text-slate-600" : "bg-blue-50 text-blue-700"
                 }`}
               >
                 {board.myRole}
@@ -572,22 +1085,22 @@ export default function WhiteboardPage() {
             </span>
 
             <span className="text-sm text-slate-500">
-              {createStrokeMutation.isPending
-                ? "선 저장 중..."
-                : `저장된 선 ${strokes.length.toLocaleString()}개`}
+              {isSaving
+                ? `선 저장 중... (${queuedSaveCount})`
+                : deletingStrokeId !== null
+                  ? "선 삭제 중..."
+                  : `저장된 선 ${strokes.length.toLocaleString()}개`}
             </span>
           </div>
         </div>
 
         {isViewer && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-sm font-medium text-slate-700">
-              읽기 전용 화이트보드
-            </p>
+            <p className="text-sm font-medium text-slate-700">읽기 전용 화이트보드</p>
 
             <p className="mt-1 text-xs text-slate-500">
-              VIEWER는 다른 참여자의 그림과 변경사항을 실시간으로 볼 수 있지만,
-              선을 그리거나 지우거나 전체 초기화할 수 없습니다.
+              VIEWER는 다른 참여자의 그림과 변경사항을 실시간으로 볼 수 있지만, 화이트보드를 수정할
+              수 없습니다.
             </p>
           </div>
         )}
@@ -598,7 +1111,7 @@ export default function WhiteboardPage() {
               type="button"
               variant={tool === "PEN" ? "primary" : "outline"}
               aria-pressed={tool === "PEN"}
-              disabled={!canEdit}
+              disabled={!canEdit || isBusy}
               onClick={() => setTool("PEN")}
             >
               PEN
@@ -608,18 +1121,61 @@ export default function WhiteboardPage() {
               type="button"
               variant={tool === "ERASER" ? "primary" : "outline"}
               aria-pressed={tool === "ERASER"}
-              disabled={!canEdit}
+              disabled={!canEdit || isBusy}
               onClick={() => setTool("ERASER")}
             >
               ERASER
             </Button>
+
+            {tool === "ERASER" && (
+              <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-1">
+                <button
+                  type="button"
+                  disabled={!canEdit || isBusy}
+                  onClick={() => setEraserMode("PIXEL")}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    eraserMode === "PIXEL"
+                      ? "bg-white text-blue-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  부분 지우기
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!canEdit || isBusy}
+                  onClick={() => setEraserMode("STROKE")}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    eraserMode === "STROKE"
+                      ? "bg-white text-blue-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  선 지우기
+                </button>
+              </div>
+            )}
+
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!canUndo}
+              onClick={() => void handleUndo()}
+            >
+              {isUndoing ? "실행 취소 중..." : "↶ 실행 취소"}
+            </Button>
+
+            <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-500">
+              Ctrl + Z
+            </span>
 
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               펜 색상
               <input
                 type="color"
                 value={penColor}
-                disabled={!canEdit || tool === "ERASER"}
+                disabled={!canEdit || tool === "ERASER" || isBusy}
                 onChange={(event) => setPenColor(event.target.value)}
                 className="h-10 w-12 cursor-pointer rounded-md border border-slate-300 bg-white p-1 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="펜 색상 선택"
@@ -628,15 +1184,19 @@ export default function WhiteboardPage() {
 
             <div className="ml-auto flex items-center gap-3">
               <span className="text-xs text-slate-400">
-                PEN {PEN_LINE_WIDTH}
-                px · ERASER {ERASER_LINE_WIDTH}
-                px
+                {tool === "ERASER"
+                  ? eraserMode === "PIXEL"
+                    ? `부분 지우기 · ${ERASER_LINE_WIDTH}px`
+                    : "선 지우기 · 클릭"
+                  : `PEN · ${PEN_LINE_WIDTH}px`}
               </span>
 
               <Button
                 type="button"
                 variant="danger"
-                disabled={!canEdit || strokes.length === 0}
+                disabled={
+                  !canEdit || strokes.length === 0 || clearWhiteboardMutation.isPending || isBusy
+                }
                 onClick={() => setClearDialogOpen(true)}
               >
                 전체 초기화
@@ -644,6 +1204,17 @@ export default function WhiteboardPage() {
             </div>
           </div>
         </Card>
+
+        {tool === "ERASER" && eraserMode === "STROKE" && canEdit && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+            <p className="text-sm font-medium text-blue-800">선 지우기 모드</p>
+
+            <p className="mt-1 text-xs leading-5 text-blue-600">
+              캔버스에서 지우고 싶은 선을 클릭하세요. 겹친 경우 가장 최근에 그린 선이 먼저
+              삭제됩니다.
+            </p>
+          </div>
+        )}
 
         {isError ? (
           <Card>
@@ -654,16 +1225,11 @@ export default function WhiteboardPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  보드 접근 권한, 로그인 상태와 백엔드 실행 여부를 확인한 뒤
-                  다시 시도해주세요.
+                  보드 접근 권한, 로그인 상태와 백엔드 실행 여부를 확인한 뒤 다시 시도해주세요.
                 </p>
               </div>
 
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void handleRetry()}
-              >
+              <Button type="button" variant="outline" onClick={() => void handleRetry()}>
                 다시 불러오기
               </Button>
             </div>
@@ -681,9 +1247,7 @@ export default function WhiteboardPage() {
                 onPointerCancel={handlePointerCancel}
                 aria-label={`보드 ${boardId} 화이트보드`}
                 aria-disabled={!canEdit}
-                className={`h-auto w-full min-w-[900px] touch-none rounded-lg border border-slate-200 bg-white shadow-sm ${
-                  canEdit ? "cursor-crosshair" : "cursor-default"
-                }`}
+                className={`h-auto w-full min-w-[900px] touch-none rounded-lg border border-slate-200 bg-white shadow-sm ${canvasCursorClass}`}
               />
             </div>
 
@@ -693,14 +1257,28 @@ export default function WhiteboardPage() {
                   ? canEdit
                     ? "아직 저장된 선이 없습니다. 캔버스에 바로 그려보세요."
                     : "아직 저장된 선이 없습니다."
-                  : "저장된 선을 불러왔습니다. 다른 참여자의 변경사항도 실시간으로 반영됩니다."}
+                  : tool === "ERASER" && eraserMode === "STROKE"
+                    ? "지우고 싶은 선을 클릭하면 선 전체가 삭제됩니다."
+                    : "저장된 선을 불러왔습니다. 다른 참여자의 변경사항도 실시간으로 반영됩니다."}
               </p>
 
-              {isViewer && (
-                <span className="text-xs font-medium text-slate-500">
-                  VIEWER · 읽기 전용
-                </span>
-              )}
+              <div className="flex items-center gap-3">
+                {canEdit && undoGestureCount > 0 && (
+                  <span className="text-xs text-slate-400">
+                    실행 취소 가능 {undoGestureCount}회
+                  </span>
+                )}
+
+                {isSaving && (
+                  <span className="text-xs font-medium text-blue-600">
+                    저장 대기 {queuedSaveCount}개
+                  </span>
+                )}
+
+                {isViewer && (
+                  <span className="text-xs font-medium text-slate-500">VIEWER · 읽기 전용</span>
+                )}
+              </div>
             </div>
           </Card>
         )}

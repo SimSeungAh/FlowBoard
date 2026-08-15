@@ -9,6 +9,13 @@ public enum WhiteboardEventType {
   STROKE_CREATED,
 
   /**
+   * 특정 선이 삭제된 경우
+   *
+   * Undo 또는 선 단위 지우기에서 사용
+   */
+  STROKE_DELETED,
+
+  /**
    * 화이트보드의 모든 선이 삭제된 경우
    */
   CLEARED
