@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
-  NavLink,
+  Link,
   Outlet,
   useParams,
 } from "react-router";
@@ -15,43 +15,37 @@ import {
   connectCardWebSocket,
   type CardConnectionState,
 } from "@/services/cardWebSocket";
-import { cn } from "@/utils/cn";
-
-interface BoardMenuItem {
-  label: string;
-  path: string;
-  end?: boolean;
-}
 
 const getConnectionLabel = (
   state: CardConnectionState,
 ) => {
   switch (state) {
     case "connected":
-      return "카드 실시간 연결";
+      return "실시간 연결";
 
     case "connecting":
-      return "실시간 연결 중";
+      return "연결 중";
 
     case "disconnected":
-      return "실시간 연결 끊김";
+      return "연결 끊김";
   }
 };
 
-const getConnectionDotClassName = (
-  state: CardConnectionState,
-) => {
-  switch (state) {
-    case "connected":
-      return "bg-emerald-500";
+const getConnectionDotClassName =
+  (
+    state: CardConnectionState,
+  ) => {
+    switch (state) {
+      case "connected":
+        return "bg-[var(--flow-success)]";
 
-    case "connecting":
-      return "bg-amber-400";
+      case "connecting":
+        return "bg-[var(--flow-warning)]";
 
-    case "disconnected":
-      return "bg-red-500";
-  }
-};
+      case "disconnected":
+        return "bg-[var(--flow-danger)]";
+    }
+  };
 
 export default function BoardToolsLayout() {
   const {
@@ -72,7 +66,9 @@ export default function BoardToolsLayout() {
     );
 
   const boardId =
-    Number(boardIdParam);
+    Number(
+      boardIdParam,
+    );
 
   const isValidBoardId =
     Number.isInteger(
@@ -81,7 +77,9 @@ export default function BoardToolsLayout() {
     boardId > 0;
 
   useEffect(() => {
-    if (!isValidBoardId) {
+    if (
+      !isValidBoardId
+    ) {
       return;
     }
 
@@ -93,13 +91,6 @@ export default function BoardToolsLayout() {
           setConnectionState,
 
         onEvent: () => {
-          /*
-           * 백엔드 이벤트는 트랜잭션 COMMIT 이후 전달됩니다.
-           *
-           * CREATED / UPDATED / DELETED / MOVED
-           * 어느 이벤트가 오더라도 현재 보드의 카드 목록을
-           * 다시 조회하면 서버의 최종 LexoRank 상태와 정확히 맞습니다.
-           */
           void queryClient.invalidateQueries({
             queryKey: [
               "board",
@@ -131,8 +122,8 @@ export default function BoardToolsLayout() {
     !isValidBoardId
   ) {
     return (
-      <div className="mx-auto w-full max-w-7xl px-6 py-10">
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+      <div className="p-6">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
           <p className="text-sm font-medium text-red-700">
             보드 정보를 확인할 수 없습니다.
           </p>
@@ -141,96 +132,44 @@ export default function BoardToolsLayout() {
     );
   }
 
-  const basePath =
-    `/boards/${boardId}`;
-
-  const menuItems: BoardMenuItem[] =
-    [
-      {
-        label: "보드",
-        path: basePath,
-        end: true,
-      },
-      {
-        label: "카드 검색",
-        path:
-          `${basePath}/search`,
-      },
-      {
-        label: "화이트보드",
-        path:
-          `${basePath}/whiteboard`,
-      },
-      {
-        label: "활동 로그",
-        path:
-          `${basePath}/activities`,
-      },
-    ];
-
   return (
-    <div className="flex w-full flex-col">
-      <div className="sticky top-16 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-7xl items-center px-6">
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-            {menuItems.map(
-              (item) => (
-                <NavLink
-                  key={
-                    item.path
-                  }
-                  to={
-                    item.path
-                  }
-                  end={
-                    item.end
-                  }
-                  className={({
-                    isActive,
-                  }) =>
-                    cn(
-                      "relative flex h-14 shrink-0 items-center px-4 text-sm font-medium transition-colors",
-                      isActive
-                        ? "text-blue-600"
-                        : "text-slate-500 hover:text-slate-900",
-                    )
-                  }
-                >
-                  {({
-                    isActive,
-                  }) => (
-                    <>
-                      {
-                        item.label
-                      }
+    <div className="flex min-h-full w-full flex-col">
+      <div className="sticky top-[var(--flow-header-height)] z-30 flex h-12 shrink-0 items-center justify-between border-b border-[var(--flow-border)] bg-white px-6">
+        <div className="flex items-center gap-2 text-xs">
+          <Link
+            to="/boards"
+            className="font-medium text-[var(--flow-text-muted)] transition-colors hover:text-[var(--flow-primary-600)]"
+          >
+            내 보드
+          </Link>
 
-                      {isActive && (
-                        <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-blue-600" />
-                      )}
-                    </>
-                  )}
-                </NavLink>
-              ),
-            )}
-          </div>
+          <span className="text-[var(--flow-gray-300)]">
+            /
+          </span>
 
-          <div className="ml-4 hidden shrink-0 items-center gap-2 rounded-full bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500 sm:flex">
-            <span
-              className={`h-2 w-2 rounded-full ${getConnectionDotClassName(
-                connectionState,
-              )}`}
-            />
+          <span className="font-semibold text-[var(--flow-text-secondary)]">
+            Board #{boardId}
+          </span>
+        </div>
 
+        <div className="flex items-center gap-2 rounded-md border border-[var(--flow-border)] bg-[var(--flow-gray-50)] px-2.5 py-1.5">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${getConnectionDotClassName(
+              connectionState,
+            )}`}
+          />
+
+          <span className="text-[10px] font-semibold text-[var(--flow-text-muted)]">
             {getConnectionLabel(
               connectionState,
             )}
-          </div>
+          </span>
         </div>
       </div>
 
-      <main className="flex w-full justify-center">
+      <div className="min-w-0 flex-1">
         <Outlet />
-      </main>
+      </div>
     </div>
   );
 }

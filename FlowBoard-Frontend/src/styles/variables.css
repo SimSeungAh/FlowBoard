@@ -1,10 +1,298 @@
+/*
+ * FlowBoard Theme System
+ *
+ * 사이트 UI 테마와 카드 태그 색상은 별개다.
+ *
+ * Theme:
+ * - 버튼
+ * - 활성 메뉴
+ * - 포커스
+ * - 선택 상태
+ * - 링크
+ * - 강조 영역
+ *
+ * Tag:
+ * - Frontend
+ * - Backend
+ * - Bug
+ * - Test
+ * - 사용자 정의 태그
+ */
+
+:root,
+html[data-theme="ocean-blue"] {
+  --flow-primary: #2563eb;
+  --flow-secondary: #0ea5e9;
+  --flow-accent: #14b8a6;
+}
+
+html[data-theme="indigo-violet"] {
+  --flow-primary: #4f46e5;
+  --flow-secondary: #7c3aed;
+  --flow-accent: #a78bfa;
+}
+
+html[data-theme="mint-emerald"] {
+  --flow-primary: #10b981;
+  --flow-secondary: #34d399;
+  --flow-accent: #6ee7b7;
+}
+
+html[data-theme="coral-peach"] {
+  --flow-primary: #f97316;
+  --flow-secondary: #fb7185;
+  --flow-accent: #fdba74;
+}
+
+html[data-theme="rose-plum"] {
+  --flow-primary: #e11d48;
+  --flow-secondary: #be185d;
+  --flow-accent: #f9a8d4;
+}
+
+html[data-theme="sunflower-mustard"] {
+  --flow-primary: #eab308;
+  --flow-secondary: #f59e0b;
+  --flow-accent: #fde68a;
+}
+
+html[data-theme="slate-cyan"] {
+  --flow-primary: #334155;
+  --flow-secondary: #0891b2;
+  --flow-accent: #67e8f9;
+}
+
+html[data-theme="charcoal-lime"] {
+  --flow-primary: #1f2937;
+  --flow-secondary: #84cc16;
+  --flow-accent: #d9f99d;
+}
+
 :root {
-  --color-primary: #2563eb;
-  --color-secondary: #0f172a;
+  /*
+   * Primary scale
+   *
+   * 각 테마의 Primary를 기준으로 자동 생성한다.
+   */
+  --flow-primary-50:
+    color-mix(
+      in srgb,
+      var(--flow-primary) 7%,
+      white
+    );
 
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
+  --flow-primary-100:
+    color-mix(
+      in srgb,
+      var(--flow-primary) 14%,
+      white
+    );
 
-  --radius: 12px;
+  --flow-primary-200:
+    color-mix(
+      in srgb,
+      var(--flow-primary) 25%,
+      white
+    );
+
+  --flow-primary-300:
+    color-mix(
+      in srgb,
+      var(--flow-primary) 40%,
+      white
+    );
+
+  --flow-primary-400:
+    color-mix(
+      in srgb,
+      var(--flow-primary) 65%,
+      white
+    );
+
+  --flow-primary-500:
+    color-mix(
+      in srgb,
+      var(--flow-primary) 85%,
+      white
+    );
+
+  --flow-primary-600:
+    var(--flow-primary);
+
+  --flow-primary-700:
+    color-mix(
+      in srgb,
+      var(--flow-primary) 84%,
+      black
+    );
+
+  --flow-primary-800:
+    color-mix(
+      in srgb,
+      var(--flow-primary) 70%,
+      black
+    );
+
+  --flow-primary-900:
+    color-mix(
+      in srgb,
+      var(--flow-primary) 58%,
+      black
+    );
+
+  /*
+   * Secondary / Accent
+   */
+  --flow-secondary-hover:
+    color-mix(
+      in srgb,
+      var(--flow-secondary) 84%,
+      black
+    );
+
+  --flow-secondary-soft:
+    color-mix(
+      in srgb,
+      var(--flow-secondary) 8%,
+      white
+    );
+
+  --flow-accent-hover:
+    color-mix(
+      in srgb,
+      var(--flow-accent) 82%,
+      black
+    );
+
+  --flow-accent-soft:
+    color-mix(
+      in srgb,
+      var(--flow-accent) 10%,
+      white
+    );
+
+  /*
+   * Neutral
+   */
+  --flow-white: #ffffff;
+
+  --flow-gray-25: #fcfcfd;
+  --flow-gray-50: #f8fafc;
+  --flow-gray-100: #f1f5f9;
+  --flow-gray-150: #eaf0f6;
+  --flow-gray-200: #e2e8f0;
+  --flow-gray-300: #cbd5e1;
+  --flow-gray-400: #94a3b8;
+  --flow-gray-500: #64748b;
+  --flow-gray-600: #475569;
+  --flow-gray-700: #334155;
+  --flow-gray-800: #1e293b;
+  --flow-gray-900: #0f172a;
+  --flow-gray-950: #020617;
+
+  /*
+   * Semantic
+   *
+   * 성공/경고/오류는 테마와 관계없이
+   * 의미가 유지되어야 해서 고정한다.
+   */
+  --flow-success: #10b981;
+  --flow-success-dark: #059669;
+  --flow-success-soft: #ecfdf5;
+
+  --flow-warning: #f59e0b;
+  --flow-warning-dark: #d97706;
+  --flow-warning-soft: #fffbeb;
+
+  --flow-danger: #ef4444;
+  --flow-danger-dark: #dc2626;
+  --flow-danger-soft: #fef2f2;
+
+  /*
+   * Application surfaces
+   *
+   * 테마가 바뀌어도 본문은 깔끔한
+   * White / Gray 계열을 유지한다.
+   */
+  --flow-background: #f8fafc;
+  --flow-surface: #ffffff;
+  --flow-surface-subtle: #f8fafc;
+  --flow-surface-muted: #f1f5f9;
+
+  /*
+   * Text
+   */
+  --flow-text: #0f172a;
+  --flow-text-secondary: #475569;
+  --flow-text-muted: #64748b;
+  --flow-text-placeholder: #94a3b8;
+  --flow-text-disabled: #cbd5e1;
+
+  /*
+   * Border
+   */
+  --flow-border: #e2e8f0;
+  --flow-border-strong: #cbd5e1;
+
+  /*
+   * Focus
+   */
+  --flow-focus-ring:
+    color-mix(
+      in srgb,
+      var(--flow-primary) 16%,
+      transparent
+    );
+
+  /*
+   * Radius
+   */
+  --flow-radius-sm: 6px;
+  --flow-radius-md: 8px;
+  --flow-radius-lg: 12px;
+  --flow-radius-xl: 16px;
+
+  /*
+   * Shadow
+   */
+  --flow-shadow-xs:
+    0 1px 2px rgba(15, 23, 42, 0.04);
+
+  --flow-shadow-sm:
+    0 1px 3px rgba(15, 23, 42, 0.06),
+    0 1px 2px rgba(15, 23, 42, 0.04);
+
+  --flow-shadow-md:
+    0 6px 18px rgba(15, 23, 42, 0.07),
+    0 2px 6px rgba(15, 23, 42, 0.04);
+
+  --flow-shadow-panel:
+    -8px 0 24px rgba(15, 23, 42, 0.08);
+
+  /*
+   * Desktop layout
+   */
+  --flow-min-width: 1180px;
+  --flow-header-height: 64px;
+  --flow-sidebar-width: 224px;
+  --flow-page-padding: 24px;
+  --flow-content-max-width: 1600px;
+
+  /*
+   * Transition
+   */
+  --flow-transition-fast: 120ms ease;
+  --flow-transition: 180ms ease;
+
+  /*
+   * Legacy compatibility
+   */
+  --color-primary: var(--flow-primary);
+  --color-secondary: var(--flow-secondary);
+
+  --color-success: var(--flow-success);
+  --color-warning: var(--flow-warning);
+  --color-danger: var(--flow-danger);
+
+  --radius: var(--flow-radius-md);
 }

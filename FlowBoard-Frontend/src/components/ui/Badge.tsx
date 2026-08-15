@@ -1,6 +1,14 @@
-import type { ReactNode } from "react";
+import type {
+  ReactNode,
+} from "react";
 
-type BadgeVariant = "default" | "success" | "warning" | "danger";
+import { cn } from "@/utils/cn";
+
+type BadgeVariant =
+  | "default"
+  | "success"
+  | "warning"
+  | "danger";
 
 interface BadgeProps {
   children: ReactNode;
@@ -8,17 +16,54 @@ interface BadgeProps {
   className?: string;
 }
 
-const variantClassName: Record<BadgeVariant, string> = {
-  default: "bg-slate-100 text-slate-700",
-  success: "bg-green-100 text-green-700",
-  warning: "bg-yellow-100 text-yellow-700",
-  danger: "bg-red-100 text-red-700",
+const variantClassName: Record<
+  BadgeVariant,
+  string
+> = {
+  default: [
+    "border-[var(--flow-primary-100)]",
+    "bg-[var(--flow-primary-50)]",
+    "text-[var(--flow-primary-700)]",
+  ].join(" "),
+
+  success: [
+    "border-emerald-100",
+    "bg-[var(--flow-success-soft)]",
+    "text-[var(--flow-success-dark)]",
+  ].join(" "),
+
+  warning: [
+    "border-amber-100",
+    "bg-[var(--flow-warning-soft)]",
+    "text-[var(--flow-warning-dark)]",
+  ].join(" "),
+
+  danger: [
+    "border-red-100",
+    "bg-[var(--flow-danger-soft)]",
+    "text-[var(--flow-danger-dark)]",
+  ].join(" "),
 };
 
-export default function Badge({ children, variant = "default", className = "" }: BadgeProps) {
+export default function Badge({
+  children,
+  variant = "default",
+  className,
+}: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${variantClassName[variant]} ${className}`}
+      className={cn(
+        [
+          "inline-flex h-6 shrink-0 items-center",
+          "rounded-md border",
+          "px-2",
+          "text-[11px] font-semibold leading-none",
+        ],
+        variantClassName[
+          variant
+        ],
+        className,
+      )}
     >
       {children}
     </span>

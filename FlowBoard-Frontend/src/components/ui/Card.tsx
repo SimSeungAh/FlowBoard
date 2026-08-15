@@ -1,14 +1,31 @@
-import type { ReactNode } from "react";
+import type {
+  ReactNode,
+} from "react";
+
+import { cn } from "@/utils/cn";
 
 interface CardProps {
   children: ReactNode;
   className?: string;
 }
 
-export default function Card({ children, className = "" }: CardProps) {
+export default function Card({
+  children,
+  className,
+}: CardProps) {
   return (
     <div
-      className={`w-full rounded-xl border border-slate-200 bg-white p-6 shadow-sm ${className}`}
+      className={cn(
+        [
+          "w-full",
+          "rounded-xl",
+          "border border-[var(--flow-border)]",
+          "bg-[var(--flow-surface)]",
+          "p-5",
+          "shadow-[var(--flow-shadow-xs)]",
+        ],
+        className,
+      )}
     >
       {children}
     </div>
