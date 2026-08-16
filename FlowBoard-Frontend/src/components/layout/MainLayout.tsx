@@ -1,11 +1,5 @@
-import type {
-  ReactNode,
-} from "react";
-import {
-  NavLink,
-  Outlet,
-  useLocation,
-} from "react-router";
+import type { ReactNode } from "react";
+import { NavLink, Outlet, useLocation } from "react-router";
 
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
@@ -17,7 +11,8 @@ type IconType =
   | "kanban"
   | "search"
   | "whiteboard"
-  | "activity";
+  | "activity"
+  | "members";
 
 interface SidebarItem {
   label: string;
@@ -209,6 +204,29 @@ function SidebarIcon({
       );
 
       break;
+
+    case "members":
+      content = (
+        <>
+          <circle
+            cx="9"
+            cy="8"
+            r="3"
+          />
+
+          <path d="M3.8 19c.7-3.2 2.6-4.8 5.2-4.8s4.5 1.6 5.2 4.8" />
+
+          <circle
+            cx="17"
+            cy="9"
+            r="2.3"
+          />
+
+          <path d="M15.6 14.5c2.8.1 4.5 1.5 4.9 4.1" />
+        </>
+      );
+
+      break;
   }
 
   return (
@@ -355,6 +373,14 @@ export default function MainLayout() {
               `/boards/${boardId}/activities`,
             icon:
               "activity",
+          },
+          {
+            label:
+              "팀원 및 권한",
+            path:
+              `/boards/${boardId}/members`,
+            icon:
+              "members",
           },
         ]
       : [];

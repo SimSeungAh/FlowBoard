@@ -1,13 +1,24 @@
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useParams } from "react-router";
+import {
+  useEffect,
+  useState,
+} from "react";
+import {
+  useQuery,
+} from "@tanstack/react-query";
+import {
+  useParams,
+} from "react-router";
 
-import { getBoardActivities, type ActivityType } from "@/api/activity";
-import { getBoardDetail } from "@/api/board";
+import {
+  getBoardActivities,
+  type ActivityType,
+} from "@/api/activity";
+import {
+  getBoardDetail,
+} from "@/api/board";
 import Avatar from "@/components/ui/Avatar";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import Pagination from "@/components/ui/Pagination";
 import Skeleton from "@/components/ui/Skeleton";
@@ -17,10 +28,17 @@ const PAGE_SIZE = 20;
 interface ActivityDisplayInfo {
   label: string;
   category: string;
-  variant: "default" | "success" | "warning" | "danger";
+  variant:
+    | "default"
+    | "success"
+    | "warning"
+    | "danger";
 }
 
-const activityDisplayMap: Record<ActivityType, ActivityDisplayInfo> = {
+const activityDisplayMap: Record<
+  ActivityType,
+  ActivityDisplayInfo
+> = {
   BOARD_CREATED: {
     label: "보드 생성",
     category: "보드",
@@ -52,26 +70,26 @@ const activityDisplayMap: Record<ActivityType, ActivityDisplayInfo> = {
   },
 
   CARD_CREATED: {
-    label: "카드 생성",
-    category: "카드",
+    label: "작업 생성",
+    category: "작업",
     variant: "success",
   },
 
   CARD_UPDATED: {
-    label: "카드 수정",
-    category: "카드",
+    label: "작업 수정",
+    category: "작업",
     variant: "default",
   },
 
   CARD_MOVED: {
-    label: "카드 이동",
-    category: "카드",
+    label: "작업 이동",
+    category: "작업",
     variant: "warning",
   },
 
   CARD_DELETED: {
-    label: "카드 삭제",
-    category: "카드",
+    label: "작업 삭제",
+    category: "작업",
     variant: "danger",
   },
 
@@ -124,13 +142,13 @@ const activityDisplayMap: Record<ActivityType, ActivityDisplayInfo> = {
   },
 
   CARD_TAG_ADDED: {
-    label: "카드 태그 추가",
+    label: "태그 추가",
     category: "태그",
     variant: "success",
   },
 
   CARD_TAG_REMOVED: {
-    label: "카드 태그 제거",
+    label: "태그 제거",
     category: "태그",
     variant: "danger",
   },
@@ -154,7 +172,7 @@ const activityDisplayMap: Record<ActivityType, ActivityDisplayInfo> = {
   },
 
   CHECKLIST_ITEM_CREATED: {
-    label: "항목 생성",
+    label: "항목 추가",
     category: "체크리스트",
     variant: "success",
   },
@@ -166,7 +184,7 @@ const activityDisplayMap: Record<ActivityType, ActivityDisplayInfo> = {
   },
 
   CHECKLIST_ITEM_TOGGLED: {
-    label: "항목 상태 변경",
+    label: "완료 상태 변경",
     category: "체크리스트",
     variant: "warning",
   },
@@ -178,286 +196,795 @@ const activityDisplayMap: Record<ActivityType, ActivityDisplayInfo> = {
   },
 
   WHITEBOARD_STROKE_CREATED: {
-    label: "화이트보드 드로잉",
+    label: "드로잉 추가",
     category: "화이트보드",
     variant: "default",
   },
 
   WHITEBOARD_CLEARED: {
-    label: "화이트보드 초기화",
+    label: "전체 초기화",
     category: "화이트보드",
     variant: "danger",
   },
 };
 
-const formatActivityDateTime = (value: string) => {
-  const date = new Date(value);
+const formatActivityDateTime = (
+  value: string,
+) => {
+  const date =
+    new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
     return value;
   }
 
-  return date.toLocaleString("ko-KR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return new Intl.DateTimeFormat(
+    "ko-KR",
+    {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    },
+  ).format(date);
 };
 
-const formatRelativeTime = (value: string) => {
-  const date = new Date(value);
+const formatRelativeTime = (
+  value: string,
+) => {
+  const date =
+    new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
     return "";
   }
 
-  const now = new Date();
+  const now =
+    new Date();
 
-  const differenceMilliseconds = now.getTime() - date.getTime();
+  const differenceMilliseconds =
+    now.getTime() -
+    date.getTime();
 
-  const differenceMinutes = Math.floor(differenceMilliseconds / (1000 * 60));
+  const differenceMinutes =
+    Math.floor(
+      differenceMilliseconds /
+        (1000 * 60),
+    );
 
-  if (differenceMinutes < 1) {
+  if (
+    differenceMinutes <
+    1
+  ) {
     return "방금 전";
   }
 
-  if (differenceMinutes < 60) {
+  if (
+    differenceMinutes <
+    60
+  ) {
     return `${differenceMinutes}분 전`;
   }
 
-  const differenceHours = Math.floor(differenceMinutes / 60);
+  const differenceHours =
+    Math.floor(
+      differenceMinutes /
+        60,
+    );
 
-  if (differenceHours < 24) {
+  if (
+    differenceHours <
+    24
+  ) {
     return `${differenceHours}시간 전`;
   }
 
-  const differenceDays = Math.floor(differenceHours / 24);
+  const differenceDays =
+    Math.floor(
+      differenceHours /
+        24,
+    );
 
-  if (differenceDays < 7) {
+  if (
+    differenceDays <
+    7
+  ) {
     return `${differenceDays}일 전`;
   }
 
   return "";
 };
 
+function RefreshIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-[17px] w-[17px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M20 7v5h-5" />
+
+      <path d="M4 17v-5h5" />
+
+      <path d="M6.2 8.4A7 7 0 0 1 18.4 7" />
+
+      <path d="M17.8 15.6A7 7 0 0 1 5.6 17" />
+    </svg>
+  );
+}
+
+function ActivityIcon({
+  type,
+}: {
+  type: ActivityType;
+}) {
+  const commonProps = {
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap:
+      "round" as const,
+    strokeLinejoin:
+      "round" as const,
+  };
+
+  if (
+    type.startsWith(
+      "COMMENT_",
+    )
+  ) {
+    return (
+      <svg
+        {...commonProps}
+        aria-hidden="true"
+        className="h-[18px] w-[18px]"
+      >
+        <path d="M5 5h14v10H9l-4 4V5Z" />
+      </svg>
+    );
+  }
+
+  if (
+    type.startsWith(
+      "MEMBER_",
+    )
+  ) {
+    return (
+      <svg
+        {...commonProps}
+        aria-hidden="true"
+        className="h-[18px] w-[18px]"
+      >
+        <circle
+          cx="9"
+          cy="8"
+          r="3"
+        />
+
+        <path d="M3.5 18c.7-3.1 2.7-4.7 5.5-4.7 2.1 0 3.8.9 4.8 2.7" />
+
+        <path d="M17 8v6" />
+        <path d="M14 11h6" />
+      </svg>
+    );
+  }
+
+  if (
+    type.startsWith(
+      "CHECKLIST_",
+    )
+  ) {
+    return (
+      <svg
+        {...commonProps}
+        aria-hidden="true"
+        className="h-[18px] w-[18px]"
+      >
+        <path d="m5 7 1.5 1.5L9 6" />
+        <path d="M11 7h8" />
+
+        <path d="m5 13 1.5 1.5L9 12" />
+        <path d="M11 13h8" />
+
+        <path d="m5 19 1.5 1.5L9 18" />
+        <path d="M11 19h8" />
+      </svg>
+    );
+  }
+
+  if (
+    type.startsWith(
+      "WHITEBOARD_",
+    )
+  ) {
+    return (
+      <svg
+        {...commonProps}
+        aria-hidden="true"
+        className="h-[18px] w-[18px]"
+      >
+        <rect
+          x="3.5"
+          y="4"
+          width="17"
+          height="13"
+          rx="2"
+        />
+
+        <path d="M8 21h8" />
+
+        <path d="m8 12 2-2 2 1.5 4-4" />
+      </svg>
+    );
+  }
+
+  if (
+    type.startsWith(
+      "TAG_",
+    ) ||
+    type.startsWith(
+      "CARD_TAG_",
+    )
+  ) {
+    return (
+      <svg
+        {...commonProps}
+        aria-hidden="true"
+        className="h-[18px] w-[18px]"
+      >
+        <path d="M4 5h8l8 7-8 8-8-8V5Z" />
+
+        <circle
+          cx="8"
+          cy="9"
+          r="1"
+        />
+      </svg>
+    );
+  }
+
+  if (
+    type.startsWith(
+      "BOARD_",
+    )
+  ) {
+    return (
+      <svg
+        {...commonProps}
+        aria-hidden="true"
+        className="h-[18px] w-[18px]"
+      >
+        <rect
+          x="4"
+          y="4"
+          width="6"
+          height="16"
+          rx="1.5"
+        />
+
+        <rect
+          x="14"
+          y="4"
+          width="6"
+          height="11"
+          rx="1.5"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      {...commonProps}
+      aria-hidden="true"
+      className="h-[18px] w-[18px]"
+    >
+      <rect
+        x="4"
+        y="4"
+        width="16"
+        height="16"
+        rx="3"
+      />
+
+      <path d="M8 9h8" />
+      <path d="M8 13h6" />
+      <path d="M8 17h4" />
+    </svg>
+  );
+}
+
 export default function ActivityPage() {
-  const { boardId: boardIdParam } = useParams<{
+  const {
+    boardId:
+      boardIdParam,
+  } = useParams<{
     boardId: string;
   }>();
 
-  const boardId = Number(boardIdParam);
+  const boardId =
+    Number(
+      boardIdParam,
+    );
 
-  const isValidBoardId = Number.isInteger(boardId) && boardId > 0;
+  const isValidBoardId =
+    Number.isInteger(
+      boardId,
+    ) &&
+    boardId > 0;
 
-  const [page, setPage] = useState(0);
+  const [
+    page,
+    setPage,
+  ] =
+    useState(0);
 
-  const { data: board } = useQuery({
-    queryKey: ["boards", boardId],
-
-    queryFn: () => getBoardDetail(boardId),
-
-    enabled: isValidBoardId,
-  });
-
-  const { data, isLoading, isFetching, isError, refetch } = useQuery({
-    queryKey: ["boards", boardId, "activities", page],
+  const {
+    data: board,
+  } = useQuery({
+    queryKey: [
+      "boards",
+      boardId,
+    ],
 
     queryFn: () =>
-      getBoardActivities(boardId, {
-        page,
-        size: PAGE_SIZE,
-      }),
+      getBoardDetail(
+        boardId,
+      ),
 
-    enabled: isValidBoardId,
+    enabled:
+      isValidBoardId,
+  });
 
-    placeholderData: (previousData) => previousData,
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: [
+      "boards",
+      boardId,
+      "activities",
+      page,
+    ],
+
+    queryFn: () =>
+      getBoardActivities(
+        boardId,
+        {
+          page,
+          size:
+            PAGE_SIZE,
+        },
+      ),
+
+    enabled:
+      isValidBoardId,
+
+    placeholderData: (
+      previousData,
+    ) =>
+      previousData,
   });
 
   useEffect(() => {
-    if (!data || data.totalPages === 0) {
+    if (
+      !data ||
+      data.totalPages ===
+        0
+    ) {
       return;
     }
 
-    if (page >= data.totalPages) {
-      setPage(data.totalPages - 1);
+    if (
+      page >=
+      data.totalPages
+    ) {
+      setPage(
+        data.totalPages -
+          1,
+      );
     }
-  }, [data, page]);
+  }, [
+    data,
+    page,
+  ]);
 
-  const handlePageChange = (nextPage: number) => {
-    setPage(nextPage - 1);
+  const handlePageChange =
+    (
+      nextPage: number,
+    ) => {
+      setPage(
+        nextPage - 1,
+      );
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  };
+      window.scrollTo({
+        top: 0,
+        behavior:
+          "smooth",
+      });
+    };
 
-  if (!isValidBoardId) {
+  if (
+    !isValidBoardId
+  ) {
     return (
-      <section className="w-full max-w-5xl px-6 py-10">
-        <Card>
-          <h1 className="text-xl font-bold text-slate-900">활동 로그를 열 수 없습니다.</h1>
+      <section className="flow-page">
+        <div className="max-w-2xl rounded-[var(--flow-radius-lg)] bg-white p-7 shadow-[var(--flow-shadow-sm)]">
+          <h1 className="text-xl font-bold text-[var(--flow-text)]">
+            활동 기록을 열 수
+            없습니다.
+          </h1>
 
-          <p className="mt-2 text-sm text-slate-500">올바른 보드 ID가 필요합니다.</p>
-        </Card>
+          <p className="mt-2 text-[13px] leading-6 text-[var(--flow-text-muted)]">
+            올바른 보드 주소인지
+            확인해주세요.
+          </p>
+        </div>
       </section>
     );
   }
 
-  const activities = data?.content ?? [];
+  const activities =
+    data?.content ??
+    [];
 
   return (
-    <section className="flex w-full max-w-5xl flex-col gap-5 px-6 py-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <section className="flow-page">
+      {/* Page Header */}
+      <div className="flow-page-header">
         <div>
-          <p className="text-sm font-medium text-blue-600">{board?.title ?? `Board #${boardId}`}</p>
+          <p className="text-[12px] font-semibold text-[var(--flow-primary)]">
+            {board?.title ??
+              `Board #${boardId}`}
+          </p>
 
-          <h1 className="mt-1 text-3xl font-bold text-slate-900">활동 로그</h1>
+          <h1 className="mt-2 flow-page-title">
+            활동 기록
+          </h1>
 
-          <p className="mt-2 text-sm text-slate-500">
-            보드에서 발생한 주요 변경 사항을 최신순으로 확인할 수 있습니다.
+          <p className="flow-page-description">
+            보드에서 누가 무엇을
+            변경했는지 시간 순서대로
+            확인하세요. 작업 이동,
+            댓글, 체크리스트,
+            담당자와 화이트보드 변경
+            등을 한곳에서 볼 수
+            있습니다.
           </p>
         </div>
 
         <Button
           type="button"
           variant="outline"
-          loading={isFetching && !isLoading}
-          onClick={() => void refetch()}
+          leftIcon={
+            <RefreshIcon />
+          }
+          loading={
+            isFetching &&
+            !isLoading
+          }
+          onClick={() =>
+            void refetch()
+          }
         >
           새로고침
         </Button>
       </div>
 
-      {!isLoading && !isError && data && (
-        <Card className="p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-slate-600">
-              전체 활동{" "}
-              <strong className="font-semibold text-slate-900">
-                {data.totalElements.toLocaleString()}
-              </strong>
-              개
+      {/* Summary */}
+      {!isLoading &&
+        !isError &&
+        data && (
+          <section className="flow-section">
+            <div className="flex items-center justify-between gap-8 rounded-[var(--flow-radius-lg)] bg-white px-6 py-5 shadow-[var(--flow-shadow-xs)]">
+              <div>
+                <p className="text-[13px] text-[var(--flow-text-muted)]">
+                  이 보드에 기록된
+                  활동
+                </p>
+
+                <p className="mt-1 text-[22px] font-bold tracking-[-0.02em] text-[var(--flow-text)]">
+                  {data.totalElements.toLocaleString()}
+                  <span className="ml-1.5 text-[13px] font-medium text-[var(--flow-text-muted)]">
+                    개
+                  </span>
+                </p>
+              </div>
+
+              <div className="text-right">
+                <p className="text-[12px] font-semibold text-[var(--flow-text-secondary)]">
+                  최신 활동부터 표시
+                </p>
+
+                <p className="mt-1 text-[11px] text-[var(--flow-text-placeholder)]">
+                  페이지당{" "}
+                  {PAGE_SIZE}개
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+      {/* Activity List */}
+      <section className="flow-section">
+        <div className="flow-section-header">
+          <div>
+            <h2 className="flow-section-title">
+              최근 활동
+            </h2>
+
+            <p className="flow-section-description">
+              작업의 흐름과 팀의 변경
+              내용을 자연스럽게
+              따라갈 수 있습니다.
             </p>
-
-            <p className="text-xs text-slate-400">최신 활동부터 표시됩니다.</p>
           </div>
-        </Card>
-      )}
 
-      {isLoading ? (
-        <Card className="p-0">
-          <div className="divide-y divide-slate-100">
+          {data &&
+            !isLoading &&
+            !isError &&
+            data.totalPages >
+              0 && (
+              <span className="whitespace-nowrap text-[12px] font-medium text-[var(--flow-text-muted)]">
+                {data.number +
+                  1}
+                /{data.totalPages}
+                페이지
+              </span>
+            )}
+        </div>
+
+        {isLoading ? (
+          <div className="rounded-[var(--flow-radius-xl)] bg-white px-7 shadow-[var(--flow-shadow-xs)]">
             {Array.from({
               length: 6,
-            }).map((_, index) => (
-              <div key={index} className="flex gap-4 p-5">
-                <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
+            }).map(
+              (
+                _,
+                index,
+              ) => (
+                <div
+                  key={
+                    index
+                  }
+                  className="flex gap-5 border-b border-[var(--flow-border)] py-7 last:border-b-0"
+                >
+                  <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Skeleton className="h-5 w-20 rounded-full" />
-                    <Skeleton className="h-5 w-24 rounded-full" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <Skeleton className="h-5 w-20" />
+
+                      <Skeleton className="h-6 w-16 rounded-lg" />
+
+                      <Skeleton className="h-6 w-24 rounded-lg" />
+                    </div>
+
+                    <Skeleton className="mt-4 h-4 w-4/5" />
+
+                    <Skeleton className="mt-3 h-3 w-2/5" />
                   </div>
-
-                  <Skeleton className="mt-3 h-4 w-4/5" />
-
-                  <Skeleton className="mt-2 h-4 w-2/5" />
                 </div>
-              </div>
-            ))}
+              ),
+            )}
           </div>
-        </Card>
-      ) : isError ? (
-        <Card>
-          <div className="flex flex-col items-start gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">
-                활동 로그를 불러오지 못했습니다.
-              </h2>
+        ) : isError ? (
+          <div className="max-w-2xl rounded-[var(--flow-radius-lg)] bg-white p-7 shadow-[var(--flow-shadow-sm)]">
+            <h2 className="text-lg font-bold text-[var(--flow-text)]">
+              활동 기록을
+              불러오지
+              못했습니다.
+            </h2>
 
-              <p className="mt-1 text-sm text-slate-500">
-                로그인 상태와 보드 접근 권한을 확인한 뒤 다시 시도해주세요.
-              </p>
-            </div>
+            <p className="mt-2 text-[13px] leading-6 text-[var(--flow-text-muted)]">
+              로그인 상태와 보드
+              접근 권한을 확인한 뒤
+              다시 시도해주세요.
+            </p>
 
-            <Button type="button" variant="outline" onClick={() => void refetch()}>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-6"
+              onClick={() =>
+                void refetch()
+              }
+            >
               다시 불러오기
             </Button>
           </div>
-        </Card>
-      ) : activities.length === 0 ? (
-        <EmptyState
-          title="아직 기록된 활동이 없습니다."
-          description="보드에서 카드 생성, 이동, 댓글 작성 등의 작업이 발생하면 이곳에 활동 기록이 표시됩니다."
-        />
-      ) : (
-        <>
-          <Card className="overflow-hidden p-0">
-            <div className="divide-y divide-slate-100">
-              {activities.map((activity) => {
-                const display = activityDisplayMap[activity.type];
+        ) : activities.length ===
+          0 ? (
+          <EmptyState
+            title="아직 기록된 활동이 없습니다."
+            description="작업 생성과 이동, 댓글, 체크리스트, 담당자 변경 등의 활동이 생기면 이곳에서 확인할 수 있습니다."
+          />
+        ) : (
+          <>
+            <div className="overflow-hidden rounded-[var(--flow-radius-xl)] bg-white shadow-[var(--flow-shadow-xs)]">
+              {activities.map(
+                (
+                  activity,
+                  index,
+                ) => {
+                  const display =
+                    activityDisplayMap[
+                      activity
+                        .type
+                    ];
 
-                const relativeTime = formatRelativeTime(activity.createdAt);
+                  const relativeTime =
+                    formatRelativeTime(
+                      activity.createdAt,
+                    );
 
-                return (
-                  <article
-                    key={activity.id}
-                    className="flex gap-4 px-5 py-5 transition-colors hover:bg-slate-50"
-                  >
-                    <Avatar name={activity.actorNickname} size="md" />
+                  const isLast =
+                    index ===
+                    activities.length -
+                      1;
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-slate-900">
-                          {activity.actorNickname}
-                        </span>
+                  return (
+                    <article
+                      key={
+                        activity.id
+                      }
+                      className="group flex gap-5 px-7 py-7 transition-colors hover:bg-[var(--flow-gray-50)]"
+                    >
+                      {/* Timeline */}
+                      <div className="relative flex shrink-0 flex-col items-center">
+                        <Avatar
+                          name={
+                            activity.actorNickname
+                          }
+                          size="md"
+                        />
 
-                        <Badge>{display.category}</Badge>
-
-                        <Badge variant={display.variant}>{display.label}</Badge>
-                      </div>
-
-                      <p className="mt-2 text-sm leading-6 break-words text-slate-700">
-                        {activity.description}
-                      </p>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
-                        <time
-                          dateTime={activity.createdAt}
-                          title={formatActivityDateTime(activity.createdAt)}
-                        >
-                          {relativeTime ? `${relativeTime} · ` : ""}
-                          {formatActivityDateTime(activity.createdAt)}
-                        </time>
-
-                        {activity.targetName && (
-                          <span className="max-w-full truncate">
-                            대상:{" "}
-                            <strong className="font-medium text-slate-500">
-                              {activity.targetName}
-                            </strong>
-                          </span>
+                        {!isLast && (
+                          <span className="absolute top-[48px] bottom-[-28px] w-px bg-[var(--flow-border)]" />
                         )}
                       </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </Card>
 
-          {data && (
-            <Pagination
-              page={data.number + 1}
-              totalPages={data.totalPages}
-              onChange={handlePageChange}
-            />
-          )}
-        </>
-      )}
+                      {/* Content */}
+                      <div
+                        className={[
+                          "min-w-0 flex-1",
+                          !isLast
+                            ? "border-b border-[var(--flow-border)] pb-7"
+                            : "",
+                        ].join(
+                          " ",
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-8">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2.5">
+                              <span className="text-[14px] font-bold text-[var(--flow-text)]">
+                                {
+                                  activity.actorNickname
+                                }
+                              </span>
+
+                              <Badge>
+                                {
+                                  display.category
+                                }
+                              </Badge>
+
+                              <Badge
+                                variant={
+                                  display.variant
+                                }
+                              >
+                                {
+                                  display.label
+                                }
+                              </Badge>
+                            </div>
+
+                            <p className="mt-3 max-w-[820px] break-words text-[13px] leading-7 text-[var(--flow-text-secondary)]">
+                              {
+                                activity.description
+                              }
+                            </p>
+
+                            {activity.targetName && (
+                              <div className="mt-4 inline-flex items-center gap-3 rounded-xl bg-[var(--flow-gray-50)] px-3.5 py-2.5">
+                                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-[var(--flow-primary)] shadow-[var(--flow-shadow-xs)]">
+                                  <ActivityIcon
+                                    type={
+                                      activity.type
+                                    }
+                                  />
+                                </span>
+
+                                <div className="min-w-0">
+                                  <p className="text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
+                                    관련 대상
+                                  </p>
+
+                                  <p className="mt-0.5 max-w-[500px] truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
+                                    {
+                                      activity.targetName
+                                    }
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Time */}
+                          <div className="w-[170px] shrink-0 text-right">
+                            {relativeTime && (
+                              <p className="text-[12px] font-semibold text-[var(--flow-primary)]">
+                                {
+                                  relativeTime
+                                }
+                              </p>
+                            )}
+
+                            <time
+                              dateTime={
+                                activity.createdAt
+                              }
+                              title={
+                                formatActivityDateTime(
+                                  activity.createdAt,
+                                )
+                              }
+                              className="mt-1 block whitespace-nowrap text-[11px] text-[var(--flow-text-placeholder)]"
+                            >
+                              {formatActivityDateTime(
+                                activity.createdAt,
+                              )}
+                            </time>
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                },
+              )}
+            </div>
+
+            {data &&
+              data.totalPages >
+                1 && (
+                <div className="mt-8 flex justify-center">
+                  <Pagination
+                    page={
+                      data.number +
+                      1
+                    }
+                    totalPages={
+                      data.totalPages
+                    }
+                    onChange={
+                      handlePageChange
+                    }
+                  />
+                </div>
+              )}
+          </>
+        )}
+      </section>
     </section>
   );
 }

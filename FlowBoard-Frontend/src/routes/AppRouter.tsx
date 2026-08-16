@@ -4,6 +4,7 @@ import BoardToolsLayout from "@/components/layout/BoardToolsLayout";
 import MainLayout from "@/components/layout/MainLayout";
 import ActivityPage from "@/pages/Activity/ActivityPage";
 import BoardPage from "@/pages/Board/BoardPage";
+import BoardMembersPage from "@/pages/BoardMembers/BoardMembersPage";
 import BoardsPage from "@/pages/Boards/BoardsPage";
 import CardSearchPage from "@/pages/CardSearch/CardSearchPage";
 import ErrorPage from "@/pages/ErrorPage";
@@ -63,6 +64,10 @@ const router = createBrowserRouter([
               {
                 path: "activities",
                 element: <ActivityPage />,
+              },
+              {
+                path: "members",
+                element: <BoardMembersPage />,
               },
             ],
           },

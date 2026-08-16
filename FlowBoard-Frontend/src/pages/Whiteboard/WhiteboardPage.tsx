@@ -1008,12 +1008,16 @@ export default function WhiteboardPage() {
 
   if (!isValidBoardId) {
     return (
-      <section className="w-full max-w-4xl px-6 py-10">
-        <Card>
-          <h1 className="text-xl font-bold text-slate-900">화이트보드를 열 수 없습니다.</h1>
+      <section className="flow-page">
+        <div className="max-w-2xl rounded-[var(--flow-radius-lg)] bg-white p-7 shadow-[var(--flow-shadow-sm)]">
+          <h1 className="text-xl font-bold text-[var(--flow-text)]">
+            화이트보드를 열 수 없습니다.
+          </h1>
 
-          <p className="mt-2 text-sm text-slate-500">올바른 보드 ID가 필요합니다.</p>
-        </Card>
+          <p className="mt-2 text-[13px] leading-6 text-[var(--flow-text-muted)]">
+            올바른 보드 주소인지 확인해주세요.
+          </p>
+        </div>
       </section>
     );
   }
@@ -1049,239 +1053,327 @@ export default function WhiteboardPage() {
         onCancel={() => setClearDialogOpen(false)}
       />
 
-      <section className="flex w-full max-w-7xl flex-col gap-5 px-6 py-8">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-blue-600">
-              {board ? board.title : `Board #${boardId}`}
-            </p>
-
-            <h1 className="mt-1 text-3xl font-bold text-slate-900">화이트보드</h1>
-
-            <p className="mt-2 text-sm text-slate-500">
-              {isViewer
-                ? "VIEWER 권한으로 참여 중입니다. 화이트보드는 조회만 할 수 있습니다."
-                : "펜으로 그리고, 지우개 방식을 선택하거나 Ctrl+Z로 마지막 작업을 실행 취소할 수 있습니다."}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {board && (
-              <span
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                  isViewer ? "bg-slate-100 text-slate-600" : "bg-blue-50 text-blue-700"
-                }`}
-              >
-                {board.myRole}
-              </span>
-            )}
-
-            <span
-              className={`rounded-full px-3 py-1.5 text-xs font-medium ${getConnectionClassName(
-                connectionState,
-              )}`}
-            >
-              {getConnectionLabel(connectionState)}
-            </span>
-
-            <span className="text-sm text-slate-500">
-              {isSaving
-                ? `선 저장 중... (${queuedSaveCount})`
-                : deletingStrokeId !== null
-                  ? "선 삭제 중..."
-                  : `저장된 선 ${strokes.length.toLocaleString()}개`}
-            </span>
-          </div>
-        </div>
-
-        {isViewer && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-sm font-medium text-slate-700">읽기 전용 화이트보드</p>
-
-            <p className="mt-1 text-xs text-slate-500">
-              VIEWER는 다른 참여자의 그림과 변경사항을 실시간으로 볼 수 있지만, 화이트보드를 수정할
-              수 없습니다.
-            </p>
-          </div>
-        )}
-
-        <Card className="p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              variant={tool === "PEN" ? "primary" : "outline"}
-              aria-pressed={tool === "PEN"}
-              disabled={!canEdit || isBusy}
-              onClick={() => setTool("PEN")}
-            >
-              PEN
-            </Button>
-
-            <Button
-              type="button"
-              variant={tool === "ERASER" ? "primary" : "outline"}
-              aria-pressed={tool === "ERASER"}
-              disabled={!canEdit || isBusy}
-              onClick={() => setTool("ERASER")}
-            >
-              ERASER
-            </Button>
-
-            {tool === "ERASER" && (
-              <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-1">
-                <button
-                  type="button"
-                  disabled={!canEdit || isBusy}
-                  onClick={() => setEraserMode("PIXEL")}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    eraserMode === "PIXEL"
-                      ? "bg-white text-blue-700 shadow-sm"
-                      : "text-slate-500 hover:text-slate-800"
-                  } disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  부분 지우기
-                </button>
-
-                <button
-                  type="button"
-                  disabled={!canEdit || isBusy}
-                  onClick={() => setEraserMode("STROKE")}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    eraserMode === "STROKE"
-                      ? "bg-white text-blue-700 shadow-sm"
-                      : "text-slate-500 hover:text-slate-800"
-                  } disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  선 지우기
-                </button>
-              </div>
-            )}
-
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!canUndo}
-              onClick={() => void handleUndo()}
-            >
-              {isUndoing ? "실행 취소 중..." : "↶ 실행 취소"}
-            </Button>
-
-            <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-500">
-              Ctrl + Z
-            </span>
-
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              펜 색상
-              <input
-                type="color"
-                value={penColor}
-                disabled={!canEdit || tool === "ERASER" || isBusy}
-                onChange={(event) => setPenColor(event.target.value)}
-                className="h-10 w-12 cursor-pointer rounded-md border border-slate-300 bg-white p-1 disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="펜 색상 선택"
-              />
-            </label>
-
-            <div className="ml-auto flex items-center gap-3">
-              <span className="text-xs text-slate-400">
-                {tool === "ERASER"
-                  ? eraserMode === "PIXEL"
-                    ? `부분 지우기 · ${ERASER_LINE_WIDTH}px`
-                    : "선 지우기 · 클릭"
-                  : `PEN · ${PEN_LINE_WIDTH}px`}
-              </span>
-
-              <Button
-                type="button"
-                variant="danger"
-                disabled={
-                  !canEdit || strokes.length === 0 || clearWhiteboardMutation.isPending || isBusy
-                }
-                onClick={() => setClearDialogOpen(true)}
-              >
-                전체 초기화
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        {tool === "ERASER" && eraserMode === "STROKE" && canEdit && (
-          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
-            <p className="text-sm font-medium text-blue-800">선 지우기 모드</p>
-
-            <p className="mt-1 text-xs leading-5 text-blue-600">
-              캔버스에서 지우고 싶은 선을 클릭하세요. 겹친 경우 가장 최근에 그린 선이 먼저
-              삭제됩니다.
-            </p>
-          </div>
-        )}
-
-        {isError ? (
-          <Card>
-            <div className="flex flex-col items-start gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">
-                  화이트보드를 불러오지 못했습니다.
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  보드 접근 권한, 로그인 상태와 백엔드 실행 여부를 확인한 뒤 다시 시도해주세요.
-                </p>
-              </div>
-
-              <Button type="button" variant="outline" onClick={() => void handleRetry()}>
-                다시 불러오기
-              </Button>
-            </div>
-          </Card>
-        ) : (
-          <Card className="overflow-hidden p-0">
-            <div className="overflow-auto bg-slate-100 p-4">
-              <canvas
-                ref={canvasRef}
-                width={CANVAS_WIDTH}
-                height={CANVAS_HEIGHT}
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={finishStroke}
-                onPointerCancel={handlePointerCancel}
-                aria-label={`보드 ${boardId} 화이트보드`}
-                aria-disabled={!canEdit}
-                className={`h-auto w-full min-w-[900px] touch-none rounded-lg border border-slate-200 bg-white shadow-sm ${canvasCursorClass}`}
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-3">
-              <p className="text-xs text-slate-500">
-                {strokes.length === 0
-                  ? canEdit
-                    ? "아직 저장된 선이 없습니다. 캔버스에 바로 그려보세요."
-                    : "아직 저장된 선이 없습니다."
-                  : tool === "ERASER" && eraserMode === "STROKE"
-                    ? "지우고 싶은 선을 클릭하면 선 전체가 삭제됩니다."
-                    : "저장된 선을 불러왔습니다. 다른 참여자의 변경사항도 실시간으로 반영됩니다."}
+      <section className="flex min-h-[calc(100vh-var(--flow-header-height)-48px)] w-full flex-col">
+        {/* Page header */}
+        <div className="shrink-0 px-8 pb-7 pt-8">
+          <div className="flex items-end justify-between gap-10 max-[1199px]:items-start">
+            <div className="min-w-0">
+              <p className="text-[12px] font-semibold text-[var(--flow-primary)]">
+                {board ? board.title : `Board #${boardId}`}
               </p>
 
-              <div className="flex items-center gap-3">
+              <h1 className="mt-2 text-[26px] font-bold tracking-[-0.03em] text-[var(--flow-text)]">
+                화이트보드
+              </h1>
+
+              <p className="mt-2 max-w-[760px] text-[13px] leading-7 text-[var(--flow-text-muted)]">
+                {isViewer
+                  ? "VIEWER 권한으로 참여 중입니다. 다른 참여자의 드로잉과 변경사항을 실시간으로 확인할 수 있습니다."
+                  : "기획 스케치, UI 아이디어, 구조 설계, 테스트 흐름처럼 말로 설명하기 어려운 내용을 자유롭게 그리고 공유하세요."}
+              </p>
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2.5">
+              {board && (
+                <span
+                  className={[
+                    "inline-flex h-8 items-center whitespace-nowrap rounded-lg px-3",
+                    "text-[11px] font-bold",
+                    isViewer
+                      ? "bg-[var(--flow-gray-100)] text-[var(--flow-text-muted)]"
+                      : "bg-[var(--flow-primary-50)] text-[var(--flow-primary)]",
+                  ].join(" ")}
+                >
+                  {board.myRole}
+                </span>
+              )}
+
+              <span
+                className={[
+                  "inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg px-3",
+                  "text-[11px] font-semibold",
+                  getConnectionClassName(connectionState),
+                ].join(" ")}
+              >
+                <span
+                  className={[
+                    "h-2 w-2 rounded-full",
+                    connectionState === "connected"
+                      ? "bg-emerald-500"
+                      : connectionState === "connecting"
+                        ? "bg-amber-500"
+                        : "bg-red-500",
+                  ].join(" ")}
+                />
+
+                {getConnectionLabel(connectionState)}
+              </span>
+
+              <span className="whitespace-nowrap text-[12px] text-[var(--flow-text-muted)]">
+                {isSaving
+                  ? `저장 중 ${queuedSaveCount}개`
+                  : deletingStrokeId !== null
+                    ? "선 삭제 중"
+                    : `저장된 선 ${strokes.length.toLocaleString()}개`}
+              </span>
+            </div>
+          </div>
+
+          {isViewer && (
+            <div className="mt-6 rounded-[var(--flow-radius-lg)] bg-[var(--flow-gray-100)] px-5 py-4">
+              <p className="text-[13px] font-semibold text-[var(--flow-text-secondary)]">
+                읽기 전용 화이트보드
+              </p>
+
+              <p className="mt-1 text-[12px] leading-6 text-[var(--flow-text-muted)]">
+                VIEWER는 화이트보드를 수정할 수 없지만, 다른 참여자의 그림과 변경사항은 실시간으로 확인할 수 있습니다.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Toolbar */}
+        <div className="shrink-0 px-8 pb-6">
+          <div className="rounded-[var(--flow-radius-xl)] bg-white p-6 shadow-[var(--flow-shadow-xs)]">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
+              {/* Draw tools */}
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant={tool === "PEN" ? "primary" : "outline"}
+                  aria-pressed={tool === "PEN"}
+                  disabled={!canEdit || isBusy}
+                  onClick={() => setTool("PEN")}
+                >
+                  펜
+                </Button>
+
+                <Button
+                  type="button"
+                  variant={tool === "ERASER" ? "primary" : "outline"}
+                  aria-pressed={tool === "ERASER"}
+                  disabled={!canEdit || isBusy}
+                  onClick={() => setTool("ERASER")}
+                >
+                  지우개
+                </Button>
+              </div>
+
+              <span className="hidden h-7 w-px bg-[var(--flow-border)] min-[1180px]:block" />
+
+              {/* Pen color */}
+              <label className="flex items-center gap-3 text-[12px] font-semibold text-[var(--flow-text-secondary)]">
+                <span className="whitespace-nowrap">펜 색상</span>
+
+                <span className="relative flex h-10 w-10 overflow-hidden rounded-xl border border-[var(--flow-border-strong)] bg-white shadow-[var(--flow-shadow-xs)]">
+                  <input
+                    type="color"
+                    value={penColor}
+                    disabled={!canEdit || tool === "ERASER" || isBusy}
+                    onChange={(event) => setPenColor(event.target.value)}
+                    aria-label="펜 색상 선택"
+                    className="absolute -inset-2 h-14 w-14 cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+                </span>
+
+                <span
+                  className="h-3 w-3 rounded-full border border-black/5"
+                  style={{ backgroundColor: penColor }}
+                />
+
+                <span className="font-mono text-[11px] font-medium text-[var(--flow-text-muted)]">
+                  {penColor.toUpperCase()}
+                </span>
+              </label>
+
+              {/* Eraser mode */}
+              {tool === "ERASER" && (
+                <>
+                  <span className="hidden h-7 w-px bg-[var(--flow-border)] min-[1180px]:block" />
+
+                  <div className="flex items-center gap-3">
+                    <span className="whitespace-nowrap text-[12px] font-semibold text-[var(--flow-text-secondary)]">
+                      지우기 방식
+                    </span>
+
+                    <div className="flex items-center rounded-xl bg-[var(--flow-gray-100)] p-1">
+                      <button
+                        type="button"
+                        disabled={!canEdit || isBusy}
+                        onClick={() => setEraserMode("PIXEL")}
+                        className={[
+                          "h-8 whitespace-nowrap rounded-lg px-3 text-[11px] font-semibold transition-colors",
+                          eraserMode === "PIXEL"
+                            ? "bg-white text-[var(--flow-primary)] shadow-[var(--flow-shadow-xs)]"
+                            : "text-[var(--flow-text-muted)] hover:text-[var(--flow-text)]",
+                          "disabled:cursor-not-allowed disabled:opacity-50",
+                        ].join(" ")}
+                      >
+                        부분 지우기
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={!canEdit || isBusy}
+                        onClick={() => setEraserMode("STROKE")}
+                        className={[
+                          "h-8 whitespace-nowrap rounded-lg px-3 text-[11px] font-semibold transition-colors",
+                          eraserMode === "STROKE"
+                            ? "bg-white text-[var(--flow-primary)] shadow-[var(--flow-shadow-xs)]"
+                            : "text-[var(--flow-text-muted)] hover:text-[var(--flow-text)]",
+                          "disabled:cursor-not-allowed disabled:opacity-50",
+                        ].join(" ")}
+                      >
+                        선 전체 지우기
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="ml-auto flex items-center gap-2.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canUndo}
+                  onClick={() => void handleUndo()}
+                >
+                  {isUndoing ? "실행 취소 중..." : "↶ 실행 취소"}
+                </Button>
+
+                <span className="hidden whitespace-nowrap rounded-lg bg-[var(--flow-gray-100)] px-2.5 py-1.5 text-[10px] font-semibold text-[var(--flow-text-muted)] min-[1280px]:inline-flex">
+                  Ctrl + Z
+                </span>
+
+                <Button
+                  type="button"
+                  variant="danger"
+                  disabled={
+                    !canEdit || strokes.length === 0 || clearWhiteboardMutation.isPending || isBusy
+                  }
+                  onClick={() => setClearDialogOpen(true)}
+                >
+                  전체 초기화
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--flow-border)] pt-5">
+              <p className="text-[12px] leading-6 text-[var(--flow-text-muted)]">
+                {tool === "ERASER"
+                  ? eraserMode === "PIXEL"
+                    ? `지우개를 움직인 부분만 지웁니다. 지우개 굵기 ${ERASER_LINE_WIDTH}px`
+                    : "지우고 싶은 선을 클릭하면 해당 선 전체가 삭제됩니다."
+                  : `펜으로 자유롭게 그릴 수 있습니다. 기본 굵기 ${PEN_LINE_WIDTH}px`}
+              </p>
+
+              <div className="flex flex-wrap items-center gap-4 text-[11px] text-[var(--flow-text-placeholder)]">
                 {canEdit && undoGestureCount > 0 && (
-                  <span className="text-xs text-slate-400">
-                    실행 취소 가능 {undoGestureCount}회
+                  <span className="whitespace-nowrap">
+                    실행 취소 가능{" "}
+                    <strong className="font-semibold text-[var(--flow-text-secondary)]">
+                      {undoGestureCount}
+                    </strong>
+                    회
                   </span>
                 )}
 
                 {isSaving && (
-                  <span className="text-xs font-medium text-blue-600">
+                  <span className="inline-flex items-center gap-2 whitespace-nowrap font-semibold text-[var(--flow-primary)]">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--flow-primary)]" />
                     저장 대기 {queuedSaveCount}개
                   </span>
                 )}
-
-                {isViewer && (
-                  <span className="text-xs font-medium text-slate-500">VIEWER · 읽기 전용</span>
-                )}
               </div>
             </div>
-          </Card>
+          </div>
+        </div>
+
+        {tool === "ERASER" && eraserMode === "STROKE" && canEdit && (
+          <div className="shrink-0 px-8 pb-6">
+            <div className="rounded-[var(--flow-radius-lg)] bg-[var(--flow-primary-50)] px-5 py-4">
+              <p className="text-[13px] font-semibold text-[var(--flow-primary)]">
+                선 전체 지우기 모드
+              </p>
+
+              <p className="mt-1 text-[12px] leading-6 text-[var(--flow-text-muted)]">
+                캔버스에서 지우고 싶은 선을 클릭하세요. 선이 겹쳐 있으면 가장 최근에 그린 선부터 선택됩니다.
+              </p>
+            </div>
+          </div>
         )}
+
+        {/* Canvas */}
+        <div className="min-h-0 flex-1 px-8 pb-8">
+          {isError ? (
+            <Card className="max-w-2xl">
+              <div className="flex flex-col items-start gap-5">
+                <div>
+                  <h2 className="text-lg font-bold text-[var(--flow-text)]">
+                    화이트보드를 불러오지 못했습니다.
+                  </h2>
+
+                  <p className="mt-2 text-[13px] leading-6 text-[var(--flow-text-muted)]">
+                    보드 접근 권한, 로그인 상태와 백엔드 실행 여부를 확인한 뒤 다시 시도해주세요.
+                  </p>
+                </div>
+
+                <Button type="button" variant="outline" onClick={() => void handleRetry()}>
+                  다시 불러오기
+                </Button>
+              </div>
+            </Card>
+          ) : (
+            <div className="flex h-full min-h-[560px] flex-col overflow-hidden rounded-[var(--flow-radius-xl)] bg-white shadow-[var(--flow-shadow-sm)]">
+              <div className="min-h-0 flex-1 overflow-auto bg-[var(--flow-gray-100)] p-5">
+                <div className="flex min-h-full min-w-full items-start justify-center">
+                  <canvas
+                    ref={canvasRef}
+                    width={CANVAS_WIDTH}
+                    height={CANVAS_HEIGHT}
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={finishStroke}
+                    onPointerCancel={handlePointerCancel}
+                    aria-label={`보드 ${boardId} 화이트보드`}
+                    aria-disabled={!canEdit}
+                    className={[
+                      "h-auto w-full min-w-[900px] max-w-[1200px]",
+                      "touch-none rounded-[var(--flow-radius-md)]",
+                      "border border-[var(--flow-border)]",
+                      "bg-white shadow-[var(--flow-shadow-xs)]",
+                      canvasCursorClass,
+                    ].join(" ")}
+                  />
+                </div>
+              </div>
+
+              <footer className="flex min-h-[58px] shrink-0 items-center justify-between gap-6 border-t border-[var(--flow-border)] bg-white px-5 py-3.5">
+                <p className="min-w-0 text-[11px] leading-5 text-[var(--flow-text-muted)]">
+                  {strokes.length === 0
+                    ? canEdit
+                      ? "아직 저장된 선이 없습니다. 캔버스에서 바로 시작해보세요."
+                      : "아직 저장된 선이 없습니다."
+                    : tool === "ERASER" && eraserMode === "STROKE"
+                      ? "지우고 싶은 선을 클릭하면 선 전체가 삭제됩니다."
+                      : "다른 참여자의 변경사항도 실시간으로 반영됩니다."}
+                </p>
+
+                <div className="flex shrink-0 items-center gap-4">
+                  <span className="whitespace-nowrap text-[11px] text-[var(--flow-text-placeholder)]">
+                    {CANVAS_WIDTH} × {CANVAS_HEIGHT}
+                  </span>
+
+                  {isViewer && (
+                    <span className="whitespace-nowrap text-[11px] font-semibold text-[var(--flow-text-muted)]">
+                      VIEWER · 읽기 전용
+                    </span>
+                  )}
+                </div>
+              </footer>
+            </div>
+          )}
+        </div>
       </section>
     </>
   );
