@@ -45,14 +45,9 @@ const MAX_COMMENT_LENGTH = 1000;
 const formatDateTime = (
   value: string,
 ) => {
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return value;
   }
 
@@ -71,36 +66,91 @@ const upsertComment = (
   comments: CommentResponse[],
   comment: CommentResponse,
 ) => {
-  const exists =
-    comments.some(
-      (current) =>
-        current.id ===
-        comment.id,
-    );
+  const exists = comments.some(
+    (current) => current.id === comment.id,
+  );
 
   if (!exists) {
-    return [
-      ...comments,
-      comment,
-    ];
+    return [...comments, comment];
   }
 
-  return comments.map(
-    (current) =>
-      current.id ===
-      comment.id
-        ? comment
-        : current,
+  return comments.map((current) =>
+    current.id === comment.id
+      ? comment
+      : current,
   );
 };
+
+function CommentIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-[18px] w-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 5.5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7l-4.5 3v-3H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z" />
+    </svg>
+  );
+}
+
+function SendIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m21 3-7.5 18-3.2-7.3L3 10.5 21 3Z" />
+      <path d="m10.3 13.7 4.8-4.8" />
+    </svg>
+  );
+}
+
+function ConnectionStatus({
+  state,
+}: {
+  state: CommentConnectionState;
+}) {
+  const label =
+    state === "connected"
+      ? "실시간 연결"
+      : state === "connecting"
+        ? "연결 중"
+        : "재연결 중";
+
+  const dotClassName =
+    state === "connected"
+      ? "bg-[var(--flow-success)]"
+      : state === "connecting"
+        ? "bg-[var(--flow-warning)]"
+        : "bg-[var(--flow-danger)]";
+
+  return (
+    <span className="inline-flex items-center gap-2 whitespace-nowrap text-[11px] font-medium text-[var(--flow-text-muted)]">
+      <span
+        className={`h-2 w-2 rounded-full ${dotClassName}`}
+      />
+      {label}
+    </span>
+  );
+}
 
 export default function CommentSection({
   boardId,
   cardId,
   canEdit,
 }: CommentSectionProps) {
-  const queryClient =
-    useQueryClient();
+  const queryClient = useQueryClient();
 
   const commentQueryKey = [
     "cards",
@@ -108,27 +158,22 @@ export default function CommentSection({
     "comments",
   ] as const;
 
-  const [
-    content,
-    setContent,
-  ] =
+  const [content, setContent] =
     useState("");
 
   const [
     editingComment,
     setEditingComment,
-  ] =
-    useState<EditingComment | null>(
-      null,
-    );
+  ] = useState<EditingComment | null>(
+    null,
+  );
 
   const [
     deletingComment,
     setDeletingComment,
-  ] =
-    useState<CommentResponse | null>(
-      null,
-    );
+  ] = useState<CommentResponse | null>(
+    null,
+  );
 
   const [
     connectionState,
@@ -138,35 +183,22 @@ export default function CommentSection({
       "connecting",
     );
 
-  const myInfoQuery =
-    useQuery({
-      queryKey: [
-        "users",
-        "me",
-      ],
+  const myInfoQuery = useQuery({
+    queryKey: ["users", "me"],
+    queryFn:
+      async (): Promise<MyInfoResponse> =>
+        getMyInfo(),
+  });
 
-      queryFn:
-        async (): Promise<MyInfoResponse> =>
-          getMyInfo(),
-    });
-
-  const commentsQuery =
-    useQuery({
-      queryKey:
-        commentQueryKey,
-
-      queryFn: () =>
-        getComments(
-          cardId,
-        ),
-    });
+  const commentsQuery = useQuery({
+    queryKey: commentQueryKey,
+    queryFn: () => getComments(cardId),
+  });
 
   const comments =
-    commentsQuery.data ??
-    [];
+    commentsQuery.data ?? [];
 
-  const currentUser =
-    myInfoQuery.data;
+  const currentUser = myInfoQuery.data;
 
   const updateCommentCache =
     useCallback(
@@ -176,25 +208,14 @@ export default function CommentSection({
         ) => CommentResponse[],
       ) => {
         queryClient.setQueryData<CommentResponse[]>(
-          commentQueryKey,
-          (
-            current = [],
-          ) =>
-            updater(
-              current,
-            ),
+          ["cards", cardId, "comments"],
+          (current = []) =>
+            updater(current),
         );
       },
-      [
-        cardId,
-        queryClient,
-      ],
+      [cardId, queryClient],
     );
 
-  /*
-   * 보드 단위 댓글 WebSocket을 구독합니다.
-   * 현재 열어둔 카드의 이벤트만 반영합니다.
-   */
   useEffect(() => {
     const disconnect =
       connectCommentWebSocket({
@@ -206,28 +227,19 @@ export default function CommentSection({
         onEvent: (
           event: CommentWebSocketEvent,
         ) => {
-          if (
-            event.cardId !==
-            cardId
-          ) {
+          if (event.cardId !== cardId) {
             return;
           }
 
-          switch (
-            event.type
-          ) {
+          switch (event.type) {
             case "CREATED":
             case "UPDATED": {
-              if (
-                !event.comment
-              ) {
+              if (!event.comment) {
                 return;
               }
 
               updateCommentCache(
-                (
-                  current,
-                ) =>
+                (current) =>
                   upsertComment(
                     current,
                     event.comment as CommentResponse,
@@ -239,13 +251,9 @@ export default function CommentSection({
 
             case "DELETED": {
               updateCommentCache(
-                (
-                  current,
-                ) =>
+                (current) =>
                   current.filter(
-                    (
-                      comment,
-                    ) =>
+                    (comment) =>
                       comment.id !==
                       event.commentId,
                   ),
@@ -256,9 +264,7 @@ export default function CommentSection({
           }
         },
 
-        onError: (
-          error,
-        ) => {
+        onError: (error) => {
           console.error(
             "[Comment WebSocket]",
             error,
@@ -275,34 +281,18 @@ export default function CommentSection({
 
   const createMutation =
     useMutation({
-      mutationFn:
-        async () => {
-          const trimmedContent =
-            content.trim();
+      mutationFn: async () => {
+        const trimmedContent =
+          content.trim();
 
-          return createComment(
-            cardId,
-            {
-              content:
-                trimmedContent,
-            },
-          );
-        },
+        return createComment(cardId, {
+          content: trimmedContent,
+        });
+      },
 
-      onSuccess: (
-        createdComment,
-      ) => {
-        /*
-         * WebSocket 연결 상태와 무관하게
-         * 작성한 사용자 화면에는 바로 반영합니다.
-         *
-         * 이후 CREATED 이벤트가 다시 와도
-         * upsert라 중복되지 않습니다.
-         */
+      onSuccess: (createdComment) => {
         updateCommentCache(
-          (
-            current,
-          ) =>
+          (current) =>
             upsertComment(
               current,
               createdComment,
@@ -325,34 +315,24 @@ export default function CommentSection({
 
   const updateMutation =
     useMutation({
-      mutationFn:
-        ({
-          commentId,
+      mutationFn: ({
+        commentId,
+        content,
+      }: EditingComment) =>
+        updateComment(commentId, {
           content,
-        }: EditingComment) =>
-          updateComment(
-            commentId,
-            {
-              content,
-            },
-          ),
+        }),
 
-      onSuccess: (
-        updatedComment,
-      ) => {
+      onSuccess: (updatedComment) => {
         updateCommentCache(
-          (
-            current,
-          ) =>
+          (current) =>
             upsertComment(
               current,
               updatedComment,
             ),
         );
 
-        setEditingComment(
-          null,
-        );
+        setEditingComment(null);
 
         toast.success(
           "댓글을 수정했습니다.",
@@ -368,36 +348,26 @@ export default function CommentSection({
 
   const deleteMutation =
     useMutation({
-      mutationFn:
-        async (
-          commentId: number,
-        ) => {
-          await deleteComment(
-            commentId,
-          );
-
-          return commentId;
-        },
+      mutationFn: async (
+        commentId: number,
+      ) => {
+        await deleteComment(commentId);
+        return commentId;
+      },
 
       onSuccess: (
         deletedCommentId,
       ) => {
         updateCommentCache(
-          (
-            current,
-          ) =>
+          (current) =>
             current.filter(
-              (
-                comment,
-              ) =>
+              (comment) =>
                 comment.id !==
                 deletedCommentId,
             ),
         );
 
-        setDeletingComment(
-          null,
-        );
+        setDeletingComment(null);
 
         toast.success(
           "댓글을 삭제했습니다.",
@@ -411,36 +381,33 @@ export default function CommentSection({
       },
     });
 
-  const handleCreateComment =
-    () => {
-      if (!canEdit) {
-        return;
-      }
+  const handleCreateComment = () => {
+    if (!canEdit) {
+      return;
+    }
 
-      const trimmedContent =
-        content.trim();
+    const trimmedContent =
+      content.trim();
 
-      if (!trimmedContent) {
-        toast.error(
-          "댓글 내용을 입력해주세요.",
-        );
+    if (!trimmedContent) {
+      toast.error(
+        "댓글 내용을 입력해주세요.",
+      );
+      return;
+    }
 
-        return;
-      }
+    if (
+      trimmedContent.length >
+      MAX_COMMENT_LENGTH
+    ) {
+      toast.error(
+        "댓글은 1000자 이하로 입력해주세요.",
+      );
+      return;
+    }
 
-      if (
-        trimmedContent.length >
-        MAX_COMMENT_LENGTH
-      ) {
-        toast.error(
-          "댓글은 1000자 이하로 입력해주세요.",
-        );
-
-        return;
-      }
-
-      createMutation.mutate();
-    };
+    createMutation.mutate();
+  };
 
   const startEdit = (
     comment: CommentResponse,
@@ -454,83 +421,52 @@ export default function CommentSection({
     }
 
     setEditingComment({
-      commentId:
-        comment.id,
-
-      content:
-        comment.content,
+      commentId: comment.id,
+      content: comment.content,
     });
   };
 
-  const handleSaveEdit =
-    () => {
-      if (
-        !editingComment
-      ) {
-        return;
-      }
+  const handleSaveEdit = () => {
+    if (!editingComment) {
+      return;
+    }
 
-      const trimmedContent =
-        editingComment.content.trim();
+    const trimmedContent =
+      editingComment.content.trim();
 
-      if (!trimmedContent) {
-        toast.error(
-          "댓글 내용을 입력해주세요.",
-        );
+    if (!trimmedContent) {
+      toast.error(
+        "댓글 내용을 입력해주세요.",
+      );
+      return;
+    }
 
-        return;
-      }
+    if (
+      trimmedContent.length >
+      MAX_COMMENT_LENGTH
+    ) {
+      toast.error(
+        "댓글은 1000자 이하로 입력해주세요.",
+      );
+      return;
+    }
 
-      if (
-        trimmedContent.length >
-        MAX_COMMENT_LENGTH
-      ) {
-        toast.error(
-          "댓글은 1000자 이하로 입력해주세요.",
-        );
-
-        return;
-      }
-
-      updateMutation.mutate({
-        commentId:
-          editingComment.commentId,
-
-        content:
-          trimmedContent,
-      });
-    };
+    updateMutation.mutate({
+      commentId:
+        editingComment.commentId,
+      content: trimmedContent,
+    });
+  };
 
   const isBusy =
     createMutation.isPending ||
     updateMutation.isPending ||
     deleteMutation.isPending;
 
-  const connectionLabel =
-    connectionState ===
-    "connected"
-      ? "실시간 연결"
-      : connectionState ===
-          "connecting"
-        ? "연결 중"
-        : "재연결 중";
-
-  const connectionClassName =
-    connectionState ===
-    "connected"
-      ? "bg-emerald-50 text-emerald-600"
-      : connectionState ===
-          "connecting"
-        ? "bg-amber-50 text-amber-600"
-        : "bg-red-50 text-red-500";
-
   return (
     <>
       <ConfirmDialog
-        open={
-          deletingComment !==
-          null
-        }
+        open={deletingComment !== null}
         title="댓글 삭제"
         description="이 댓글을 삭제합니다. 삭제 후에는 되돌릴 수 없습니다."
         confirmText="삭제"
@@ -539,9 +475,7 @@ export default function CommentSection({
           deleteMutation.isPending
         }
         onConfirm={async () => {
-          if (
-            !deletingComment
-          ) {
+          if (!deletingComment) {
             return;
           }
 
@@ -550,53 +484,57 @@ export default function CommentSection({
           );
         }}
         onCancel={() =>
-          setDeletingComment(
-            null,
-          )
+          setDeletingComment(null)
         }
       />
 
-      <section className="mt-5 rounded-xl border border-slate-200">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-          <div>
-            <h4 className="text-sm font-semibold text-slate-800">
-              댓글
-            </h4>
-
-            <p className="mt-0.5 text-xs text-slate-400">
-              카드에 대한 의견과 진행 상황을 공유합니다.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {!commentsQuery.isLoading && (
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-                {comments.length}개
-              </span>
-            )}
-
-            <span
-              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${connectionClassName}`}
-            >
-              {connectionLabel}
+      <section>
+        <div className="flex items-start justify-between gap-6">
+          <div className="flex min-w-0 items-start gap-3.5">
+            <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--flow-primary-50)] text-[var(--flow-primary)]">
+              <CommentIcon />
             </span>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5">
+                <h3 className="text-[17px] font-bold tracking-[-0.015em] text-[var(--flow-text)]">
+                  댓글
+                </h3>
+
+                {!commentsQuery.isLoading && (
+                  <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-[var(--flow-gray-100)] px-2 py-1 text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                    {comments.length}
+                  </span>
+                )}
+              </div>
+
+              <p className="mt-1.5 text-[13px] leading-6 text-[var(--flow-text-muted)]">
+                작업에 대한 의견, 검토 내용과 진행 상황을 함께 공유합니다.
+              </p>
+            </div>
           </div>
+
+          <ConnectionStatus
+            state={connectionState}
+          />
         </div>
 
-        <div className="p-4">
+        <div className="mt-7">
           {commentsQuery.isLoading ? (
-            <p className="py-4 text-center text-sm text-slate-400">
-              댓글을 불러오는 중...
-            </p>
+            <div className="flex min-h-[120px] items-center justify-center rounded-[var(--flow-radius-lg)] bg-[var(--flow-surface-subtle)] px-6">
+              <p className="text-[13px] text-[var(--flow-text-muted)]">
+                댓글을 불러오는 중입니다.
+              </p>
+            </div>
           ) : commentsQuery.isError ? (
-            <div className="py-4 text-center">
-              <p className="text-sm text-red-500">
+            <div className="flex min-h-[140px] flex-col items-center justify-center rounded-[var(--flow-radius-lg)] bg-[var(--flow-danger-soft)] px-6 text-center">
+              <p className="text-[13px] font-semibold text-[var(--flow-danger)]">
                 댓글을 불러오지 못했습니다.
               </p>
 
               <button
                 type="button"
-                className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                className="mt-3 rounded-lg px-3 py-2 text-[12px] font-semibold text-[var(--flow-primary)] transition-colors hover:bg-white/70"
                 onClick={() =>
                   void commentsQuery.refetch()
                 }
@@ -605,202 +543,86 @@ export default function CommentSection({
               </button>
             </div>
           ) : comments.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-              <p className="text-sm text-slate-500">
+            <div className="flex min-h-[150px] flex-col items-center justify-center rounded-[var(--flow-radius-lg)] border border-dashed border-[var(--flow-border-strong)] bg-[var(--flow-surface-subtle)] px-8 text-center">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-[var(--flow-text-placeholder)] shadow-[var(--flow-shadow-xs)]">
+                <CommentIcon />
+              </span>
+
+              <p className="mt-4 text-[13px] font-semibold text-[var(--flow-text-secondary)]">
                 아직 댓글이 없습니다.
               </p>
 
-              {canEdit && (
-                <p className="mt-1 text-xs text-slate-400">
-                  첫 댓글을 작성해보세요.
-                </p>
-              )}
+              <p className="mt-1.5 text-[12px] leading-6 text-[var(--flow-text-muted)]">
+                검토 의견이나 작업 진행 상황을 남겨보세요.
+              </p>
             </div>
           ) : (
-            <div className="space-y-5">
-              {comments.map(
-                (
-                  comment: CommentResponse,
-                ) => {
-                  const isMine =
-                    currentUser?.id ===
-                    comment.userId;
+            <div className="space-y-1">
+              {comments.map((comment) => {
+                const isMine =
+                  currentUser?.id ===
+                  comment.userId;
 
-                  const isEditing =
-                    editingComment?.commentId ===
-                    comment.id;
+                const isEditing =
+                  editingComment?.commentId ===
+                  comment.id;
 
-                  const wasEdited =
-                    comment.updatedAt !==
-                    comment.createdAt;
+                const wasEdited =
+                  comment.updatedAt !==
+                  comment.createdAt;
 
-                  return (
-                    <article
-                      key={
-                        comment.id
-                      }
-                      className="flex gap-3"
-                    >
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-800 text-xs font-bold text-white">
-                        {comment.userNickname
-                          .charAt(0)
-                          .toUpperCase()}
-                      </div>
+                return (
+                  <article
+                    key={comment.id}
+                    className="group flex gap-4 rounded-[var(--flow-radius-lg)] px-3 py-5 transition-colors hover:bg-[var(--flow-surface-subtle)]"
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--flow-gray-800)] text-[12px] font-bold text-white">
+                      {comment.userNickname
+                        .charAt(0)
+                        .toUpperCase()}
+                    </div>
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span className="text-sm font-semibold text-slate-800">
-                            {
-                              comment.userNickname
-                            }
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center justify-between gap-4">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span className="truncate text-[13px] font-bold text-[var(--flow-text)]">
+                            {comment.userNickname}
                           </span>
 
                           {isMine && (
-                            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-blue-600">
+                            <span className="shrink-0 rounded-md bg-[var(--flow-primary-50)] px-2 py-1 text-[10px] font-semibold text-[var(--flow-primary)]">
                               나
                             </span>
                           )}
 
-                          <span className="text-[10px] text-slate-400">
+                          <span className="shrink-0 text-[11px] text-[var(--flow-text-placeholder)]">
                             {formatDateTime(
                               comment.createdAt,
                             )}
-
                             {wasEdited &&
                               " · 수정됨"}
                           </span>
                         </div>
 
-                        {isEditing &&
-                        editingComment ? (
-                          <div className="mt-2">
-                            <textarea
-                              value={
-                                editingComment.content
-                              }
-                              rows={3}
-                              maxLength={
-                                MAX_COMMENT_LENGTH
-                              }
-                              autoFocus
-                              disabled={
-                                updateMutation.isPending
-                              }
-                              className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50"
-                              onChange={(
-                                event,
-                              ) =>
-                                setEditingComment({
-                                  ...editingComment,
-
-                                  content:
-                                    event.target.value,
-                                })
-                              }
-                              onKeyDown={(
-                                event,
-                              ) => {
-                                if (
-                                  event.key ===
-                                    "Enter" &&
-                                  (event.ctrlKey ||
-                                    event.metaKey)
-                                ) {
-                                  event.preventDefault();
-
-                                  handleSaveEdit();
-                                }
-
-                                if (
-                                  event.key ===
-                                  "Escape"
-                                ) {
-                                  setEditingComment(
-                                    null,
-                                  );
-                                }
-                              }}
-                            />
-
-                            <div className="mt-1 flex items-center justify-between gap-2">
-                              <span className="text-[10px] text-slate-400">
-                                {
-                                  editingComment
-                                    .content
-                                    .length
-                                }
-                                /1000
-                              </span>
-
-                              <div className="flex gap-1">
-                                <button
-                                  type="button"
-                                  disabled={
-                                    updateMutation.isPending
-                                  }
-                                  className="rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-40"
-                                  onClick={() =>
-                                    setEditingComment(
-                                      null,
-                                    )
-                                  }
-                                >
-                                  취소
-                                </button>
-
-                                <button
-                                  type="button"
-                                  disabled={
-                                    !editingComment.content.trim() ||
-                                    updateMutation.isPending
-                                  }
-                                  className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-                                  onClick={
-                                    handleSaveEdit
-                                  }
-                                >
-                                  저장
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
-                            {
-                              comment.content
-                            }
-                          </p>
-                        )}
-
                         {!isEditing &&
                           canEdit &&
                           isMine && (
-                            <div className="mt-1 flex items-center gap-1">
+                            <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                               <button
                                 type="button"
-                                disabled={
-                                  isBusy
-                                }
-                                className="rounded px-1.5 py-1 text-[11px] text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+                                disabled={isBusy}
+                                className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[var(--flow-text-muted)] transition-colors hover:bg-white hover:text-[var(--flow-text)] disabled:opacity-40"
                                 onClick={() =>
-                                  startEdit(
-                                    comment,
-                                  )
+                                  startEdit(comment)
                                 }
                               >
                                 수정
                               </button>
 
-                              <span className="text-[10px] text-slate-300">
-                                ·
-                              </span>
-
                               <button
                                 type="button"
-                                disabled={
-                                  isBusy
-                                }
-                                className="rounded px-1.5 py-1 text-[11px] text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+                                disabled={isBusy}
+                                className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[var(--flow-text-muted)] transition-colors hover:bg-[var(--flow-danger-soft)] hover:text-[var(--flow-danger)] disabled:opacity-40"
                                 onClick={() =>
                                   setDeletingComment(
                                     comment,
@@ -812,64 +634,148 @@ export default function CommentSection({
                             </div>
                           )}
                       </div>
-                    </article>
-                  );
-                },
-              )}
+
+                      {isEditing &&
+                      editingComment ? (
+                        <div className="mt-3">
+                          <textarea
+                            value={
+                              editingComment.content
+                            }
+                            rows={4}
+                            maxLength={
+                              MAX_COMMENT_LENGTH
+                            }
+                            autoFocus
+                            disabled={
+                              updateMutation.isPending
+                            }
+                            className="w-full resize-y rounded-[var(--flow-radius-md)] border border-[var(--flow-border-strong)] bg-white px-4 py-3 text-[13px] leading-6 text-[var(--flow-text)] outline-none transition-[border-color,box-shadow] placeholder:text-[var(--flow-text-placeholder)] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)] disabled:bg-[var(--flow-gray-100)]"
+                            onChange={(event) =>
+                              setEditingComment({
+                                ...editingComment,
+                                content:
+                                  event.target.value,
+                              })
+                            }
+                            onKeyDown={(event) => {
+                              if (
+                                event.key ===
+                                  "Enter" &&
+                                (event.ctrlKey ||
+                                  event.metaKey)
+                              ) {
+                                event.preventDefault();
+                                handleSaveEdit();
+                              }
+
+                              if (
+                                event.key === "Escape"
+                              ) {
+                                setEditingComment(null);
+                              }
+                            }}
+                          />
+
+                          <div className="mt-3 flex items-center justify-between gap-4">
+                            <span className="text-[11px] text-[var(--flow-text-placeholder)]">
+                              {editingComment.content.length}/1000
+                            </span>
+
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={
+                                  updateMutation.isPending
+                                }
+                                onClick={() =>
+                                  setEditingComment(null)
+                                }
+                              >
+                                취소
+                              </Button>
+
+                              <Button
+                                type="button"
+                                size="sm"
+                                loading={
+                                  updateMutation.isPending
+                                }
+                                disabled={
+                                  !editingComment.content.trim() ||
+                                  updateMutation.isPending
+                                }
+                                onClick={
+                                  handleSaveEdit
+                                }
+                              >
+                                저장
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-7 text-[var(--flow-text-secondary)]">
+                          {comment.content}
+                        </p>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
+        </div>
 
-          {canEdit ? (
-            <div className="mt-5 border-t border-slate-100 pt-4">
+        {canEdit ? (
+          <div className="mt-8 border-t border-[var(--flow-border)] pt-7">
+            <div className="rounded-[var(--flow-radius-lg)] bg-[var(--flow-surface-subtle)] p-4">
               <textarea
-                value={
-                  content
-                }
-                rows={3}
+                value={content}
+                rows={4}
                 maxLength={
                   MAX_COMMENT_LENGTH
                 }
                 disabled={
                   createMutation.isPending
                 }
-                placeholder="댓글을 입력해주세요..."
-                className="w-full resize-y rounded-xl border border-slate-300 px-3 py-2.5 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50"
-                onChange={(
-                  event,
-                ) =>
+                placeholder="의견이나 진행 상황을 입력해주세요."
+                className="w-full resize-y rounded-[var(--flow-radius-md)] border border-[var(--flow-border-strong)] bg-white px-4 py-3.5 text-[13px] leading-7 text-[var(--flow-text)] outline-none transition-[border-color,box-shadow] placeholder:text-[var(--flow-text-placeholder)] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)] disabled:bg-[var(--flow-gray-100)]"
+                onChange={(event) =>
                   setContent(
                     event.target.value,
                   )
                 }
-                onKeyDown={(
-                  event,
-                ) => {
+                onKeyDown={(event) => {
                   if (
-                    event.key ===
-                      "Enter" &&
+                    event.key === "Enter" &&
                     (event.ctrlKey ||
                       event.metaKey)
                   ) {
                     event.preventDefault();
-
                     handleCreateComment();
                   }
                 }}
               />
 
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] text-slate-400">
-                    Ctrl + Enter로 등록
-                  </p>
+              <div className="mt-3 flex items-center justify-between gap-6">
+                <div className="flex items-center gap-3 text-[11px] text-[var(--flow-text-placeholder)]">
+                  <span>
+                    Ctrl/Cmd + Enter로 등록
+                  </span>
 
-                  <p className="mt-0.5 text-[10px] text-slate-400">
+                  <span className="h-3 w-px bg-[var(--flow-border)]" />
+
+                  <span>
                     {content.length}/1000
-                  </p>
+                  </span>
                 </div>
 
                 <Button
                   type="button"
+                  leftIcon={<SendIcon />}
                   loading={
                     createMutation.isPending
                   }
@@ -885,12 +791,14 @@ export default function CommentSection({
                 </Button>
               </div>
             </div>
-          ) : (
-            <p className="mt-5 border-t border-slate-100 pt-3 text-xs text-slate-400">
+          </div>
+        ) : (
+          <div className="mt-8 border-t border-[var(--flow-border)] pt-6">
+            <p className="rounded-[var(--flow-radius-md)] bg-[var(--flow-surface-subtle)] px-4 py-3 text-[12px] leading-6 text-[var(--flow-text-muted)]">
               VIEWER 권한에서는 댓글을 조회만 할 수 있습니다.
             </p>
-          )}
-        </div>
+          </div>
+        )}
       </section>
     </>
   );
