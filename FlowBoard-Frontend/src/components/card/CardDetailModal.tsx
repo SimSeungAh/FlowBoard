@@ -34,6 +34,7 @@ import {
 import Button from "@/components/ui/Button";
 import ChecklistSection from "@/components/card/ChecklistSection";
 import CommentSection from "@/components/card/CommentSection";
+import StructuredDescription from "@/components/card/StructuredDescription";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
@@ -140,6 +141,12 @@ export default function CardDetailModal({
   const [
     editMode,
     setEditMode,
+  ] =
+    useState(false);
+
+  const [
+    descriptionEditMode,
+    setDescriptionEditMode,
   ] =
     useState(false);
 
@@ -364,6 +371,10 @@ export default function CardDetailModal({
       false,
     );
 
+    setDescriptionEditMode(
+      false,
+    );
+
     setSelectedAssigneeUserId(
       "",
     );
@@ -390,6 +401,10 @@ export default function CardDetailModal({
     }
 
     setEditMode(
+      false,
+    );
+
+    setDescriptionEditMode(
       false,
     );
 
@@ -461,6 +476,67 @@ export default function CardDetailModal({
       onError: () => {
         toast.error(
           "카드를 수정하지 못했습니다.",
+        );
+      },
+    });
+
+  const descriptionUpdateMutation =
+    useMutation({
+      mutationFn: (
+        nextDescription: string,
+      ) => {
+        if (
+          cardId === null ||
+          !card
+        ) {
+          throw new Error(
+            "카드 정보를 확인할 수 없습니다.",
+          );
+        }
+
+        return updateCard(
+          cardId,
+          {
+            title: card.title,
+            description:
+              nextDescription.trim() ||
+              null,
+            dueDate: card.dueDate,
+          },
+        );
+      },
+
+      onSuccess:
+        async (
+          updatedCard,
+        ) => {
+          queryClient.setQueryData(
+            [
+              "cards",
+              updatedCard.id,
+            ],
+            updatedCard,
+          );
+
+          setDescription(
+            updatedCard.description ??
+              "",
+          );
+
+          setDescriptionEditMode(
+            false,
+          );
+
+          await onChanged();
+
+          toast.success(
+            "설명을 수정했습니다.",
+          );
+        },
+
+      onError: () => {
+        toast.error(
+          "설명을 수정하지 못했습니다.",
         );
       },
     });
@@ -800,6 +876,10 @@ export default function CardDetailModal({
         ),
       );
 
+      setDescriptionEditMode(
+        false,
+      );
+
       setEditMode(
         true,
       );
@@ -828,6 +908,55 @@ export default function CardDetailModal({
 
       setEditMode(
         false,
+      );
+    };
+
+  const startDescriptionEdit =
+    () => {
+      if (
+        !card ||
+        !canEdit
+      ) {
+        return;
+      }
+
+      setDescription(
+        card.description ??
+          "",
+      );
+
+      setDescriptionEditMode(
+        true,
+      );
+    };
+
+  const cancelDescriptionEdit =
+    () => {
+      if (!card) {
+        return;
+      }
+
+      setDescription(
+        card.description ??
+          "",
+      );
+
+      setDescriptionEditMode(
+        false,
+      );
+    };
+
+  const saveDescription =
+    () => {
+      if (
+        !card ||
+        !canEdit
+      ) {
+        return;
+      }
+
+      descriptionUpdateMutation.mutate(
+        description,
       );
     };
 
@@ -994,6 +1123,7 @@ export default function CardDetailModal({
     () => {
       if (
         updateMutation.isPending ||
+        descriptionUpdateMutation.isPending ||
         deleteMutation.isPending ||
         isAssigneeBusy ||
         isTagBusy
@@ -1017,6 +1147,11 @@ export default function CardDetailModal({
       event: KeyboardEvent,
     ) => {
       if (event.key === "Escape") {
+        if (descriptionEditMode) {
+          cancelDescriptionEdit();
+          return;
+        }
+
         handleClose();
       }
     };
@@ -1035,7 +1170,9 @@ export default function CardDetailModal({
   }, [
     open,
     updateMutation.isPending,
+    descriptionUpdateMutation.isPending,
     deleteMutation.isPending,
+    descriptionEditMode,
     isAssigneeBusy,
     isTagBusy,
   ]);
@@ -1324,7 +1461,7 @@ export default function CardDetailModal({
 
                 {/* Description */}
                 <section className="border-b border-[var(--flow-border)] px-8 py-8">
-                  <div className="mb-5 flex items-center justify-between gap-5">
+                  <div className="mb-5 flex items-start justify-between gap-5">
                     <div>
                       <h3 className="text-base font-bold text-[var(--flow-text)]">
                         설명
@@ -1334,13 +1471,57 @@ export default function CardDetailModal({
                         작업의 배경, 요구사항, 참고 내용을 자유롭게 정리합니다.
                       </p>
                     </div>
+
+                    {canEdit &&
+                      !descriptionEditMode && (
+                        <button
+                          type="button"
+                          className="shrink-0 rounded-lg px-3 py-2 text-[12px] font-semibold text-[var(--flow-primary)] transition-colors hover:bg-[var(--flow-primary-50)]"
+                          onClick={startDescriptionEdit}
+                        >
+                          설명 수정
+                        </button>
+                      )}
                   </div>
 
-                  {card.description ? (
+                  {descriptionEditMode ? (
+                    <div className="rounded-xl bg-[var(--flow-gray-50)] p-5">
+                      <Textarea
+                        id="card-quick-description"
+                        value={description}
+                        autoFocus
+                        className="min-h-64"
+                        placeholder="작업의 배경, 요구사항, 테스트 내용, 참고 사항 등을 자유롭게 작성해주세요."
+                        disabled={descriptionUpdateMutation.isPending}
+                        onChange={(event) =>
+                          setDescription(
+                            event.target.value,
+                          )
+                        }
+                      />
+
+                      <div className="mt-4 flex justify-end gap-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={descriptionUpdateMutation.isPending}
+                          onClick={cancelDescriptionEdit}
+                        >
+                          취소
+                        </Button>
+
+                        <Button
+                          type="button"
+                          loading={descriptionUpdateMutation.isPending}
+                          onClick={saveDescription}
+                        >
+                          설명 저장
+                        </Button>
+                      </div>
+                    </div>
+                  ) : card.description ? (
                     <div className="rounded-xl bg-[var(--flow-gray-50)] px-5 py-5">
-                      <p className="whitespace-pre-wrap break-words text-[14px] leading-7 text-[var(--flow-text-secondary)]">
-                        {card.description}
-                      </p>
+                      <StructuredDescription description={card.description} />
                     </div>
                   ) : (
                     <div className="rounded-xl border border-dashed border-[var(--flow-border-strong)] bg-[var(--flow-gray-50)] px-5 py-8 text-center">
@@ -1352,7 +1533,7 @@ export default function CardDetailModal({
                         <button
                           type="button"
                           className="mt-3 text-[13px] font-semibold text-[var(--flow-primary)] hover:underline"
-                          onClick={startEdit}
+                          onClick={startDescriptionEdit}
                         >
                           설명 추가하기
                         </button>

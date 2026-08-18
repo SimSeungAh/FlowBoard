@@ -28,10 +28,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import {
-  Link,
-  useParams,
-} from "react-router";
+import { useParams } from "react-router";
 import { toast } from "sonner";
 
 import {
@@ -45,13 +42,29 @@ import {
   type CardCreateRequest,
   type CardResponse,
 } from "@/api/card";
+import { getBoardMembers } from "@/api/cardAssignee";
+import { getBoardTags } from "@/api/tag";
 import CardDetailModal from "@/components/card/CardDetailModal";
+import TaskCreateMetadataFields from "@/components/card/TaskCreateMetadataFields";
+import TaskTemplateSelector from "@/components/card/TaskTemplateSelector";
+import TestCaseTypeSelector from "@/components/card/TestCaseTypeSelector";
+import ColumnSettingsModal from "@/components/board/ColumnSettingsModal";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import Skeleton from "@/components/ui/Skeleton";
 import Textarea from "@/components/ui/Textarea";
+import { applyTaskCreationRelations } from "@/features/card/applyTaskCreationRelations";
+import { createTaskTemplateChecklists } from "@/features/card/createTaskTemplateChecklists";
+import {
+  DEFAULT_TASK_TEMPLATE_ID,
+  DEFAULT_TEST_CASE_TYPE_ID,
+  getTaskDescriptionTemplate,
+  getTestCaseType,
+  type TaskTemplateId,
+  type TestCaseTypeId,
+} from "@/features/card/taskTemplates";
 
 type CardsByColumn = Record<number, CardResponse[]>;
 
@@ -161,7 +174,7 @@ function PlusIcon() {
   );
 }
 
-function SearchIcon() {
+function SettingsIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -173,44 +186,8 @@ function SearchIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <circle cx="10.5" cy="10.5" r="5.5" />
-      <path d="m15 15 4 4" />
-    </svg>
-  );
-}
-
-function WhiteboardIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className="h-[17px] w-[17px]"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="3.5" y="4" width="17" height="13" rx="2" />
-      <path d="M8 21h8" />
-      <path d="m8 12 2-2 2 1.5 4-4" />
-    </svg>
-  );
-}
-
-function ActivityIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className="h-[17px] w-[17px]"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 12h3l2-5 4 10 2-5h5" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1Z" />
     </svg>
   );
 }
@@ -555,8 +532,16 @@ export default function BoardPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [taskTemplateId, setTaskTemplateId] =
+    useState<TaskTemplateId>(DEFAULT_TASK_TEMPLATE_ID);
+  const [testCaseTypeId, setTestCaseTypeId] =
+    useState<TestCaseTypeId>(DEFAULT_TEST_CASE_TYPE_ID);
+  const [selectedAssigneeUserIds, setSelectedAssigneeUserIds] =
+    useState<number[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [activeCardId, setActiveCardId] = useState<number | null>(null);
   const [movingCardId, setMovingCardId] = useState<number | null>(null);
+  const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
 
   const boardQuery = useQuery({
     queryKey: ["boards", boardId],
@@ -578,6 +563,20 @@ export default function BoardPage() {
   const canEdit =
     board?.myRole === "OWNER" ||
     board?.myRole === "MEMBER";
+
+  const canManageColumns = board?.myRole === "OWNER";
+
+  const createMembersQuery = useQuery({
+    queryKey: ["boards", boardId, "members"],
+    queryFn: () => getBoardMembers(boardId),
+    enabled: createModalOpen && isValidBoardId && Boolean(canEdit),
+  });
+
+  const createTagsQuery = useQuery({
+    queryKey: ["boards", boardId, "tags"],
+    queryFn: () => getBoardTags(boardId),
+    enabled: createModalOpen && isValidBoardId && Boolean(canEdit),
+  });
 
   const cardsQuery = useQuery({
     queryKey: cardsQueryKey,
@@ -621,20 +620,64 @@ export default function BoardPage() {
     }: {
       columnId: number;
       data: CardCreateRequest;
+      templateId: TaskTemplateId;
+      assigneeUserIds: number[];
+      tagIds: number[];
     }) => createCard(boardId, columnId, data),
 
-    onSuccess: async () => {
+    onSuccess: async (createdCard, variables) => {
+      let checklistFailed = false;
+
+      try {
+        await createTaskTemplateChecklists(
+          createdCard.id,
+          variables.templateId,
+        );
+      } catch {
+        checklistFailed = true;
+      }
+
+      const relationsResult = await applyTaskCreationRelations(
+        createdCard.id,
+        variables.assigneeUserIds,
+        variables.tagIds,
+      );
+
       await queryClient.invalidateQueries({
         queryKey: ["board", boardId, "cards"],
       });
 
-      toast.success("작업을 만들었습니다.");
+      const failedParts: string[] = [];
+
+      if (checklistFailed) {
+        failedParts.push("체크리스트");
+      }
+
+      if (relationsResult.assigneeFailureCount > 0) {
+        failedParts.push("담당자");
+      }
+
+      if (relationsResult.tagFailureCount > 0) {
+        failedParts.push("태그");
+      }
+
+      if (failedParts.length === 0) {
+        toast.success("작업을 만들었습니다.");
+      } else {
+        toast.warning(
+          `작업은 만들었지만 ${failedParts.join(", ")} 일부를 반영하지 못했습니다.`,
+        );
+      }
 
       setCreateModalOpen(false);
       setCreateColumnId(null);
       setTitle("");
       setDescription("");
       setDueDate("");
+      setTaskTemplateId(DEFAULT_TASK_TEMPLATE_ID);
+      setTestCaseTypeId(DEFAULT_TEST_CASE_TYPE_ID);
+      setSelectedAssigneeUserIds([]);
+      setSelectedTagIds([]);
     },
 
     onError: () => {
@@ -648,9 +691,19 @@ export default function BoardPage() {
     }
 
     setCreateColumnId(columnId);
+
     setTitle("");
-    setDescription("");
+    setTaskTemplateId(DEFAULT_TASK_TEMPLATE_ID);
+    setTestCaseTypeId(DEFAULT_TEST_CASE_TYPE_ID);
+    setDescription(
+      getTaskDescriptionTemplate(
+        DEFAULT_TASK_TEMPLATE_ID,
+        DEFAULT_TEST_CASE_TYPE_ID,
+      ),
+    );
     setDueDate("");
+    setSelectedAssigneeUserIds([]);
+    setSelectedTagIds([]);
     setCreateModalOpen(true);
   };
 
@@ -661,6 +714,41 @@ export default function BoardPage() {
 
     setCreateModalOpen(false);
     setCreateColumnId(null);
+    setTaskTemplateId(DEFAULT_TASK_TEMPLATE_ID);
+    setTestCaseTypeId(DEFAULT_TEST_CASE_TYPE_ID);
+    setSelectedAssigneeUserIds([]);
+    setSelectedTagIds([]);
+  };
+
+  const handleTaskTemplateChange = (templateId: TaskTemplateId) => {
+    setTaskTemplateId(templateId);
+
+    if (templateId === "test-case") {
+      setTestCaseTypeId(DEFAULT_TEST_CASE_TYPE_ID);
+      setDescription(
+        getTaskDescriptionTemplate(
+          templateId,
+          DEFAULT_TEST_CASE_TYPE_ID,
+        ),
+      );
+      return;
+    }
+
+    setDescription(
+      getTaskDescriptionTemplate(templateId),
+    );
+  };
+
+  const handleTestCaseTypeChange = (
+    nextTestCaseTypeId: TestCaseTypeId,
+  ) => {
+    setTestCaseTypeId(nextTestCaseTypeId);
+    setDescription(
+      getTaskDescriptionTemplate(
+        "test-case",
+        nextTestCaseTypeId,
+      ),
+    );
   };
 
   const handleCreateCard = (
@@ -682,6 +770,9 @@ export default function BoardPage() {
 
     createMutation.mutate({
       columnId: createColumnId,
+      templateId: taskTemplateId,
+      assigneeUserIds: selectedAssigneeUserIds,
+      tagIds: selectedTagIds,
       data: {
         title: trimmedTitle,
         description: trimmedDescription || null,
@@ -883,6 +974,11 @@ export default function BoardPage() {
 
   const canDrag = Boolean(canEdit) && movingCardId === null;
 
+  const createTitlePlaceholder =
+    taskTemplateId === "test-case"
+      ? getTestCaseType(testCaseTypeId).titleExample
+      : "예: 회원가입 플로우 검토";
+
   return (
     <>
       <CardDetailModal
@@ -893,22 +989,46 @@ export default function BoardPage() {
         onChanged={handleCardChanged}
       />
 
+      {board && canManageColumns && (
+        <ColumnSettingsModal
+          open={columnSettingsOpen}
+          boardId={boardId}
+          columns={board.columns}
+          onClose={() => setColumnSettingsOpen(false)}
+        />
+      )}
+
       <Modal
         open={createModalOpen}
         title="새 작업 만들기"
+        size="lg"
         closeOnBackdrop={!createMutation.isPending}
         closeOnEsc={!createMutation.isPending}
         onClose={closeCreateModal}
       >
         <form onSubmit={handleCreateCard}>
           <div className="space-y-7">
+            <TaskTemplateSelector
+              value={taskTemplateId}
+              disabled={createMutation.isPending}
+              onChange={handleTaskTemplateChange}
+            />
+
+            {taskTemplateId === "test-case" && (
+              <TestCaseTypeSelector
+                value={testCaseTypeId}
+                disabled={createMutation.isPending}
+                onChange={handleTestCaseTypeChange}
+              />
+            )}
+
             <Input
               label="작업 제목"
               value={title}
               required
               autoFocus
               maxLength={100}
-              placeholder="예: 회원가입 플로우 검토"
+              placeholder={createTitlePlaceholder}
               helperText={`${title.length}/100`}
               disabled={createMutation.isPending}
               onChange={(event) =>
@@ -935,6 +1055,26 @@ export default function BoardPage() {
               onChange={(event) =>
                 setDueDate(event.target.value)
               }
+            />
+
+            <TaskCreateMetadataFields
+              members={createMembersQuery.data ?? []}
+              tags={createTagsQuery.data ?? []}
+              selectedAssigneeUserIds={selectedAssigneeUserIds}
+              selectedTagIds={selectedTagIds}
+              membersLoading={createMembersQuery.isLoading}
+              membersError={createMembersQuery.isError}
+              tagsLoading={createTagsQuery.isLoading}
+              tagsError={createTagsQuery.isError}
+              disabled={createMutation.isPending}
+              onAssigneeUserIdsChange={setSelectedAssigneeUserIds}
+              onTagIdsChange={setSelectedTagIds}
+              onRetryMembers={() => {
+                void createMembersQuery.refetch();
+              }}
+              onRetryTags={() => {
+                void createTagsQuery.refetch();
+              }}
             />
           </div>
 
@@ -1031,31 +1171,18 @@ export default function BoardPage() {
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2">
-                  <Link
-                    to={`/boards/${boardId}/search`}
-                    className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-xl px-3.5 text-[12px] font-semibold text-[var(--flow-text-secondary)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-primary)]"
-                  >
-                    <SearchIcon />
-                    작업 검색
-                  </Link>
-
-                  <Link
-                    to={`/boards/${boardId}/whiteboard`}
-                    className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-xl px-3.5 text-[12px] font-semibold text-[var(--flow-text-secondary)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-primary)]"
-                  >
-                    <WhiteboardIcon />
-                    화이트보드
-                  </Link>
-
-                  <Link
-                    to={`/boards/${boardId}/activities`}
-                    className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-xl px-3.5 text-[12px] font-semibold text-[var(--flow-text-secondary)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-primary)]"
-                  >
-                    <ActivityIcon />
-                    활동
-                  </Link>
-                </div>
+                {canManageColumns && (
+                  <div className="shrink-0">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      leftIcon={<SettingsIcon />}
+                      onClick={() => setColumnSettingsOpen(true)}
+                    >
+                      워크플로우 설정
+                    </Button>
+                  </div>
+                )}
               </div>
             </header>
 
