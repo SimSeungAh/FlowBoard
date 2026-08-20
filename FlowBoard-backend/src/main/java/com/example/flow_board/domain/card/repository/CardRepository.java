@@ -3,6 +3,8 @@ package com.example.flow_board.domain.card.repository;
 import com.example.flow_board.domain.board.entity.BoardColumn;
 import com.example.flow_board.domain.card.entity.Card;
 import com.example.flow_board.domain.card.entity.CardTaskType;
+import com.example.flow_board.domain.card.entity.SecuritySeverity;
+import com.example.flow_board.domain.card.entity.SecurityVerificationStatus;
 import com.example.flow_board.domain.card.entity.TestCaseResult;
 import com.example.flow_board.domain.card.entity.TestCaseType;
 import org.springframework.data.domain.Page;
@@ -96,9 +98,89 @@ public interface CardRepository
   );
 
   /**
+   * 보드의 보안 점검 카드 목록을 조회합니다.
+   *
+   * - SECURITY_REVIEW 카드만 조회
+   * - 심각도 필터
+   * - 검증 상태 필터
+   * - 제목/설명/영향 범위 검색
+   * - Pageable 기반 페이지네이션
+   *
+   * 기존 SECURITY_REVIEW 카드 중
+   * 새 보안 메타데이터 컬럼 추가 전에 생성되어
+   * securitySeverity가 null인 카드는
+   * MEDIUM으로 취급합니다.
+   *
+   * securityVerificationStatus가 null인 기존 카드는
+   * PENDING으로 취급합니다.
+   */
+  @Query("""
+      select c
+      from Card c
+      where c.boardColumn.board.id = :boardId
+        and c.taskType = :taskType
+        and (
+          :securitySeverity is null
+          or c.securitySeverity = :securitySeverity
+          or (
+            :securitySeverity = :defaultSeverity
+            and c.securitySeverity is null
+          )
+        )
+        and (
+          :verificationStatus is null
+          or c.securityVerificationStatus = :verificationStatus
+          or (
+            :verificationStatus = :defaultVerificationStatus
+            and c.securityVerificationStatus is null
+          )
+        )
+        and (
+          :keyword is null
+          or lower(c.title) like lower(
+              concat('%', :keyword, '%')
+          )
+          or lower(
+              coalesce(c.description, '')
+          ) like lower(
+              concat('%', :keyword, '%')
+          )
+          or lower(
+              coalesce(c.securityImpactScope, '')
+          ) like lower(
+              concat('%', :keyword, '%')
+          )
+        )
+      """)
+  Page<Card> findSecurityReviews(
+      @Param("boardId")
+      Long boardId,
+
+      @Param("taskType")
+      CardTaskType taskType,
+
+      @Param("securitySeverity")
+      SecuritySeverity securitySeverity,
+
+      @Param("defaultSeverity")
+      SecuritySeverity defaultSeverity,
+
+      @Param("verificationStatus")
+      SecurityVerificationStatus verificationStatus,
+
+      @Param("defaultVerificationStatus")
+      SecurityVerificationStatus defaultVerificationStatus,
+
+      @Param("keyword")
+      String keyword,
+
+      Pageable pageable
+  );
+
+  /**
    * 보드의 특정 작업 유형 카드 개수 조회
    *
-   * 테스트 케이스 전체 개수 집계에 사용합니다.
+   * 테스트 케이스 및 보안 점검 전체 개수 집계에 사용합니다.
    */
   long countByBoardColumn_Board_IdAndTaskType(
       Long boardId,
@@ -112,5 +194,72 @@ public interface CardRepository
       Long boardId,
       CardTaskType taskType,
       TestCaseResult testCaseResult
+  );
+
+  /**
+   * 보안 점검 심각도별 개수 조회
+   *
+   * 기존 SECURITY_REVIEW 카드의 securitySeverity가
+   * null인 경우 기본값 MEDIUM으로 집계합니다.
+   */
+  @Query("""
+      select count(c)
+      from Card c
+      where c.boardColumn.board.id = :boardId
+        and c.taskType = :taskType
+        and (
+          c.securitySeverity = :securitySeverity
+          or (
+            :securitySeverity = :defaultSeverity
+            and c.securitySeverity is null
+          )
+        )
+      """)
+  long countSecurityReviewsBySeverity(
+      @Param("boardId")
+      Long boardId,
+
+      @Param("taskType")
+      CardTaskType taskType,
+
+      @Param("securitySeverity")
+      SecuritySeverity securitySeverity,
+
+      @Param("defaultSeverity")
+      SecuritySeverity defaultSeverity
+  );
+
+  /**
+   * 보안 점검 검증 상태별 개수 조회
+   *
+   * 기존 SECURITY_REVIEW 카드의
+   * securityVerificationStatus가 null인 경우
+   * 기본값 PENDING으로 집계합니다.
+   */
+  @Query("""
+      select count(c)
+      from Card c
+      where c.boardColumn.board.id = :boardId
+        and c.taskType = :taskType
+        and (
+          c.securityVerificationStatus = :verificationStatus
+          or (
+            :verificationStatus = :defaultVerificationStatus
+            and c.securityVerificationStatus is null
+          )
+        )
+      """)
+  long countSecurityReviewsByVerificationStatus(
+      @Param("boardId")
+      Long boardId,
+
+      @Param("taskType")
+      CardTaskType taskType,
+
+      @Param("verificationStatus")
+      SecurityVerificationStatus verificationStatus,
+
+      @Param("defaultVerificationStatus")
+      SecurityVerificationStatus defaultVerificationStatus
   );
 }

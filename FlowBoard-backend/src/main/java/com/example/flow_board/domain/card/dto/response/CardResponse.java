@@ -2,6 +2,8 @@ package com.example.flow_board.domain.card.dto.response;
 
 import com.example.flow_board.domain.card.entity.Card;
 import com.example.flow_board.domain.card.entity.CardTaskType;
+import com.example.flow_board.domain.card.entity.SecuritySeverity;
+import com.example.flow_board.domain.card.entity.SecurityVerificationStatus;
 import com.example.flow_board.domain.card.entity.TestCaseResult;
 import com.example.flow_board.domain.card.entity.TestCaseType;
 
@@ -40,6 +42,21 @@ public record CardResponse(
      */
     TestCaseResult testCaseResult,
 
+    /*
+     * SECURITY_REVIEW에서만 사용
+     */
+    SecuritySeverity securitySeverity,
+
+    /*
+     * SECURITY_REVIEW에서만 사용
+     */
+    String securityImpactScope,
+
+    /*
+     * SECURITY_REVIEW에서만 사용
+     */
+    SecurityVerificationStatus securityVerificationStatus,
+
     LocalDateTime createdAt,
 
     LocalDateTime updatedAt
@@ -62,6 +79,10 @@ public record CardResponse(
         card.getTaskType(),
         card.getTestCaseType(),
         card.getTestCaseResult(),
+
+        card.getSecuritySeverity(),
+        card.getSecurityImpactScope(),
+        card.getSecurityVerificationStatus(),
 
         card.getCreatedAt(),
         card.getUpdatedAt()

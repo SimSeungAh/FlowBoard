@@ -6,7 +6,15 @@ import { getMyBoards } from "@/api/board";
 import { cn } from "@/utils/cn";
 
 type IconType =
-  "boards" | "kanban" | "search" | "testcase" | "whiteboard" | "activity" | "members" | "settings";
+  | "boards"
+  | "kanban"
+  | "search"
+  | "testcase"
+  | "security"
+  | "whiteboard"
+  | "activity"
+  | "members"
+  | "settings";
 
 interface NavigationItem {
   label: string;
@@ -38,30 +46,39 @@ function SidebarIcon({ type }: { type: IconType }) {
       content = (
         <>
           <rect x="4" y="4" width="6" height="6" rx="1.5" />
+
           <rect x="14" y="4" width="6" height="6" rx="1.5" />
+
           <rect x="4" y="14" width="6" height="6" rx="1.5" />
+
           <rect x="14" y="14" width="6" height="6" rx="1.5" />
         </>
       );
+
       break;
 
     case "kanban":
       content = (
         <>
           <rect x="3.5" y="4" width="5" height="16" rx="1.5" />
+
           <rect x="9.5" y="4" width="5" height="11" rx="1.5" />
+
           <rect x="15.5" y="4" width="5" height="14" rx="1.5" />
         </>
       );
+
       break;
 
     case "search":
       content = (
         <>
           <circle cx="10.5" cy="10.5" r="5.5" />
+
           <path d="m15 15 4 4" />
         </>
       );
+
       break;
 
     case "testcase":
@@ -76,32 +93,51 @@ function SidebarIcon({ type }: { type: IconType }) {
           <path d="M8.5 15h7" />
         </>
       );
+
+      break;
+
+    case "security":
+      content = (
+        <>
+          <path d="M12 3.5 19 6v5.2c0 4.2-2.7 7.5-7 9.3-4.3-1.8-7-5.1-7-9.3V6l7-2.5Z" />
+
+          <path d="m9.3 12 1.7 1.7 3.8-4" />
+        </>
+      );
+
       break;
 
     case "whiteboard":
       content = (
         <>
           <rect x="3.5" y="4" width="17" height="13" rx="2" />
+
           <path d="M8 21h8" />
+
           <path d="m8 12 2-2 2 1.5 4-4" />
         </>
       );
+
       break;
 
     case "activity":
       content = <path d="M4 12h3l2-5 4 10 2-5h5" />;
+
       break;
 
     case "members":
       content = (
         <>
           <circle cx="9" cy="8" r="3" />
+
           <path d="M3.8 19c.7-3.2 2.6-4.8 5.2-4.8s4.5 1.6 5.2 4.8" />
 
           <circle cx="17" cy="9" r="2.3" />
+
           <path d="M15.6 14.5c2.8.1 4.5 1.5 4.9 4.1" />
         </>
       );
+
       break;
 
     case "settings":
@@ -122,6 +158,7 @@ function SidebarIcon({ type }: { type: IconType }) {
           <path d="m7.4 16.6-1.4 1.4" />
         </>
       );
+
       break;
   }
 
@@ -139,10 +176,25 @@ function NavigationLink({ item }: { item: NavigationItem }) {
       end={item.end}
       className={({ isActive }) =>
         cn(
-          "group flex min-h-10 items-center gap-3 rounded-[10px] px-3 py-2 text-[13px] font-semibold transition-colors",
+          [
+            "group",
+            "flex min-h-10",
+            "items-center",
+            "gap-3",
+            "rounded-[10px]",
+            "px-3 py-2",
+            "text-[13px]",
+            "font-semibold",
+            "transition-colors",
+          ].join(" "),
+
           isActive
-            ? "bg-[var(--flow-primary-50)] text-[var(--flow-primary)]"
-            : "text-[var(--flow-text-secondary)] hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text)]",
+            ? ["bg-[var(--flow-primary-50)]", "text-[var(--flow-primary)]"].join(" ")
+            : [
+                "text-[var(--flow-text-secondary)]",
+                "hover:bg-[var(--flow-gray-100)]",
+                "hover:text-[var(--flow-text)]",
+              ].join(" "),
         )
       }
     >
@@ -158,7 +210,9 @@ function NavigationLink({ item }: { item: NavigationItem }) {
 export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
   const { data: boards = [] } = useQuery({
     queryKey: ["boards"],
+
     queryFn: getMyBoards,
+
     staleTime: 30_000,
   });
 
@@ -174,33 +228,59 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
       ? [
           {
             label: "칸반 보드",
+
             path: `/boards/${boardId}`,
+
             icon: "kanban" as const,
+
             end: true,
           },
+
           {
             label: "작업 검색",
+
             path: `/boards/${boardId}/search`,
+
             icon: "search" as const,
           },
+
           {
             label: "테스트 케이스",
+
             path: `/boards/${boardId}/test-cases`,
+
             icon: "testcase" as const,
           },
+
+          {
+            label: "보안 점검",
+
+            path: `/boards/${boardId}/security-reviews`,
+
+            icon: "security" as const,
+          },
+
           {
             label: "화이트보드",
+
             path: `/boards/${boardId}/whiteboard`,
+
             icon: "whiteboard" as const,
           },
+
           {
             label: "활동 기록",
+
             path: `/boards/${boardId}/activities`,
+
             icon: "activity" as const,
           },
+
           {
             label: "팀원 및 권한",
+
             path: `/boards/${boardId}/members`,
+
             icon: "members" as const,
           },
         ]
@@ -236,7 +316,16 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
             <Link
               to="/boards"
               aria-label="보드 목록 열기"
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--flow-text-placeholder)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-primary)]"
+              className={[
+                "flex",
+                "h-7 w-7",
+                "items-center justify-center",
+                "rounded-lg",
+                "text-[var(--flow-text-placeholder)]",
+                "transition-colors",
+                "hover:bg-[var(--flow-gray-100)]",
+                "hover:text-[var(--flow-primary)]",
+              ].join(" ")}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -263,10 +352,26 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
                     key={board.id}
                     to={`/boards/${board.id}`}
                     className={cn(
-                      "group flex min-h-9 items-center gap-3 rounded-[10px] px-3 py-2 text-[12px] font-medium transition-colors",
+                      [
+                        "group",
+                        "flex",
+                        "min-h-9",
+                        "items-center",
+                        "gap-3",
+                        "rounded-[10px]",
+                        "px-3 py-2",
+                        "text-[12px]",
+                        "font-medium",
+                        "transition-colors",
+                      ].join(" "),
+
                       active
-                        ? "bg-[var(--flow-gray-100)] text-[var(--flow-text)]"
-                        : "text-[var(--flow-text-muted)] hover:bg-[var(--flow-gray-50)] hover:text-[var(--flow-text)]",
+                        ? ["bg-[var(--flow-gray-100)]", "text-[var(--flow-text)]"].join(" ")
+                        : [
+                            "text-[var(--flow-text-muted)]",
+                            "hover:bg-[var(--flow-gray-50)]",
+                            "hover:text-[var(--flow-text)]",
+                          ].join(" "),
                     )}
                     title={board.title}
                   >
