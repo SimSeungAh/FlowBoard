@@ -11,13 +11,22 @@ export default function Pagination({
   onChange,
   pageBlockSize = 10,
 }: PaginationProps) {
-  if (totalPages <= 1) return null;
+  if (totalPages <= 1) {
+    return null;
+  }
 
   const currentBlock = Math.floor((page - 1) / pageBlockSize);
+
   const startPage = currentBlock * pageBlockSize + 1;
+
   const endPage = Math.min(startPage + pageBlockSize - 1, totalPages);
 
-  const pages = Array.from({ length: endPage - startPage + 1 }, (_, index) => startPage + index);
+  const pages = Array.from(
+    {
+      length: endPage - startPage + 1,
+    },
+    (_, index) => startPage + index,
+  );
 
   const goToPage = (targetPage: number) => {
     if (targetPage < 1 || targetPage > totalPages || targetPage === page) {
@@ -26,6 +35,18 @@ export default function Pagination({
 
     onChange(targetPage);
   };
+
+  const navigationButtonClassName = [
+    "flex h-9 min-w-9 items-center justify-center",
+    "rounded-lg border border-[var(--flow-border-strong)]",
+    "bg-white px-3",
+    "text-sm font-medium text-[var(--flow-text-secondary)]",
+    "transition-colors",
+    "hover:border-[var(--flow-primary-200)]",
+    "hover:bg-[var(--flow-gray-50)]",
+    "hover:text-[var(--flow-text)]",
+    "disabled:cursor-not-allowed disabled:opacity-40",
+  ].join(" ");
 
   return (
     <nav
@@ -37,7 +58,7 @@ export default function Pagination({
         aria-label="첫 페이지로 이동"
         onClick={() => goToPage(1)}
         disabled={page === 1}
-        className="flex h-9 min-w-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+        className={navigationButtonClassName}
       >
         &lt;&lt;
       </button>
@@ -47,7 +68,7 @@ export default function Pagination({
         aria-label="이전 페이지로 이동"
         onClick={() => goToPage(page - 1)}
         disabled={page === 1}
-        className="flex h-9 min-w-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+        className={navigationButtonClassName}
       >
         &lt;
       </button>
@@ -62,11 +83,27 @@ export default function Pagination({
             aria-label={`${pageNumber} 페이지로 이동`}
             aria-current={isCurrent ? "page" : undefined}
             onClick={() => goToPage(pageNumber)}
-            className={`flex h-9 min-w-9 items-center justify-center rounded-md border px-3 text-sm font-medium transition ${
+            className={[
+              "flex h-9 min-w-9 items-center justify-center",
+              "rounded-lg border px-3",
+              "text-sm font-semibold",
+              "transition-[border-color,background-color,color,box-shadow]",
               isCurrent
-                ? "border-blue-600 bg-blue-600 text-white"
-                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-            }`}
+                ? [
+                    "border-[var(--flow-primary)]",
+                    "bg-[var(--flow-primary)]",
+                    "text-white",
+                    "shadow-[var(--flow-shadow-xs)]",
+                  ].join(" ")
+                : [
+                    "border-[var(--flow-border-strong)]",
+                    "bg-white",
+                    "text-[var(--flow-text-secondary)]",
+                    "hover:border-[var(--flow-primary-200)]",
+                    "hover:bg-[var(--flow-gray-50)]",
+                    "hover:text-[var(--flow-text)]",
+                  ].join(" "),
+            ].join(" ")}
           >
             {pageNumber}
           </button>
@@ -78,7 +115,7 @@ export default function Pagination({
         aria-label="다음 페이지로 이동"
         onClick={() => goToPage(page + 1)}
         disabled={page === totalPages}
-        className="flex h-9 min-w-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+        className={navigationButtonClassName}
       >
         &gt;
       </button>
@@ -88,7 +125,7 @@ export default function Pagination({
         aria-label="마지막 페이지로 이동"
         onClick={() => goToPage(totalPages)}
         disabled={page === totalPages}
-        className="flex h-9 min-w-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+        className={navigationButtonClassName}
       >
         &gt;&gt;
       </button>

@@ -11,9 +11,14 @@ const sizeClass = {
 export default function Spinner({ size = "md" }: SpinnerProps) {
   return (
     <div
-      className={`animate-spin rounded-full border-gray-300 border-t-blue-600 ${sizeClass[size]}`}
+      className={[
+        "animate-spin rounded-full",
+        "border-[var(--flow-gray-200)]",
+        "border-t-[var(--flow-primary)]",
+        sizeClass[size],
+      ].join(" ")}
       role="status"
-      aria-label="loading"
+      aria-label="로딩 중"
     />
   );
 }

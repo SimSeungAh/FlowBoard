@@ -23,7 +23,7 @@ export default function Tabs<T extends string>({
 
   return (
     <div className={className}>
-      <div className="flex border-b border-slate-200">
+      <div className="flex border-b border-[var(--flow-border)]">
         {items.map((item) => {
           const isActive = item.value === value;
 
@@ -31,12 +31,20 @@ export default function Tabs<T extends string>({
             <button
               key={item.value}
               type="button"
+              aria-selected={isActive}
               onClick={() => onChange(item.value)}
-              className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
+              className={[
+                "border-b-2 px-4 py-2.5",
+                "text-sm font-semibold",
+                "transition-[border-color,color,background-color]",
                 isActive
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-slate-500 hover:text-slate-900"
-              }`}
+                  ? ["border-[var(--flow-primary)]", "text-[var(--flow-primary)]"].join(" ")
+                  : [
+                      "border-transparent",
+                      "text-[var(--flow-text-muted)]",
+                      "hover:text-[var(--flow-text)]",
+                    ].join(" "),
+              ].join(" ")}
             >
               {item.label}
             </button>

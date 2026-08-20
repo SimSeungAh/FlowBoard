@@ -97,6 +97,7 @@ function SidebarIcon({ type }: { type: IconType }) {
         <>
           <circle cx="9" cy="8" r="3" />
           <path d="M3.8 19c.7-3.2 2.6-4.8 5.2-4.8s4.5 1.6 5.2 4.8" />
+
           <circle cx="17" cy="9" r="2.3" />
           <path d="M15.6 14.5c2.8.1 4.5 1.5 4.9 4.1" />
         </>
@@ -106,8 +107,19 @@ function SidebarIcon({ type }: { type: IconType }) {
     case "settings":
       content = (
         <>
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-2.12 2.12-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V20h-3v-.08a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06-2.12-2.12.06-.06A1.65 1.65 0 0 0 7.2 15a1.65 1.65 0 0 0-1.51-1H5.6v-3h.09A1.65 1.65 0 0 0 7.2 10a1.65 1.65 0 0 0-.33-1.82l-.06-.06L8.93 6l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V4.8h3v.08a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33L17.7 6l2.12 2.12-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1h.08v3h-.08A1.65 1.65 0 0 0 19.4 15Z" />
+          <circle cx="12" cy="12" r="3.2" />
+
+          <path d="M12 3.5v2" />
+          <path d="M12 18.5v2" />
+
+          <path d="M3.5 12h2" />
+          <path d="M18.5 12h2" />
+
+          <path d="m6 6 1.4 1.4" />
+          <path d="m16.6 16.6 1.4 1.4" />
+
+          <path d="m18 6-1.4 1.4" />
+          <path d="m7.4 16.6-1.4 1.4" />
         </>
       );
       break;
@@ -157,6 +169,7 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
       icon: "boards",
       end: true,
     },
+
     ...(boardId
       ? [
           {
@@ -192,6 +205,7 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
           },
         ]
       : []),
+
     {
       label: "설정",
       path: "/mypage",
@@ -308,6 +322,7 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
               <p className="truncate text-[11px] font-bold text-[var(--flow-text-secondary)]">
                 FlowBoard
               </p>
+
               <p className="truncate text-[10px] text-[var(--flow-text-placeholder)]">
                 실시간 개발 협업 공간
               </p>
