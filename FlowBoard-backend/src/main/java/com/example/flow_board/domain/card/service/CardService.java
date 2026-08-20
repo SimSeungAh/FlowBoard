@@ -7,10 +7,7 @@ import com.example.flow_board.domain.board.entity.BoardColumn;
 import com.example.flow_board.domain.board.repository.BoardColumnRepository;
 import com.example.flow_board.domain.board.repository.BoardRepository;
 import com.example.flow_board.domain.board.service.BoardPermissionService;
-import com.example.flow_board.domain.card.dto.request.CardCreateRequest;
-import com.example.flow_board.domain.card.dto.request.CardMoveRequest;
-import com.example.flow_board.domain.card.dto.request.CardSearchCondition;
-import com.example.flow_board.domain.card.dto.request.CardUpdateRequest;
+import com.example.flow_board.domain.card.dto.request.*;
 import com.example.flow_board.domain.card.dto.response.CardAssigneeResponse;
 import com.example.flow_board.domain.card.dto.response.CardResponse;
 import com.example.flow_board.domain.card.dto.response.CardSearchResponse;
@@ -25,6 +22,15 @@ import com.example.flow_board.domain.card.websocket.CardWebSocketEvent;
 import com.example.flow_board.domain.user.entity.User;
 import com.example.flow_board.global.exception.CustomException;
 import com.example.flow_board.global.exception.ErrorCode;
+import com.example.flow_board.domain.card.dto.response.TestCasePageResponse;
+import com.example.flow_board.domain.card.entity.CardTaskType;
+import com.example.flow_board.domain.card.entity.TestCaseResult;
+import com.example.flow_board.domain.card.entity.TestCaseType;
+import com.example.flow_board.domain.card.entity.TestCaseResult;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,7 +58,7 @@ public class CardService {
 
   /**
    * 카드 생성
-   *
+   * <p>
    * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
@@ -62,7 +68,8 @@ public class CardService {
       Long columnId,
       CardCreateRequest request
   ) {
-    Board board = getBoardById(boardId);
+    Board board =
+        getBoardById(boardId);
 
     boardPermissionService.validateWritePermission(
         board,
@@ -80,13 +87,27 @@ public class CardService {
     String rank =
         createLexoRank(boardColumn);
 
+    /*
+     * taskType과 testCaseType을
+     * Card Entity까지 전달합니다.
+     *
+     * 기존 프론트처럼 두 값이 전달되지 않아도
+     * Entity에서 GENERAL로 처리됩니다.
+     *
+     * 테스트 결과는 사용자가 지정해서 만드는 값이 아니라
+     * 테스트 케이스 생성 시 NOT_RUN으로 시작하므로
+     * null을 전달하고 Entity에서 기본값을 적용합니다.
+     */
     Card card = new Card(
         boardColumn,
         user,
         request.title(),
         request.description(),
         rank,
-        request.dueDate()
+        request.dueDate(),
+        request.taskType(),
+        request.testCaseType(),
+        null
     );
 
     Card savedCard =
@@ -119,7 +140,7 @@ public class CardService {
 
   /**
    * 컬럼별 카드 목록 조회
-   *
+   * <p>
    * OWNER, MEMBER, VIEWER 모두 가능합니다.
    */
   public List<CardResponse> getCardsByColumn(
@@ -127,7 +148,8 @@ public class CardService {
       Long boardId,
       Long columnId
   ) {
-    Board board = getBoardById(boardId);
+    Board board =
+        getBoardById(boardId);
 
     boardPermissionService.validateReadPermission(
         board,
@@ -153,7 +175,7 @@ public class CardService {
 
   /**
    * 보드 내 카드 검색 및 필터
-   *
+   * <p>
    * OWNER, MEMBER, VIEWER 모두 가능합니다.
    */
   public List<CardSearchResponse> searchCards(
@@ -161,7 +183,8 @@ public class CardService {
       Long boardId,
       CardSearchCondition condition
   ) {
-    Board board = getBoardById(boardId);
+    Board board =
+        getBoardById(boardId);
 
     boardPermissionService.validateReadPermission(
         board,
@@ -249,8 +272,165 @@ public class CardService {
   }
 
   /**
+   * 보드 테스트 케이스 목록 조회
+   * <p>
+   * 일반 카드와 분리해서 TEST_CASE 카드만 조회합니다.
+   * <p>
+   * OWNER / MEMBER / VIEWER 모두 조회할 수 있습니다.
+   */
+  public TestCasePageResponse getTestCases(
+      User user,
+      Long boardId,
+      TestCaseType testCaseType,
+      TestCaseResult testCaseResult,
+      String keyword,
+      int page,
+      int size
+  ) {
+    Board board =
+        getBoardById(boardId);
+
+    boardPermissionService.validateReadPermission(
+        board,
+        user
+    );
+
+    /*
+     * 페이지 번호는 0 이상,
+     * 한 페이지 크기는 1 ~ 100으로 제한합니다.
+     */
+    if (
+        page < 0
+            || size < 1
+            || size > 100
+    ) {
+      throw new CustomException(
+          ErrorCode.INVALID_INPUT
+      );
+    }
+
+    String normalizedKeyword =
+        normalizeTestCaseKeyword(
+            keyword
+        );
+
+    PageRequest pageable =
+        PageRequest.of(
+            page,
+            size,
+            Sort.by(
+                Sort.Order.desc(
+                    "updatedAt"
+                ),
+                Sort.Order.desc(
+                    "id"
+                )
+            )
+        );
+
+    Page<Card> cardPage =
+        cardRepository.findTestCases(
+            boardId,
+            CardTaskType.TEST_CASE,
+            testCaseType,
+            testCaseResult,
+            normalizedKeyword,
+            pageable
+        );
+
+    /*
+     * 결과가 없으면 담당자/태그 쿼리를
+     * 추가로 실행할 필요가 없습니다.
+     */
+    if (cardPage.isEmpty()) {
+      return TestCasePageResponse.from(
+          cardPage,
+          Map.of(),
+          Map.of()
+      );
+    }
+
+    List<Long> cardIds =
+        cardPage
+            .getContent()
+            .stream()
+            .map(Card::getId)
+            .toList();
+
+    Map<Long, List<CardAssigneeResponse>>
+        assigneesByCardId =
+        cardAssigneeRepository
+            .findAllByCardIdsWithUser(
+                cardIds
+            )
+            .stream()
+            .collect(
+                Collectors.groupingBy(
+                    cardAssignee ->
+                        cardAssignee
+                            .getCard()
+                            .getId(),
+                    Collectors.mapping(
+                        CardAssigneeResponse::from,
+                        Collectors.toList()
+                    )
+                )
+            );
+
+    Map<Long, List<TagResponse>>
+        tagsByCardId =
+        cardTagRepository
+            .findAllByCardIdsWithTag(
+                cardIds
+            )
+            .stream()
+            .collect(
+                Collectors.groupingBy(
+                    cardTag ->
+                        cardTag
+                            .getCard()
+                            .getId(),
+                    Collectors.mapping(
+                        cardTag ->
+                            TagResponse.from(
+                                cardTag.getTag()
+                            ),
+                        Collectors.toList()
+                    )
+                )
+            );
+
+    return TestCasePageResponse.from(
+        cardPage,
+        assigneesByCardId,
+        tagsByCardId
+    );
+  }
+
+  /**
+   * 테스트 케이스 검색어 정규화
+   * <p>
+   * null 또는 공백만 있는 문자열은
+   * 검색 조건에서 제외합니다.
+   */
+  private String normalizeTestCaseKeyword(
+      String keyword
+  ) {
+    if (keyword == null) {
+      return null;
+    }
+
+    String normalized =
+        keyword.trim();
+
+    return normalized.isEmpty()
+        ? null
+        : normalized;
+  }
+
+  /**
    * 카드 상세 조회
-   *
+   * <p>
    * OWNER, MEMBER, VIEWER 모두 가능합니다.
    */
   public CardResponse getCardDetail(
@@ -274,8 +454,11 @@ public class CardService {
 
   /**
    * 카드 수정
-   *
+   * <p>
    * OWNER와 MEMBER만 가능합니다.
+   * <p>
+   * 일반 카드의 제목/설명/마감일 수정에서는
+   * 작업 유형이나 테스트 결과를 변경하지 않습니다.
    */
   @Transactional
   public CardResponse updateCard(
@@ -327,8 +510,86 @@ public class CardService {
   }
 
   /**
-   * 카드 이동 및 순서 변경
+   * 테스트 케이스 결과 변경
    *
+   * TEST_CASE 카드에서만 사용할 수 있습니다.
+   *
+   * OWNER와 MEMBER만 변경할 수 있고,
+   * VIEWER는 읽기만 가능합니다.
+   */
+  @Transactional
+  public CardResponse updateTestCaseResult(
+      User user,
+      Long cardId,
+      TestCaseResultUpdateRequest request
+  ) {
+    Card card =
+        getCardById(cardId);
+
+    Board board =
+        card.getBoardColumn()
+            .getBoard();
+
+    boardPermissionService.validateWritePermission(
+        board,
+        user
+    );
+
+    TestCaseResult previousResult =
+        card.getTestCaseResult();
+
+    /*
+     * Card Entity 내부에서
+     * TEST_CASE 카드인지 다시 검증합니다.
+     *
+     * 일반 카드라면 CARD_NOT_TEST_CASE 예외가 발생합니다.
+     */
+    card.updateTestCase(
+        null,
+        request.testCaseResult()
+    );
+
+    CardResponse response =
+        CardResponse.from(card);
+
+    activityLogService.recordActivity(
+        board,
+        user,
+        ActivityType.CARD_UPDATED,
+        card.getId(),
+        card.getTitle(),
+        user.getNickname()
+            + "님이 '"
+            + card.getTitle()
+            + "' 테스트 결과를 "
+            + getTestCaseResultLabel(
+            previousResult
+        )
+            + "에서 "
+            + getTestCaseResultLabel(
+            card.getTestCaseResult()
+        )
+            + "(으)로 변경했습니다."
+    );
+
+    /*
+     * 테스트 케이스 전용 화면뿐 아니라
+     * 칸반/카드 상세에서도 즉시 반영되도록
+     * 기존 카드 UPDATED 이벤트를 그대로 사용합니다.
+     */
+    cardEventPublisher.publish(
+        CardWebSocketEvent.updated(
+            board.getId(),
+            response
+        )
+    );
+
+    return response;
+  }
+
+  /**
+   * 카드 이동 및 순서 변경
+   * <p>
    * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
@@ -447,7 +708,7 @@ public class CardService {
 
   /**
    * 카드 삭제
-   *
+   * <p>
    * OWNER와 MEMBER만 가능합니다.
    */
   @Transactional
@@ -582,8 +843,13 @@ public class CardService {
   private void rebalanceCards(
       List<Card> cards
   ) {
-    for (int i = 0; i < cards.size(); i++) {
-      Card card = cards.get(i);
+    for (
+        int i = 0;
+        i < cards.size();
+        i++
+    ) {
+      Card card =
+          cards.get(i);
 
       card.moveTo(
           card.getBoardColumn(),
@@ -614,6 +880,24 @@ public class CardService {
   }
 
   /**
+   * 활동 기록에 표시할 테스트 결과 한글명
+   */
+  private String getTestCaseResultLabel(
+      TestCaseResult result
+  ) {
+    if (result == null) {
+      return "미실행";
+    }
+
+    return switch (result) {
+      case NOT_RUN -> "미실행";
+      case PASS -> "PASS";
+      case FAIL -> "FAIL";
+      case BLOCKED -> "BLOCKED";
+    };
+  }
+
+  /**
    * 보드 조회
    */
   private Board getBoardById(
@@ -621,8 +905,8 @@ public class CardService {
   ) {
     return boardRepository
         .findById(boardId)
-        .orElseThrow(
-            () -> new CustomException(
+        .orElseThrow(() ->
+            new CustomException(
                 ErrorCode.BOARD_NOT_FOUND
             )
         );
@@ -636,9 +920,10 @@ public class CardService {
   ) {
     return boardColumnRepository
         .findById(columnId)
-        .orElseThrow(
-            () -> new CustomException(
-                ErrorCode.COLUMN_NOT_FOUND
+        .orElseThrow(() ->
+            new CustomException(
+                ErrorCode
+                    .COLUMN_NOT_FOUND
             )
         );
   }
@@ -651,15 +936,15 @@ public class CardService {
   ) {
     return cardRepository
         .findById(cardId)
-        .orElseThrow(
-            () -> new CustomException(
+        .orElseThrow(() ->
+            new CustomException(
                 ErrorCode.CARD_NOT_FOUND
             )
         );
   }
 
   /**
-   * 컬럼이 해당 보드에 속하는지 검사
+   * 컬럼이 해당 보드 소속인지 검사
    */
   private void validateColumnInBoard(
       BoardColumn boardColumn,
@@ -674,7 +959,7 @@ public class CardService {
         )
     ) {
       throw new CustomException(
-          ErrorCode.COLUMN_NOT_FOUND
+          ErrorCode.INVALID_INPUT
       );
     }
   }

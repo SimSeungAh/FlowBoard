@@ -1,36 +1,16 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from "react";
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router";
 import { toast } from "sonner";
 
-import {
-  deleteCard,
-  getCardDetail,
-  updateCard,
-  type CardUpdateRequest,
-} from "@/api/card";
+import { deleteCard, getCardDetail, updateCard, type CardUpdateRequest } from "@/api/card";
 import {
   addCardAssignee,
   getBoardMembers,
   getCardAssignees,
   removeCardAssignee,
 } from "@/api/cardAssignee";
-import {
-  addTagToCard,
-  createTag,
-  getBoardTags,
-  getCardTags,
-  removeTagFromCard,
-} from "@/api/tag";
+import { addTagToCard, createTag, getBoardTags, getCardTags, removeTagFromCard } from "@/api/tag";
 import Button from "@/components/ui/Button";
 import ChecklistSection from "@/components/card/ChecklistSection";
 import CommentSection from "@/components/card/CommentSection";
@@ -47,58 +27,129 @@ interface CardDetailModalProps {
   onChanged: () => void | Promise<void>;
 }
 
-const DEFAULT_TAG_COLOR =
-  "#3B82F6";
+const DEFAULT_TAG_COLOR = "#3B82F6";
 
-const toDateTimeInputValue = (
-  value: string | null,
-) => {
+const toDateTimeInputValue = (value: string | null) => {
   if (!value) {
     return "";
   }
 
-  return value.slice(
-    0,
-    16,
-  );
+  return value.slice(0, 16);
 };
 
-const formatDateTime = (
-  value: string | null,
-) => {
+const formatDateTime = (value: string | null) => {
   if (!value) {
     return "-";
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return value;
   }
 
-  return new Intl.DateTimeFormat(
-    "ko-KR",
-    {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    },
-  ).format(date);
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 };
 
-const getRoleLabel = (
-  role:
-    | "OWNER"
-    | "MEMBER"
-    | "VIEWER",
-) => {
+const formatCompactDateTime = (value: string | null) => {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+};
+
+const isPastDue = (value: string | null) => {
+  if (!value) {
+    return false;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  return date.getTime() < Date.now();
+};
+
+function CalendarIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="4" y="5.5" width="16" height="14" rx="2" />
+
+      <path d="M8 3.5v4" />
+      <path d="M16 3.5v4" />
+      <path d="M4 9.5h16" />
+    </svg>
+  );
+}
+
+function UserIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="8" r="3.5" />
+
+      <path d="M5.5 20c.7-4 3-6 6.5-6s5.8 2 6.5 6" />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="8" />
+
+      <path d="M12 7.5V12l3 2" />
+    </svg>
+  );
+}
+
+const getRoleLabel = (role: "OWNER" | "MEMBER" | "VIEWER") => {
   switch (role) {
     case "OWNER":
       return "OWNER";
@@ -118,1034 +169,545 @@ export default function CardDetailModal({
   onClose,
   onChanged,
 }: CardDetailModalProps) {
-  const {
-    boardId: boardIdParam,
-  } = useParams<{
+  const { boardId: boardIdParam } = useParams<{
     boardId: string;
   }>();
 
-  const boardId =
-    Number(
-      boardIdParam,
-    );
+  const boardId = Number(boardIdParam);
 
-  const isValidBoardId =
-    Number.isInteger(
-      boardId,
-    ) &&
-    boardId > 0;
+  const isValidBoardId = Number.isInteger(boardId) && boardId > 0;
 
-  const queryClient =
-    useQueryClient();
+  const queryClient = useQueryClient();
 
-  const [
-    editMode,
-    setEditMode,
-  ] =
-    useState(false);
+  const [editMode, setEditMode] = useState(false);
 
-  const [
-    descriptionEditMode,
-    setDescriptionEditMode,
-  ] =
-    useState(false);
+  const [descriptionEditMode, setDescriptionEditMode] = useState(false);
 
-  const [
-    deleteDialogOpen,
-    setDeleteDialogOpen,
-  ] =
-    useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const [
-    title,
-    setTitle,
-  ] =
-    useState("");
+  const [title, setTitle] = useState("");
 
-  const [
-    description,
-    setDescription,
-  ] =
-    useState("");
+  const [description, setDescription] = useState("");
 
-  const [
-    dueDate,
-    setDueDate,
-  ] =
-    useState("");
+  const [dueDate, setDueDate] = useState("");
 
-  const [
-    selectedAssigneeUserId,
-    setSelectedAssigneeUserId,
-  ] =
-    useState("");
+  const [selectedAssigneeUserId, setSelectedAssigneeUserId] = useState("");
 
-  const [
-    selectedTagId,
-    setSelectedTagId,
-  ] =
-    useState("");
+  const [selectedTagId, setSelectedTagId] = useState("");
 
-  const [
-    newTagName,
-    setNewTagName,
-  ] =
-    useState("");
+  const [newTagName, setNewTagName] = useState("");
 
-  const [
-    newTagColor,
-    setNewTagColor,
-  ] =
-    useState(
-      DEFAULT_TAG_COLOR,
-    );
+  const [newTagColor, setNewTagColor] = useState(DEFAULT_TAG_COLOR);
 
-  const cardQuery =
-    useQuery({
-      queryKey: [
-        "cards",
-        cardId,
-      ],
+  const cardQuery = useQuery({
+    queryKey: ["cards", cardId],
 
-      queryFn: () =>
-        getCardDetail(
-          cardId as number,
-        ),
+    queryFn: () => getCardDetail(cardId as number),
 
-      enabled:
-        open &&
-        cardId !== null,
-    });
+    enabled: open && cardId !== null,
+  });
 
-  const membersQuery =
-    useQuery({
-      queryKey: [
-        "boards",
-        boardId,
-        "members",
-      ],
+  const membersQuery = useQuery({
+    queryKey: ["boards", boardId, "members"],
 
-      queryFn: () =>
-        getBoardMembers(
-          boardId,
-        ),
+    queryFn: () => getBoardMembers(boardId),
 
-      enabled:
-        open &&
-        cardId !== null &&
-        isValidBoardId,
-    });
+    enabled: open && cardId !== null && isValidBoardId,
+  });
 
-  const assigneesQuery =
-    useQuery({
-      queryKey: [
-        "cards",
-        cardId,
-        "assignees",
-      ],
+  const assigneesQuery = useQuery({
+    queryKey: ["cards", cardId, "assignees"],
 
-      queryFn: () =>
-        getCardAssignees(
-          cardId as number,
-        ),
+    queryFn: () => getCardAssignees(cardId as number),
 
-      enabled:
-        open &&
-        cardId !== null,
-    });
+    enabled: open && cardId !== null,
+  });
 
-  const boardTagsQuery =
-    useQuery({
-      queryKey: [
-        "boards",
-        boardId,
-        "tags",
-      ],
+  const boardTagsQuery = useQuery({
+    queryKey: ["boards", boardId, "tags"],
 
-      queryFn: () =>
-        getBoardTags(
-          boardId,
-        ),
+    queryFn: () => getBoardTags(boardId),
 
-      enabled:
-        open &&
-        cardId !== null &&
-        isValidBoardId,
-    });
+    enabled: open && cardId !== null && isValidBoardId,
+  });
 
-  const cardTagsQuery =
-    useQuery({
-      queryKey: [
-        "cards",
-        cardId,
-        "tags",
-      ],
+  const cardTagsQuery = useQuery({
+    queryKey: ["cards", cardId, "tags"],
 
-      queryFn: () =>
-        getCardTags(
-          cardId as number,
-        ),
+    queryFn: () => getCardTags(cardId as number),
 
-      enabled:
-        open &&
-        cardId !== null,
-    });
+    enabled: open && cardId !== null,
+  });
 
-  const card =
-    cardQuery.data;
+  const card = cardQuery.data;
 
-  const members =
-    membersQuery.data ??
-    [];
+  const members = membersQuery.data ?? [];
 
-  const assignees =
-    assigneesQuery.data ??
-    [];
+  const assignees = assigneesQuery.data ?? [];
 
-  const boardTags =
-    boardTagsQuery.data ??
-    [];
+  const boardTags = boardTagsQuery.data ?? [];
 
-  const cardTags =
-    cardTagsQuery.data ??
-    [];
+  const cardTags = cardTagsQuery.data ?? [];
 
-  const availableMembers =
-    useMemo(
-      () =>
-        members.filter(
-          (member) =>
-            !assignees.some(
-              (assignee) =>
-                assignee.userId ===
-                member.userId,
-            ),
-        ),
-      [
-        assignees,
-        members,
-      ],
-    );
+  const availableMembers = useMemo(
+    () =>
+      members.filter((member) => !assignees.some((assignee) => assignee.userId === member.userId)),
+    [assignees, members],
+  );
 
-  const availableTags =
-    useMemo(
-      () =>
-        boardTags.filter(
-          (tag) =>
-            !cardTags.some(
-              (cardTag) =>
-                cardTag.id ===
-                tag.id,
-            ),
-        ),
-      [
-        boardTags,
-        cardTags,
-      ],
-    );
+  const availableTags = useMemo(
+    () => boardTags.filter((tag) => !cardTags.some((cardTag) => cardTag.id === tag.id)),
+    [boardTags, cardTags],
+  );
 
   useEffect(() => {
-    if (
-      !open ||
-      !card
-    ) {
+    if (!open || !card) {
       return;
     }
 
-    setTitle(
-      card.title,
-    );
+    setTitle(card.title);
 
-    setDescription(
-      card.description ??
-        "",
-    );
+    setDescription(card.description ?? "");
 
-    setDueDate(
-      toDateTimeInputValue(
-        card.dueDate,
-      ),
-    );
+    setDueDate(toDateTimeInputValue(card.dueDate));
 
-    setEditMode(
-      false,
-    );
+    setEditMode(false);
 
-    setDescriptionEditMode(
-      false,
-    );
+    setDescriptionEditMode(false);
 
-    setSelectedAssigneeUserId(
-      "",
-    );
+    setSelectedAssigneeUserId("");
 
-    setSelectedTagId(
-      "",
-    );
+    setSelectedTagId("");
 
-    setNewTagName(
-      "",
-    );
+    setNewTagName("");
 
-    setNewTagColor(
-      DEFAULT_TAG_COLOR,
-    );
-  }, [
-    card,
-    open,
-  ]);
+    setNewTagColor(DEFAULT_TAG_COLOR);
+  }, [card, open]);
 
   useEffect(() => {
     if (open) {
       return;
     }
 
-    setEditMode(
-      false,
-    );
+    setEditMode(false);
 
-    setDescriptionEditMode(
-      false,
-    );
+    setDescriptionEditMode(false);
 
-    setDeleteDialogOpen(
-      false,
-    );
+    setDeleteDialogOpen(false);
 
-    setSelectedAssigneeUserId(
-      "",
-    );
+    setSelectedAssigneeUserId("");
 
-    setSelectedTagId(
-      "",
-    );
+    setSelectedTagId("");
 
-    setNewTagName(
-      "",
-    );
+    setNewTagName("");
 
-    setNewTagColor(
-      DEFAULT_TAG_COLOR,
-    );
-  }, [
-    open,
-  ]);
+    setNewTagColor(DEFAULT_TAG_COLOR);
+  }, [open]);
 
-  const updateMutation =
-    useMutation({
-      mutationFn: (
-        data: CardUpdateRequest,
-      ) => {
-        if (
-          cardId === null
-        ) {
-          throw new Error(
-            "카드 ID가 없습니다.",
-          );
-        }
-
-        return updateCard(
-          cardId,
-          data,
-        );
-      },
-
-      onSuccess:
-        async (
-          updatedCard,
-        ) => {
-          queryClient.setQueryData(
-            [
-              "cards",
-              updatedCard.id,
-            ],
-            updatedCard,
-          );
-
-          await onChanged();
-
-          setEditMode(
-            false,
-          );
-
-          toast.success(
-            "카드를 수정했습니다.",
-          );
-        },
-
-      onError: () => {
-        toast.error(
-          "카드를 수정하지 못했습니다.",
-        );
-      },
-    });
-
-  const descriptionUpdateMutation =
-    useMutation({
-      mutationFn: (
-        nextDescription: string,
-      ) => {
-        if (
-          cardId === null ||
-          !card
-        ) {
-          throw new Error(
-            "카드 정보를 확인할 수 없습니다.",
-          );
-        }
-
-        return updateCard(
-          cardId,
-          {
-            title: card.title,
-            description:
-              nextDescription.trim() ||
-              null,
-            dueDate: card.dueDate,
-          },
-        );
-      },
-
-      onSuccess:
-        async (
-          updatedCard,
-        ) => {
-          queryClient.setQueryData(
-            [
-              "cards",
-              updatedCard.id,
-            ],
-            updatedCard,
-          );
-
-          setDescription(
-            updatedCard.description ??
-              "",
-          );
-
-          setDescriptionEditMode(
-            false,
-          );
-
-          await onChanged();
-
-          toast.success(
-            "설명을 수정했습니다.",
-          );
-        },
-
-      onError: () => {
-        toast.error(
-          "설명을 수정하지 못했습니다.",
-        );
-      },
-    });
-
-  const deleteMutation =
-    useMutation({
-      mutationFn:
-        async () => {
-          if (
-            cardId === null
-          ) {
-            throw new Error(
-              "카드 ID가 없습니다.",
-            );
-          }
-
-          await deleteCard(
-            cardId,
-          );
-        },
-
-      onSuccess:
-        async () => {
-          if (
-            cardId !== null
-          ) {
-            queryClient.removeQueries({
-              queryKey: [
-                "cards",
-                cardId,
-              ],
-            });
-          }
-
-          await onChanged();
-
-          setDeleteDialogOpen(
-            false,
-          );
-
-          toast.success(
-            "카드를 삭제했습니다.",
-          );
-
-          onClose();
-        },
-
-      onError: () => {
-        toast.error(
-          "카드를 삭제하지 못했습니다.",
-        );
-      },
-    });
-
-  const addAssigneeMutation =
-    useMutation({
-      mutationFn:
-        async (
-          userId: number,
-        ) => {
-          if (
-            cardId === null
-          ) {
-            throw new Error(
-              "카드 ID가 없습니다.",
-            );
-          }
-
-          return addCardAssignee(
-            cardId,
-            {
-              userId,
-            },
-          );
-        },
-
-      onSuccess:
-        async () => {
-          await queryClient.invalidateQueries({
-            queryKey: [
-              "cards",
-              cardId,
-              "assignees",
-            ],
-          });
-
-          setSelectedAssigneeUserId(
-            "",
-          );
-
-          toast.success(
-            "담당자를 추가했습니다.",
-          );
-        },
-
-      onError: () => {
-        toast.error(
-          "담당자를 추가하지 못했습니다.",
-        );
-      },
-    });
-
-  const removeAssigneeMutation =
-    useMutation({
-      mutationFn:
-        async (
-          userId: number,
-        ) => {
-          if (
-            cardId === null
-          ) {
-            throw new Error(
-              "카드 ID가 없습니다.",
-            );
-          }
-
-          await removeCardAssignee(
-            cardId,
-            userId,
-          );
-        },
-
-      onSuccess:
-        async () => {
-          await queryClient.invalidateQueries({
-            queryKey: [
-              "cards",
-              cardId,
-              "assignees",
-            ],
-          });
-
-          toast.success(
-            "담당자를 제거했습니다.",
-          );
-        },
-
-      onError: () => {
-        toast.error(
-          "담당자를 제거하지 못했습니다.",
-        );
-      },
-    });
-
-  const addTagMutation =
-    useMutation({
-      mutationFn:
-        async (
-          tagId: number,
-        ) => {
-          if (
-            cardId === null
-          ) {
-            throw new Error(
-              "카드 ID가 없습니다.",
-            );
-          }
-
-          return addTagToCard(
-            cardId,
-            tagId,
-          );
-        },
-
-      onSuccess:
-        async () => {
-          await queryClient.invalidateQueries({
-            queryKey: [
-              "cards",
-              cardId,
-              "tags",
-            ],
-          });
-
-          setSelectedTagId(
-            "",
-          );
-
-          toast.success(
-            "태그를 추가했습니다.",
-          );
-        },
-
-      onError: () => {
-        toast.error(
-          "태그를 추가하지 못했습니다.",
-        );
-      },
-    });
-
-  const removeTagMutation =
-    useMutation({
-      mutationFn:
-        async (
-          tagId: number,
-        ) => {
-          if (
-            cardId === null
-          ) {
-            throw new Error(
-              "카드 ID가 없습니다.",
-            );
-          }
-
-          await removeTagFromCard(
-            cardId,
-            tagId,
-          );
-        },
-
-      onSuccess:
-        async () => {
-          await queryClient.invalidateQueries({
-            queryKey: [
-              "cards",
-              cardId,
-              "tags",
-            ],
-          });
-
-          toast.success(
-            "태그를 제거했습니다.",
-          );
-        },
-
-      onError: () => {
-        toast.error(
-          "태그를 제거하지 못했습니다.",
-        );
-      },
-    });
-
-  const createTagMutation =
-    useMutation({
-      mutationFn:
-        async () => {
-          if (
-            cardId === null
-          ) {
-            throw new Error(
-              "카드 ID가 없습니다.",
-            );
-          }
-
-          const name =
-            newTagName.trim();
-
-          if (!name) {
-            throw new Error(
-              "태그 이름이 없습니다.",
-            );
-          }
-
-          /*
-           * 새 태그를 보드에 만든 뒤
-           * 현재 카드에도 바로 연결합니다.
-           */
-          const tag =
-            await createTag(
-              boardId,
-              {
-                name,
-                color:
-                  newTagColor,
-              },
-            );
-
-          await addTagToCard(
-            cardId,
-            tag.id,
-          );
-
-          return tag;
-        },
-
-      onSuccess:
-        async () => {
-          await Promise.all([
-            queryClient.invalidateQueries({
-              queryKey: [
-                "boards",
-                boardId,
-                "tags",
-              ],
-            }),
-
-            queryClient.invalidateQueries({
-              queryKey: [
-                "cards",
-                cardId,
-                "tags",
-              ],
-            }),
-          ]);
-
-          setNewTagName(
-            "",
-          );
-
-          setNewTagColor(
-            DEFAULT_TAG_COLOR,
-          );
-
-          toast.success(
-            "새 태그를 만들고 카드에 추가했습니다.",
-          );
-        },
-
-      onError: () => {
-        toast.error(
-          "태그를 생성하지 못했습니다. 같은 이름의 태그가 있는지 확인해주세요.",
-        );
-      },
-    });
-
-  const startEdit =
-    () => {
-      if (
-        !card ||
-        !canEdit
-      ) {
-        return;
+  const updateMutation = useMutation({
+    mutationFn: (data: CardUpdateRequest) => {
+      if (cardId === null) {
+        throw new Error("카드 ID가 없습니다.");
       }
 
-      setTitle(
-        card.title,
-      );
+      return updateCard(cardId, data);
+    },
 
-      setDescription(
-        card.description ??
-          "",
-      );
+    onSuccess: async (updatedCard) => {
+      queryClient.setQueryData(["cards", updatedCard.id], updatedCard);
 
-      setDueDate(
-        toDateTimeInputValue(
-          card.dueDate,
-        ),
-      );
+      await onChanged();
 
-      setDescriptionEditMode(
-        false,
-      );
+      setEditMode(false);
 
-      setEditMode(
-        true,
-      );
-    };
+      toast.success("카드를 수정했습니다.");
+    },
 
-  const cancelEdit =
-    () => {
-      if (!card) {
-        return;
+    onError: () => {
+      toast.error("카드를 수정하지 못했습니다.");
+    },
+  });
+
+  const descriptionUpdateMutation = useMutation({
+    mutationFn: (nextDescription: string) => {
+      if (cardId === null || !card) {
+        throw new Error("카드 정보를 확인할 수 없습니다.");
       }
 
-      setTitle(
-        card.title,
-      );
+      return updateCard(cardId, {
+        title: card.title,
+        description: nextDescription.trim() || null,
+        dueDate: card.dueDate,
+      });
+    },
 
-      setDescription(
-        card.description ??
-          "",
-      );
+    onSuccess: async (updatedCard) => {
+      queryClient.setQueryData(["cards", updatedCard.id], updatedCard);
 
-      setDueDate(
-        toDateTimeInputValue(
-          card.dueDate,
-        ),
-      );
+      setDescription(updatedCard.description ?? "");
 
-      setEditMode(
-        false,
-      );
-    };
+      setDescriptionEditMode(false);
 
-  const startDescriptionEdit =
-    () => {
-      if (
-        !card ||
-        !canEdit
-      ) {
-        return;
+      await onChanged();
+
+      toast.success("설명을 수정했습니다.");
+    },
+
+    onError: () => {
+      toast.error("설명을 수정하지 못했습니다.");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      if (cardId === null) {
+        throw new Error("카드 ID가 없습니다.");
       }
 
-      setDescription(
-        card.description ??
-          "",
-      );
+      await deleteCard(cardId);
+    },
 
-      setDescriptionEditMode(
-        true,
-      );
-    };
-
-  const cancelDescriptionEdit =
-    () => {
-      if (!card) {
-        return;
+    onSuccess: async () => {
+      if (cardId !== null) {
+        queryClient.removeQueries({
+          queryKey: ["cards", cardId],
+        });
       }
 
-      setDescription(
-        card.description ??
-          "",
-      );
+      await onChanged();
 
-      setDescriptionEditMode(
-        false,
-      );
-    };
+      setDeleteDialogOpen(false);
 
-  const saveDescription =
-    () => {
-      if (
-        !card ||
-        !canEdit
-      ) {
-        return;
+      toast.success("카드를 삭제했습니다.");
+
+      onClose();
+    },
+
+    onError: () => {
+      toast.error("카드를 삭제하지 못했습니다.");
+    },
+  });
+
+  const addAssigneeMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      if (cardId === null) {
+        throw new Error("카드 ID가 없습니다.");
       }
 
-      descriptionUpdateMutation.mutate(
-        description,
-      );
-    };
+      return addCardAssignee(cardId, {
+        userId,
+      });
+    },
 
-  const handleSubmit = (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["cards", cardId, "assignees"],
+      });
 
-    if (
-      !canEdit ||
-      !card
-    ) {
+      setSelectedAssigneeUserId("");
+
+      toast.success("담당자를 추가했습니다.");
+    },
+
+    onError: () => {
+      toast.error("담당자를 추가하지 못했습니다.");
+    },
+  });
+
+  const removeAssigneeMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      if (cardId === null) {
+        throw new Error("카드 ID가 없습니다.");
+      }
+
+      await removeCardAssignee(cardId, userId);
+    },
+
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["cards", cardId, "assignees"],
+      });
+
+      toast.success("담당자를 제거했습니다.");
+    },
+
+    onError: () => {
+      toast.error("담당자를 제거하지 못했습니다.");
+    },
+  });
+
+  const addTagMutation = useMutation({
+    mutationFn: async (tagId: number) => {
+      if (cardId === null) {
+        throw new Error("카드 ID가 없습니다.");
+      }
+
+      return addTagToCard(cardId, tagId);
+    },
+
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["cards", cardId, "tags"],
+      });
+
+      setSelectedTagId("");
+
+      toast.success("태그를 추가했습니다.");
+    },
+
+    onError: () => {
+      toast.error("태그를 추가하지 못했습니다.");
+    },
+  });
+
+  const removeTagMutation = useMutation({
+    mutationFn: async (tagId: number) => {
+      if (cardId === null) {
+        throw new Error("카드 ID가 없습니다.");
+      }
+
+      await removeTagFromCard(cardId, tagId);
+    },
+
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["cards", cardId, "tags"],
+      });
+
+      toast.success("태그를 제거했습니다.");
+    },
+
+    onError: () => {
+      toast.error("태그를 제거하지 못했습니다.");
+    },
+  });
+
+  const createTagMutation = useMutation({
+    mutationFn: async () => {
+      if (cardId === null) {
+        throw new Error("카드 ID가 없습니다.");
+      }
+
+      const name = newTagName.trim();
+
+      if (!name) {
+        throw new Error("태그 이름이 없습니다.");
+      }
+
+      /*
+       * 새 태그를 보드에 만든 뒤
+       * 현재 카드에도 바로 연결합니다.
+       */
+      const tag = await createTag(boardId, {
+        name,
+        color: newTagColor,
+      });
+
+      await addTagToCard(cardId, tag.id);
+
+      return tag;
+    },
+
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["boards", boardId, "tags"],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: ["cards", cardId, "tags"],
+        }),
+      ]);
+
+      setNewTagName("");
+
+      setNewTagColor(DEFAULT_TAG_COLOR);
+
+      toast.success("새 태그를 만들고 카드에 추가했습니다.");
+    },
+
+    onError: () => {
+      toast.error("태그를 생성하지 못했습니다. 같은 이름의 태그가 있는지 확인해주세요.");
+    },
+  });
+
+  const startEdit = () => {
+    if (!card || !canEdit) {
       return;
     }
 
-    const trimmedTitle =
-      title.trim();
+    setTitle(card.title);
 
-    const trimmedDescription =
-      description.trim();
+    setDescription(card.description ?? "");
+
+    setDueDate(toDateTimeInputValue(card.dueDate));
+
+    setDescriptionEditMode(false);
+
+    setEditMode(true);
+  };
+
+  const cancelEdit = () => {
+    if (!card) {
+      return;
+    }
+
+    setTitle(card.title);
+
+    setDescription(card.description ?? "");
+
+    setDueDate(toDateTimeInputValue(card.dueDate));
+
+    setEditMode(false);
+  };
+
+  const startDescriptionEdit = () => {
+    if (!card || !canEdit) {
+      return;
+    }
+
+    setDescription(card.description ?? "");
+
+    setDescriptionEditMode(true);
+  };
+
+  const cancelDescriptionEdit = () => {
+    if (!card) {
+      return;
+    }
+
+    setDescription(card.description ?? "");
+
+    setDescriptionEditMode(false);
+  };
+
+  const saveDescription = () => {
+    if (!card || !canEdit) {
+      return;
+    }
+
+    descriptionUpdateMutation.mutate(description);
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!canEdit || !card) {
+      return;
+    }
+
+    const trimmedTitle = title.trim();
+
+    const trimmedDescription = description.trim();
 
     if (!trimmedTitle) {
-      toast.error(
-        "카드 제목을 입력해주세요.",
-      );
+      toast.error("카드 제목을 입력해주세요.");
 
       return;
     }
 
     updateMutation.mutate({
-      title:
-        trimmedTitle,
+      title: trimmedTitle,
 
-      description:
-        trimmedDescription ||
-        null,
+      description: trimmedDescription || null,
 
-      dueDate:
-        dueDate ||
-        null,
+      dueDate: dueDate || null,
     });
   };
 
-  const handleAddAssignee =
-    () => {
-      if (
-        !canEdit
-      ) {
-        return;
-      }
+  const handleAddAssignee = () => {
+    if (!canEdit) {
+      return;
+    }
 
-      if (
-        !selectedAssigneeUserId
-      ) {
-        toast.error(
-          "추가할 담당자를 선택해주세요.",
-        );
+    if (!selectedAssigneeUserId) {
+      toast.error("추가할 담당자를 선택해주세요.");
 
-        return;
-      }
+      return;
+    }
 
-      const userId =
-        Number(
-          selectedAssigneeUserId,
-        );
+    const userId = Number(selectedAssigneeUserId);
 
-      if (
-        !Number.isInteger(
-          userId,
-        ) ||
-        userId <= 0
-      ) {
-        toast.error(
-          "담당자 정보를 확인할 수 없습니다.",
-        );
+    if (!Number.isInteger(userId) || userId <= 0) {
+      toast.error("담당자 정보를 확인할 수 없습니다.");
 
-        return;
-      }
+      return;
+    }
 
-      addAssigneeMutation.mutate(
-        userId,
-      );
-    };
+    addAssigneeMutation.mutate(userId);
+  };
 
-  const handleAddTag =
-    () => {
-      if (!canEdit) {
-        return;
-      }
+  const handleAddTag = () => {
+    if (!canEdit) {
+      return;
+    }
 
-      if (
-        !selectedTagId
-      ) {
-        toast.error(
-          "추가할 태그를 선택해주세요.",
-        );
+    if (!selectedTagId) {
+      toast.error("추가할 태그를 선택해주세요.");
 
-        return;
-      }
+      return;
+    }
 
-      const tagId =
-        Number(
-          selectedTagId,
-        );
+    const tagId = Number(selectedTagId);
 
-      if (
-        !Number.isInteger(
-          tagId,
-        ) ||
-        tagId <= 0
-      ) {
-        toast.error(
-          "태그 정보를 확인할 수 없습니다.",
-        );
+    if (!Number.isInteger(tagId) || tagId <= 0) {
+      toast.error("태그 정보를 확인할 수 없습니다.");
 
-        return;
-      }
+      return;
+    }
 
-      addTagMutation.mutate(
-        tagId,
-      );
-    };
+    addTagMutation.mutate(tagId);
+  };
 
-  const handleCreateTag =
-    () => {
-      if (!canEdit) {
-        return;
-      }
+  const handleCreateTag = () => {
+    if (!canEdit) {
+      return;
+    }
 
-      const name =
-        newTagName.trim();
+    const name = newTagName.trim();
 
-      if (!name) {
-        toast.error(
-          "새 태그 이름을 입력해주세요.",
-        );
+    if (!name) {
+      toast.error("새 태그 이름을 입력해주세요.");
 
-        return;
-      }
+      return;
+    }
 
-      if (
-        name.length > 30
-      ) {
-        toast.error(
-          "태그 이름은 30자 이하로 입력해주세요.",
-        );
+    if (name.length > 30) {
+      toast.error("태그 이름은 30자 이하로 입력해주세요.");
 
-        return;
-      }
+      return;
+    }
 
-      createTagMutation.mutate();
-    };
+    createTagMutation.mutate();
+  };
 
-  const isAssigneeBusy =
-    addAssigneeMutation.isPending ||
-    removeAssigneeMutation.isPending;
+  const isAssigneeBusy = addAssigneeMutation.isPending || removeAssigneeMutation.isPending;
 
   const isTagBusy =
-    addTagMutation.isPending ||
-    removeTagMutation.isPending ||
-    createTagMutation.isPending;
+    addTagMutation.isPending || removeTagMutation.isPending || createTagMutation.isPending;
 
-  const handleClose =
-    () => {
-      if (
-        updateMutation.isPending ||
-        descriptionUpdateMutation.isPending ||
-        deleteMutation.isPending ||
-        isAssigneeBusy ||
-        isTagBusy
-      ) {
-        return;
-      }
+  const handleClose = () => {
+    if (
+      updateMutation.isPending ||
+      descriptionUpdateMutation.isPending ||
+      deleteMutation.isPending ||
+      isAssigneeBusy ||
+      isTagBusy
+    ) {
+      return;
+    }
 
-      setEditMode(
-        false,
-      );
+    setEditMode(false);
 
-      onClose();
-    };
+    onClose();
+  };
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    const handleKeyDown = (
-      event: KeyboardEvent,
-    ) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (descriptionEditMode) {
           cancelDescriptionEdit();
@@ -1156,16 +718,10 @@ export default function CardDetailModal({
       }
     };
 
-    window.addEventListener(
-      "keydown",
-      handleKeyDown,
-    );
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      window.removeEventListener(
-        "keydown",
-        handleKeyDown,
-      );
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [
     open,
@@ -1193,9 +749,7 @@ export default function CardDetailModal({
         onConfirm={async () => {
           await deleteMutation.mutateAsync();
         }}
-        onCancel={() =>
-          setDeleteDialogOpen(false)
-        }
+        onCancel={() => setDeleteDialogOpen(false)}
       />
     );
   }
@@ -1203,13 +757,10 @@ export default function CardDetailModal({
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-slate-950/10"
+        className="fixed inset-0 z-40 bg-slate-950/[0.06]"
         role="presentation"
         onMouseDown={(event) => {
-          if (
-            event.target ===
-            event.currentTarget
-          ) {
+          if (event.target === event.currentTarget) {
             handleClose();
           }
         }}
@@ -1217,49 +768,69 @@ export default function CardDetailModal({
         <aside
           role="dialog"
           aria-modal="true"
-          aria-label={
-            editMode
-              ? "작업 수정"
-              : "작업 상세"
-          }
-          className="absolute inset-y-0 right-0 flex w-[700px] max-w-[calc(100vw-var(--flow-sidebar-width)-32px)] flex-col border-l border-[var(--flow-border)] bg-white shadow-[var(--flow-shadow-panel)]"
-          onMouseDown={(event) =>
-            event.stopPropagation()
-          }
+          aria-label={editMode ? "작업 수정" : "작업 상세"}
+          className={[
+            "absolute inset-y-0 right-0",
+            "flex w-[580px]",
+            "max-w-[calc(100vw-var(--flow-sidebar-width)-24px)]",
+            "flex-col",
+            "border-l border-[var(--flow-border)]",
+            "bg-white",
+            "shadow-[var(--flow-shadow-panel)]",
+          ].join(" ")}
+          onMouseDown={(event) => event.stopPropagation()}
         >
           {/* Panel header */}
-          <header className="flex h-[72px] shrink-0 items-center justify-between gap-5 border-b border-[var(--flow-border)] px-8">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="text-[13px] font-bold text-[var(--flow-primary)]">
-                {editMode
-                  ? "작업 수정"
-                  : "작업 상세"}
+          <header className="flex h-[64px] shrink-0 items-center justify-between gap-5 border-b border-[var(--flow-border)] bg-white px-6">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="text-[12px] font-bold text-[var(--flow-primary)]">
+                {editMode ? "작업 수정" : "작업 상세"}
               </span>
 
               {card && (
-                <span className="rounded-lg bg-[var(--flow-gray-100)] px-2.5 py-1.5 text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                <span className="inline-flex h-6 items-center rounded-md bg-[var(--flow-gray-100)] px-2 text-[10px] font-semibold text-[var(--flow-text-muted)]">
                   #{card.id}
+                </span>
+              )}
+
+              {!canEdit && (
+                <span className="inline-flex h-6 items-center rounded-md bg-[var(--flow-gray-100)] px-2 text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                  읽기 전용
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-3">
-              {!editMode &&
-                canEdit &&
-                card && (
-                  <button
-                    type="button"
-                    className="inline-flex h-10 items-center justify-center rounded-xl px-4 text-[13px] font-semibold text-[var(--flow-text-secondary)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text)]"
-                    onClick={startEdit}
-                  >
-                    수정
-                  </button>
-                )}
+            <div className="flex shrink-0 items-center gap-1">
+              {!editMode && canEdit && card && (
+                <button
+                  type="button"
+                  className={[
+                    "inline-flex h-9 items-center justify-center",
+                    "rounded-lg px-3",
+                    "text-[12px] font-semibold",
+                    "text-[var(--flow-text-secondary)]",
+                    "transition-colors",
+                    "hover:bg-[var(--flow-gray-100)]",
+                    "hover:text-[var(--flow-text)]",
+                  ].join(" ")}
+                  onClick={startEdit}
+                >
+                  수정
+                </button>
+              )}
 
               <button
                 type="button"
                 aria-label="작업 상세 닫기"
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-xl leading-none text-[var(--flow-text-muted)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text)]"
+                className={[
+                  "flex h-9 w-9 items-center justify-center",
+                  "rounded-lg",
+                  "text-[20px] leading-none",
+                  "text-[var(--flow-text-muted)]",
+                  "transition-colors",
+                  "hover:bg-[var(--flow-gray-100)]",
+                  "hover:text-[var(--flow-text)]",
+                ].join(" ")}
                 onClick={handleClose}
               >
                 ×
@@ -1279,8 +850,7 @@ export default function CardDetailModal({
                   </p>
                 </div>
               </div>
-            ) : cardQuery.isError ||
-              !card ? (
+            ) : cardQuery.isError || !card ? (
               <div className="p-8">
                 <div className="rounded-[var(--flow-radius-lg)] border border-red-200 bg-red-50 px-6 py-10 text-center">
                   <h3 className="text-base font-bold text-[var(--flow-text)]">
@@ -1295,22 +865,17 @@ export default function CardDetailModal({
                     type="button"
                     variant="outline"
                     className="mt-5"
-                    onClick={() =>
-                      void cardQuery.refetch()
-                    }
+                    onClick={() => void cardQuery.refetch()}
                   >
                     다시 불러오기
                   </Button>
                 </div>
               </div>
             ) : editMode ? (
-              <form
-                className="flex min-h-full flex-col"
-                onSubmit={handleSubmit}
-              >
+              <form className="flex min-h-full flex-col" onSubmit={handleSubmit}>
                 <div className="space-y-8 p-8">
                   <div>
-                    <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--flow-primary)]">
+                    <p className="text-[11px] font-bold tracking-[0.12em] text-[var(--flow-primary)] uppercase">
                       Basic information
                     </p>
 
@@ -1319,7 +884,8 @@ export default function CardDetailModal({
                     </h2>
 
                     <p className="mt-2 text-[13px] leading-6 text-[var(--flow-text-muted)]">
-                      제목, 설명, 마감일을 수정합니다. 담당자와 태그, 체크리스트는 상세 화면에서 관리합니다.
+                      제목, 설명, 마감일을 수정합니다. 담당자와 태그, 체크리스트는 상세 화면에서
+                      관리합니다.
                     </p>
                   </div>
 
@@ -1331,11 +897,7 @@ export default function CardDetailModal({
                       maxLength={100}
                       helperText={`${title.length}/100`}
                       disabled={updateMutation.isPending}
-                      onChange={(event) =>
-                        setTitle(
-                          event.target.value,
-                        )
-                      }
+                      onChange={(event) => setTitle(event.target.value)}
                     />
 
                     <Textarea
@@ -1344,11 +906,7 @@ export default function CardDetailModal({
                       value={description}
                       placeholder="기획, 디자인, 구현, 테스트, 보안 검토 등 작업 내용을 정리해주세요."
                       disabled={updateMutation.isPending}
-                      onChange={(event) =>
-                        setDescription(
-                          event.target.value,
-                        )
-                      }
+                      onChange={(event) => setDescription(event.target.value)}
                     />
 
                     <Input
@@ -1356,11 +914,7 @@ export default function CardDetailModal({
                       type="datetime-local"
                       value={dueDate}
                       disabled={updateMutation.isPending}
-                      onChange={(event) =>
-                        setDueDate(
-                          event.target.value,
-                        )
-                      }
+                      onChange={(event) => setDueDate(event.target.value)}
                     />
                   </div>
                 </div>
@@ -1375,113 +929,134 @@ export default function CardDetailModal({
                     취소
                   </Button>
 
-                  <Button
-                    type="submit"
-                    loading={updateMutation.isPending}
-                    disabled={!title.trim()}
-                  >
+                  <Button type="submit" loading={updateMutation.isPending} disabled={!title.trim()}>
                     저장
                   </Button>
                 </div>
               </form>
             ) : (
               <>
-                {/* Title */}
-                <section className="border-b border-[var(--flow-border)] px-8 py-8">
-                  <div className="flex flex-wrap items-center gap-2.5">
+                {/* Overview */}
+                <section className="border-b border-[var(--flow-border)] px-7 py-7">
+                  {/* Tags */}
+                  <div className="flex flex-wrap items-center gap-2">
                     {cardTagsQuery.isLoading ? (
-                      <span className="h-6 w-20 animate-pulse rounded-md bg-[var(--flow-gray-100)]" />
+                      <>
+                        <span className="h-6 w-16 animate-pulse rounded-md bg-[var(--flow-gray-100)]" />
+
+                        <span className="h-6 w-20 animate-pulse rounded-md bg-[var(--flow-gray-100)]" />
+                      </>
                     ) : (
                       cardTags.map((tag) => (
                         <span
                           key={tag.id}
-                          className="inline-flex h-7 items-center gap-2 rounded-lg border border-[var(--flow-border)] bg-white px-2.5 text-[11px] font-semibold text-[var(--flow-text-secondary)]"
+                          className="inline-flex h-7 max-w-[180px] items-center gap-2 rounded-lg border border-[var(--flow-border)] bg-white px-2.5 text-[11px] font-semibold text-[var(--flow-text-secondary)]"
                         >
                           <span
-                            className="h-2 w-2 rounded-full"
+                            className="h-2 w-2 shrink-0 rounded-full"
                             style={{
-                              backgroundColor:
-                                tag.color,
+                              backgroundColor: tag.color,
                             }}
                           />
 
-                          {tag.name}
+                          <span className="truncate">{tag.name}</span>
                         </span>
                       ))
                     )}
 
-                    {cardTags.length === 0 &&
-                      !cardTagsQuery.isLoading && (
-                        <span className="rounded-lg bg-[var(--flow-gray-100)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--flow-text-muted)]">
-                          태그 없음
-                        </span>
-                      )}
+                    {cardTags.length === 0 && !cardTagsQuery.isLoading && (
+                      <span className="inline-flex h-7 items-center rounded-lg bg-[var(--flow-gray-100)] px-2.5 text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                        태그 없음
+                      </span>
+                    )}
                   </div>
 
-                  <h2 className="mt-5 break-words text-[26px] font-bold leading-[1.4] tracking-[-0.025em] text-[var(--flow-text)]">
+                  {/* Title */}
+                  <h2 className="mt-4 text-[24px] leading-[1.45] font-bold tracking-[-0.03em] break-words text-[var(--flow-text)]">
                     {card.title}
                   </h2>
 
-                  <div className="mt-7 grid grid-cols-3 gap-4">
-                    <div className="rounded-xl bg-[var(--flow-gray-50)] px-4 py-4">
-                      <p className="text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
+                  <p className="mt-2 text-[11px] text-[var(--flow-text-placeholder)]">
+                    작업 #{card.id}
+                  </p>
+
+                  {/* Metadata */}
+                  <div className="mt-6 divide-y divide-[var(--flow-border)] rounded-xl border border-[var(--flow-border)] bg-white">
+                    {/* Creator */}
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4 px-4 py-3.5">
+                      <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--flow-text-muted)]">
+                        <UserIcon />
                         작성자
-                      </p>
+                      </div>
 
-                      <p className="mt-1.5 truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
-                        {card.createdByNickname}
-                      </p>
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--flow-gray-800)] text-[10px] font-bold text-white">
+                          {card.createdByNickname.charAt(0).toUpperCase()}
+                        </span>
+
+                        <span className="truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
+                          {card.createdByNickname}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="rounded-xl bg-[var(--flow-gray-50)] px-4 py-4">
-                      <p className="text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
+                    {/* Due date */}
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4 px-4 py-3.5">
+                      <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--flow-text-muted)]">
+                        <CalendarIcon />
                         마감일
-                      </p>
+                      </div>
 
-                      <p className="mt-1.5 truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
-                        {formatDateTime(
-                          card.dueDate,
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span
+                          className={[
+                            "text-[12px] font-semibold",
+                            isPastDue(card.dueDate)
+                              ? "text-[var(--flow-danger)]"
+                              : "text-[var(--flow-text-secondary)]",
+                          ].join(" ")}
+                        >
+                          {formatDateTime(card.dueDate)}
+                        </span>
+
+                        {isPastDue(card.dueDate) && (
+                          <span className="rounded-md bg-[var(--flow-danger-soft)] px-2 py-1 text-[9px] font-bold text-[var(--flow-danger)]">
+                            마감 지남
+                          </span>
                         )}
-                      </p>
+                      </div>
                     </div>
 
-                    <div className="rounded-xl bg-[var(--flow-gray-50)] px-4 py-4">
-                      <p className="text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
+                    {/* Updated */}
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4 px-4 py-3.5">
+                      <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--flow-text-muted)]">
+                        <ClockIcon />
                         최근 수정
-                      </p>
+                      </div>
 
-                      <p className="mt-1.5 truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
-                        {formatDateTime(
-                          card.updatedAt,
-                        )}
-                      </p>
+                      <span className="truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
+                        {formatCompactDateTime(card.updatedAt)}
+                      </span>
                     </div>
                   </div>
                 </section>
 
                 {/* Description */}
-                <section className="border-b border-[var(--flow-border)] px-8 py-8">
+                <section className="border-b border-[var(--flow-border)] px-7 py-6">
                   <div className="mb-5 flex items-start justify-between gap-5">
-                    <div>
-                      <h3 className="text-base font-bold text-[var(--flow-text)]">
-                        설명
-                      </h3>
+                    <div className="mb-4 flex items-center justify-between gap-5">
+                      <h3 className="text-[14px] font-bold text-[var(--flow-text)]">설명</h3>
 
-                      <p className="mt-1.5 text-[12px] leading-5 text-[var(--flow-text-muted)]">
-                        작업의 배경, 요구사항, 참고 내용을 자유롭게 정리합니다.
-                      </p>
-                    </div>
-
-                    {canEdit &&
-                      !descriptionEditMode && (
+                      {canEdit && !descriptionEditMode && (
                         <button
                           type="button"
-                          className="shrink-0 rounded-lg px-3 py-2 text-[12px] font-semibold text-[var(--flow-primary)] transition-colors hover:bg-[var(--flow-primary-50)]"
+                          className="shrink-0 rounded-lg px-3 py-2 text-[11px] font-semibold text-[var(--flow-primary)] transition-colors hover:bg-[var(--flow-primary-50)]"
                           onClick={startDescriptionEdit}
                         >
                           설명 수정
                         </button>
                       )}
+                    </div>
                   </div>
 
                   {descriptionEditMode ? (
@@ -1493,11 +1068,7 @@ export default function CardDetailModal({
                         className="min-h-64"
                         placeholder="작업의 배경, 요구사항, 테스트 내용, 참고 사항 등을 자유롭게 작성해주세요."
                         disabled={descriptionUpdateMutation.isPending}
-                        onChange={(event) =>
-                          setDescription(
-                            event.target.value,
-                          )
-                        }
+                        onChange={(event) => setDescription(event.target.value)}
                       />
 
                       <div className="mt-4 flex justify-end gap-3">
@@ -1543,16 +1114,10 @@ export default function CardDetailModal({
                 </section>
 
                 {/* Assignees */}
-                <section className="border-b border-[var(--flow-border)] px-8 py-8">
+                <section className="border-b border-[var(--flow-border)] px-7 py-6">
                   <div className="flex items-start justify-between gap-5">
                     <div>
-                      <h3 className="text-base font-bold text-[var(--flow-text)]">
-                        담당자
-                      </h3>
-
-                      <p className="mt-1.5 text-[12px] leading-5 text-[var(--flow-text-muted)]">
-                        현재 작업을 함께 진행하는 멤버입니다.
-                      </p>
+                      <h3 className="text-[14px] font-bold text-[var(--flow-text)]">담당자</h3>
                     </div>
 
                     {!assigneesQuery.isLoading && (
@@ -1576,9 +1141,7 @@ export default function CardDetailModal({
                         <button
                           type="button"
                           className="mt-3 text-[13px] font-semibold text-[var(--flow-primary)]"
-                          onClick={() =>
-                            void assigneesQuery.refetch()
-                          }
+                          onClick={() => void assigneesQuery.refetch()}
                         >
                           다시 불러오기
                         </button>
@@ -1589,46 +1152,38 @@ export default function CardDetailModal({
                       </p>
                     ) : (
                       <div className="flex flex-wrap gap-3">
-                        {assignees.map(
-                          (assignee) => (
-                            <div
-                              key={assignee.id}
-                              className="flex items-center gap-3.5 rounded-xl border border-[var(--flow-border)] bg-white py-2 pl-2 pr-3"
-                            >
-                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--flow-primary)] text-[11px] font-bold text-white">
-                                {assignee.nickname
-                                  .charAt(0)
-                                  .toUpperCase()}
-                              </span>
+                        {assignees.map((assignee) => (
+                          <div
+                            key={assignee.id}
+                            className="flex items-center gap-3.5 rounded-xl border border-[var(--flow-border)] bg-white py-2 pr-3 pl-2"
+                          >
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--flow-primary)] text-[11px] font-bold text-white">
+                              {assignee.nickname.charAt(0).toUpperCase()}
+                            </span>
 
-                              <div className="min-w-0">
-                                <p className="max-w-36 truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
-                                  {assignee.nickname}
-                                </p>
+                            <div className="min-w-0">
+                              <p className="max-w-36 truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
+                                {assignee.nickname}
+                              </p>
 
-                                <p className="max-w-36 truncate text-[10px] text-[var(--flow-text-placeholder)]">
-                                  {assignee.email}
-                                </p>
-                              </div>
-
-                              {canEdit && (
-                                <button
-                                  type="button"
-                                  disabled={isAssigneeBusy}
-                                  aria-label={`${assignee.nickname} 담당자 제거`}
-                                  className="ml-1 flex h-6 w-6 items-center justify-center rounded text-sm text-[var(--flow-text-placeholder)] transition-colors hover:bg-[var(--flow-danger-soft)] hover:text-[var(--flow-danger)] disabled:opacity-40"
-                                  onClick={() =>
-                                    removeAssigneeMutation.mutate(
-                                      assignee.userId,
-                                    )
-                                  }
-                                >
-                                  ×
-                                </button>
-                              )}
+                              <p className="max-w-36 truncate text-[10px] text-[var(--flow-text-placeholder)]">
+                                {assignee.email}
+                              </p>
                             </div>
-                          ),
-                        )}
+
+                            {canEdit && (
+                              <button
+                                type="button"
+                                disabled={isAssigneeBusy}
+                                aria-label={`${assignee.nickname} 담당자 제거`}
+                                className="ml-1 flex h-6 w-6 items-center justify-center rounded text-sm text-[var(--flow-text-placeholder)] transition-colors hover:bg-[var(--flow-danger-soft)] hover:text-[var(--flow-danger)] disabled:opacity-40"
+                                onClick={() => removeAssigneeMutation.mutate(assignee.userId)}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
 
@@ -1643,9 +1198,7 @@ export default function CardDetailModal({
                             <button
                               type="button"
                               className="text-xs font-semibold text-[var(--flow-primary)]"
-                              onClick={() =>
-                                void membersQuery.refetch()
-                              }
+                              onClick={() => void membersQuery.refetch()}
                             >
                               보드 멤버 다시 불러오기
                             </button>
@@ -1657,27 +1210,16 @@ export default function CardDetailModal({
                             <select
                               value={selectedAssigneeUserId}
                               disabled={isAssigneeBusy}
-                              className="h-10 w-full rounded-xl border border-[var(--flow-border-strong)] bg-white px-3.5 text-[13px] text-[var(--flow-text-secondary)] outline-none transition-[border-color,box-shadow] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
-                              onChange={(event) =>
-                                setSelectedAssigneeUserId(
-                                  event.target.value,
-                                )
-                              }
+                              className="h-10 w-full rounded-xl border border-[var(--flow-border-strong)] bg-white px-3.5 text-[13px] text-[var(--flow-text-secondary)] transition-[border-color,box-shadow] outline-none focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
+                              onChange={(event) => setSelectedAssigneeUserId(event.target.value)}
                             >
-                              <option value="">
-                                담당자 선택
-                              </option>
+                              <option value="">담당자 선택</option>
 
-                              {availableMembers.map(
-                                (member) => (
-                                  <option
-                                    key={member.id}
-                                    value={member.userId}
-                                  >
-                                    {member.nickname} · {getRoleLabel(member.role)}
-                                  </option>
-                                ),
-                              )}
+                              {availableMembers.map((member) => (
+                                <option key={member.id} value={member.userId}>
+                                  {member.nickname} · {getRoleLabel(member.role)}
+                                </option>
+                              ))}
                             </select>
                           )}
                         </div>
@@ -1688,10 +1230,7 @@ export default function CardDetailModal({
                             <Button
                               type="button"
                               size="sm"
-                              disabled={
-                                !selectedAssigneeUserId ||
-                                isAssigneeBusy
-                              }
+                              disabled={!selectedAssigneeUserId || isAssigneeBusy}
                               loading={addAssigneeMutation.isPending}
                               onClick={handleAddAssignee}
                             >
@@ -1707,9 +1246,7 @@ export default function CardDetailModal({
                 <section className="border-b border-[var(--flow-border)] px-8 py-8">
                   <div className="flex items-start justify-between gap-5">
                     <div>
-                      <h3 className="text-base font-bold text-[var(--flow-text)]">
-                        태그
-                      </h3>
+                      <h3 className="text-base font-bold text-[var(--flow-text)]">태그</h3>
 
                       <p className="mt-1.5 text-[12px] leading-5 text-[var(--flow-text-muted)]">
                         작업 종류, 분야, 우선순위 등을 자유롭게 구분합니다.
@@ -1730,16 +1267,12 @@ export default function CardDetailModal({
                       </p>
                     ) : cardTagsQuery.isError ? (
                       <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
-                        <p className="text-[13px] text-red-600">
-                          태그를 불러오지 못했습니다.
-                        </p>
+                        <p className="text-[13px] text-red-600">태그를 불러오지 못했습니다.</p>
 
                         <button
                           type="button"
                           className="mt-3 text-[13px] font-semibold text-[var(--flow-primary)]"
-                          onClick={() =>
-                            void cardTagsQuery.refetch()
-                          }
+                          onClick={() => void cardTagsQuery.refetch()}
                         >
                           다시 불러오기
                         </button>
@@ -1750,42 +1283,35 @@ export default function CardDetailModal({
                       </p>
                     ) : (
                       <div className="flex flex-wrap gap-3">
-                        {cardTags.map(
-                          (tag) => (
-                            <div
-                              key={tag.id}
-                              className="inline-flex items-center gap-3 rounded-md border border-[var(--flow-border)] bg-white py-1.5 pl-2 pr-1.5"
-                            >
-                              <span
-                                className="h-3 w-3 rounded-full"
-                                style={{
-                                  backgroundColor:
-                                    tag.color,
-                                }}
-                              />
+                        {cardTags.map((tag) => (
+                          <div
+                            key={tag.id}
+                            className="inline-flex items-center gap-3 rounded-md border border-[var(--flow-border)] bg-white py-1.5 pr-1.5 pl-2"
+                          >
+                            <span
+                              className="h-3 w-3 rounded-full"
+                              style={{
+                                backgroundColor: tag.color,
+                              }}
+                            />
 
-                              <span className="max-w-40 truncate text-[11px] font-semibold text-[var(--flow-text-secondary)]">
-                                {tag.name}
-                              </span>
+                            <span className="max-w-40 truncate text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                              {tag.name}
+                            </span>
 
-                              {canEdit && (
-                                <button
-                                  type="button"
-                                  disabled={isTagBusy}
-                                  aria-label={`${tag.name} 태그 제거`}
-                                  className="flex h-6 w-6 items-center justify-center rounded text-sm text-[var(--flow-text-placeholder)] hover:bg-[var(--flow-danger-soft)] hover:text-[var(--flow-danger)] disabled:opacity-40"
-                                  onClick={() =>
-                                    removeTagMutation.mutate(
-                                      tag.id,
-                                    )
-                                  }
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </div>
-                          ),
-                        )}
+                            {canEdit && (
+                              <button
+                                type="button"
+                                disabled={isTagBusy}
+                                aria-label={`${tag.name} 태그 제거`}
+                                className="flex h-6 w-6 items-center justify-center rounded text-sm text-[var(--flow-text-placeholder)] hover:bg-[var(--flow-danger-soft)] hover:text-[var(--flow-danger)] disabled:opacity-40"
+                                onClick={() => removeTagMutation.mutate(tag.id)}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
 
@@ -1801,9 +1327,7 @@ export default function CardDetailModal({
                               <button
                                 type="button"
                                 className="text-xs font-semibold text-[var(--flow-primary)]"
-                                onClick={() =>
-                                  void boardTagsQuery.refetch()
-                                }
+                                onClick={() => void boardTagsQuery.refetch()}
                               >
                                 보드 태그 다시 불러오기
                               </button>
@@ -1815,27 +1339,16 @@ export default function CardDetailModal({
                               <select
                                 value={selectedTagId}
                                 disabled={isTagBusy}
-                                className="h-10 w-full rounded-xl border border-[var(--flow-border-strong)] bg-white px-3.5 text-[13px] text-[var(--flow-text-secondary)] outline-none transition-[border-color,box-shadow] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
-                                onChange={(event) =>
-                                  setSelectedTagId(
-                                    event.target.value,
-                                  )
-                                }
+                                className="h-10 w-full rounded-xl border border-[var(--flow-border-strong)] bg-white px-3.5 text-[13px] text-[var(--flow-text-secondary)] transition-[border-color,box-shadow] outline-none focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
+                                onChange={(event) => setSelectedTagId(event.target.value)}
                               >
-                                <option value="">
-                                  기존 태그 선택
-                                </option>
+                                <option value="">기존 태그 선택</option>
 
-                                {availableTags.map(
-                                  (tag) => (
-                                    <option
-                                      key={tag.id}
-                                      value={tag.id}
-                                    >
-                                      {tag.name}
-                                    </option>
-                                  ),
-                                )}
+                                {availableTags.map((tag) => (
+                                  <option key={tag.id} value={tag.id}>
+                                    {tag.name}
+                                  </option>
+                                ))}
                               </select>
                             )}
                           </div>
@@ -1846,10 +1359,7 @@ export default function CardDetailModal({
                               <Button
                                 type="button"
                                 size="sm"
-                                disabled={
-                                  !selectedTagId ||
-                                  isTagBusy
-                                }
+                                disabled={!selectedTagId || isTagBusy}
                                 loading={addTagMutation.isPending}
                                 onClick={handleAddTag}
                               >
@@ -1871,11 +1381,7 @@ export default function CardDetailModal({
                               placeholder="예: QA, 보안, 디자인"
                               disabled={isTagBusy}
                               className="h-10 min-w-0 rounded-xl border border-[var(--flow-border-strong)] bg-white px-3.5 text-[13px] text-[var(--flow-text)] outline-none placeholder:text-[var(--flow-text-placeholder)] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
-                              onChange={(event) =>
-                                setNewTagName(
-                                  event.target.value,
-                                )
-                              }
+                              onChange={(event) => setNewTagName(event.target.value)}
                             />
 
                             <input
@@ -1884,20 +1390,13 @@ export default function CardDetailModal({
                               disabled={isTagBusy}
                               aria-label="새 태그 색상"
                               className="h-10 w-12 cursor-pointer rounded-xl border border-[var(--flow-border-strong)] bg-white p-1"
-                              onChange={(event) =>
-                                setNewTagColor(
-                                  event.target.value,
-                                )
-                              }
+                              onChange={(event) => setNewTagColor(event.target.value)}
                             />
 
                             <Button
                               type="button"
                               size="sm"
-                              disabled={
-                                !newTagName.trim() ||
-                                isTagBusy
-                              }
+                              disabled={!newTagName.trim() || isTagBusy}
                               loading={createTagMutation.isPending}
                               onClick={handleCreateTag}
                             >
@@ -1913,83 +1412,52 @@ export default function CardDetailModal({
                 {/* Checklist */}
                 <section className="border-b border-[var(--flow-border)] px-8 py-8">
                   <div className="mb-5">
-                    <h3 className="text-base font-bold text-[var(--flow-text)]">
-                      체크리스트
-                    </h3>
-
-                    <p className="mt-1.5 text-[12px] leading-5 text-[var(--flow-text-muted)]">
-                      테스트 절차, 구현 단계, 검토 항목 등 필요한 단계를 관리합니다.
-                    </p>
+                    <h3 className="text-base font-bold text-[var(--flow-text)]">체크리스트</h3>
                   </div>
 
-                  <ChecklistSection
-                    cardId={card.id}
-                    canEdit={canEdit}
-                  />
+                  <ChecklistSection cardId={card.id} canEdit={canEdit} />
                 </section>
 
                 {/* Comments */}
                 <section className="px-6 py-6">
                   <div className="mb-5">
-                    <h3 className="text-base font-bold text-[var(--flow-text)]">
-                      댓글
-                    </h3>
-
-                    <p className="mt-1.5 text-[12px] leading-5 text-[var(--flow-text-muted)]">
-                      작업에 대한 의견, 리뷰 결과, 진행 상황을 실시간으로 공유합니다.
-                    </p>
+                    <h3 className="text-base font-bold text-[var(--flow-text)]">댓글</h3>
                   </div>
 
-                  <CommentSection
-                    boardId={boardId}
-                    cardId={card.id}
-                    canEdit={canEdit}
-                  />
+                  <CommentSection boardId={boardId} cardId={card.id} canEdit={canEdit} />
                 </section>
               </>
             )}
           </div>
 
           {/* Panel footer */}
-          {!editMode &&
-            card && (
-              <footer className="flex h-[72px] shrink-0 items-center justify-between gap-4 border-t border-[var(--flow-border)] bg-white px-8">
-                <div>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      className="inline-flex h-10 items-center rounded-xl px-4 text-[13px] font-semibold text-[var(--flow-danger)] transition-colors hover:bg-[var(--flow-danger-soft)]"
-                      onClick={() =>
-                        setDeleteDialogOpen(true)
-                      }
-                    >
-                      작업 삭제
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Button
+          {!editMode && card && (
+            <footer className="flex h-[72px] shrink-0 items-center justify-between gap-4 border-t border-[var(--flow-border)] bg-white px-8">
+              <div>
+                {canEdit && (
+                  <button
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleClose}
+                    className="inline-flex h-10 items-center rounded-xl px-4 text-[13px] font-semibold text-[var(--flow-danger)] transition-colors hover:bg-[var(--flow-danger-soft)]"
+                    onClick={() => setDeleteDialogOpen(true)}
                   >
-                    닫기
-                  </Button>
+                    작업 삭제
+                  </button>
+                )}
+              </div>
 
-                  {canEdit && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={startEdit}
-                    >
-                      수정
-                    </Button>
-                  )}
-                </div>
-              </footer>
-            )}
+              <div className="flex items-center gap-3">
+                <Button type="button" variant="outline" size="sm" onClick={handleClose}>
+                  닫기
+                </Button>
+
+                {canEdit && (
+                  <Button type="button" size="sm" onClick={startEdit}>
+                    수정
+                  </Button>
+                )}
+              </div>
+            </footer>
+          )}
         </aside>
       </div>
 
@@ -2007,9 +1475,7 @@ export default function CardDetailModal({
         onConfirm={async () => {
           await deleteMutation.mutateAsync();
         }}
-        onCancel={() =>
-          setDeleteDialogOpen(false)
-        }
+        onCancel={() => setDeleteDialogOpen(false)}
       />
     </>
   );

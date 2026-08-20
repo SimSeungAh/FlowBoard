@@ -1,5 +1,26 @@
 import { api } from "@/api/axios";
 
+export type CardTaskType =
+  | "GENERAL"
+  | "BUG"
+  | "TEST_CASE"
+  | "DESIGN_REVIEW"
+  | "REQUIREMENT"
+  | "SECURITY_REVIEW"
+  | "RELEASE_CHECK";
+
+export type TestCaseType =
+  | "NORMAL"
+  | "EXCEPTION"
+  | "BOUNDARY"
+  | "PERMISSION"
+  | "SECURITY"
+  | "RECOVERY"
+  | "INTEGRATION"
+  | "E2E";
+
+export type TestCaseResult = "NOT_RUN" | "PASS" | "FAIL" | "BLOCKED";
+
 export interface CardResponse {
   id: number;
   columnId: number;
@@ -9,6 +30,26 @@ export interface CardResponse {
   description: string | null;
   rank: string;
   dueDate: string | null;
+
+  /**
+   * 카드의 작업 형식.
+   *
+   * Frontend / Backend 같은 직군 분류가 아니라
+   * 일반 작업 / 버그 / 테스트 케이스 등의
+   * 카드 사용 목적을 나타냅니다.
+   */
+  taskType: CardTaskType;
+
+  /**
+   * TEST_CASE 카드에서만 값이 존재합니다.
+   */
+  testCaseType: TestCaseType | null;
+
+  /**
+   * TEST_CASE 카드에서만 값이 존재합니다.
+   */
+  testCaseResult: TestCaseResult | null;
+
   createdAt: string;
   updatedAt: string;
 }
@@ -17,6 +58,16 @@ export interface CardCreateRequest {
   title: string;
   description?: string | null;
   dueDate?: string | null;
+
+  /**
+   * 생략하면 백엔드에서 GENERAL로 처리됩니다.
+   */
+  taskType?: CardTaskType | null;
+
+  /**
+   * TEST_CASE 생성 시에만 전달합니다.
+   */
+  testCaseType?: TestCaseType | null;
 }
 
 export interface CardUpdateRequest {

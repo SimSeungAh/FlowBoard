@@ -1,7 +1,4 @@
-import {
-  TASK_TEMPLATES,
-  type TaskTemplateId,
-} from "@/features/card/taskTemplates";
+import { TASK_TEMPLATES, type TaskTemplateId } from "@/features/card/taskTemplates";
 import { cn } from "@/utils/cn";
 
 interface TaskTemplateSelectorProps {
@@ -10,6 +7,17 @@ interface TaskTemplateSelectorProps {
   onChange: (templateId: TaskTemplateId) => void;
 }
 
+const templateNumberMap: Record<TaskTemplateId, string> = {
+  basic: "01",
+  blank: "02",
+  bug: "03",
+  "test-case": "04",
+  "design-review": "05",
+  requirements: "06",
+  "security-review": "07",
+  "release-check": "08",
+};
+
 export default function TaskTemplateSelector({
   value,
   disabled = false,
@@ -17,16 +25,21 @@ export default function TaskTemplateSelector({
 }: TaskTemplateSelectorProps) {
   return (
     <fieldset disabled={disabled}>
-      <legend className="mb-2 text-[13px] font-semibold text-[var(--flow-text)]">
-        작업 템플릿
-      </legend>
+      <div className="mb-3 flex items-end justify-between gap-4">
+        <div>
+          <legend className="text-[13px] font-bold text-[var(--flow-text)]">작업 템플릿</legend>
 
-      <p className="mb-3 text-[12px] leading-5 text-[var(--flow-text-muted)]">
-        목적에 맞는 템플릿을 고르면 설명 구조가 자동으로 채워집니다.
-        선택 후 자유롭게 수정할 수 있습니다.
-      </p>
+          <p className="mt-1 text-[11px] leading-5 text-[var(--flow-text-muted)]">
+            작업 목적에 맞는 시작 구조를 선택하세요.
+          </p>
+        </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <span className="shrink-0 text-[10px] font-medium text-[var(--flow-text-placeholder)]">
+          선택 후 자유롭게 수정 가능
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {TASK_TEMPLATES.map((template) => {
           const selected = template.id === value;
 
@@ -37,32 +50,56 @@ export default function TaskTemplateSelector({
               aria-pressed={selected}
               disabled={disabled}
               className={cn(
-                "min-w-0 rounded-xl border px-3.5 py-3 text-left transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-primary)] focus-visible:ring-offset-2",
+                "group relative min-w-0 rounded-xl border p-3 text-left",
+                "transition-[border-color,background-color,box-shadow]",
+                "focus-visible:outline-none",
+                "focus-visible:ring-2",
+                "focus-visible:ring-[var(--flow-primary)]",
+                "focus-visible:ring-offset-2",
                 selected
-                  ? "border-[var(--flow-primary)] bg-[var(--flow-primary-50)]"
-                  : "border-[var(--flow-border)] bg-white hover:border-[var(--flow-gray-300)] hover:bg-[var(--flow-gray-50)]",
+                  ? [
+                      "border-[var(--flow-primary)]",
+                      "bg-[var(--flow-primary-50)]",
+                      "shadow-[0_0_0_1px_var(--flow-primary)]",
+                    ]
+                  : [
+                      "border-[var(--flow-border)]",
+                      "bg-white",
+                      "hover:border-[var(--flow-primary-200)]",
+                      "hover:bg-[var(--flow-gray-50)]",
+                    ],
                 disabled && "cursor-not-allowed opacity-60",
               )}
               onClick={() => onChange(template.id)}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-[13px] font-semibold text-[var(--flow-text)]">
-                  {template.name}
+                <span
+                  className={cn(
+                    "text-[9px] font-bold tracking-[0.08em]",
+                    selected ? "text-[var(--flow-primary)]" : "text-[var(--flow-text-placeholder)]",
+                  )}
+                >
+                  {templateNumberMap[template.id]}
                 </span>
 
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "h-2.5 w-2.5 shrink-0 rounded-full border",
+                    "flex h-4 w-4 items-center justify-center rounded-full border",
                     selected
                       ? "border-[var(--flow-primary)] bg-[var(--flow-primary)]"
                       : "border-[var(--flow-gray-300)] bg-white",
                   )}
-                />
+                >
+                  {selected && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+                </span>
               </div>
 
-              <p className="mt-1.5 text-[11px] leading-[1.55] text-[var(--flow-text-muted)]">
+              <p className="mt-2 truncate text-[12px] font-bold text-[var(--flow-text)]">
+                {template.name}
+              </p>
+
+              <p className="mt-1 line-clamp-2 min-h-[32px] text-[10px] leading-4 text-[var(--flow-text-muted)]">
                 {template.helperText}
               </p>
             </button>

@@ -15,6 +15,7 @@ import NotFoundPage from "@/pages/NotFound/NotFoundPage";
 import SignupPage from "@/pages/Signup/SignupPage";
 import WhiteboardPage from "@/pages/Whiteboard/WhiteboardPage";
 import ProtectedRoute from "@/routes/ProtectedRoute";
+import TestCasesPage from "@/pages/TestCases/TestCasesPage";
 
 const router = createBrowserRouter([
   {
@@ -56,6 +57,10 @@ const router = createBrowserRouter([
               {
                 path: "search",
                 element: <CardSearchPage />,
+              },
+              {
+                path: "test-cases",
+                element: <TestCasesPage />,
               },
               {
                 path: "whiteboard",

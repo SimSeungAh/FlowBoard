@@ -1,7 +1,4 @@
-import {
-  TEST_CASE_TYPES,
-  type TestCaseTypeId,
-} from "@/features/card/taskTemplates";
+import { TEST_CASE_TYPES, type TestCaseTypeId } from "@/features/card/taskTemplates";
 import { cn } from "@/utils/cn";
 
 interface TestCaseTypeSelectorProps {
@@ -17,18 +14,15 @@ export default function TestCaseTypeSelector({
 }: TestCaseTypeSelectorProps) {
   return (
     <fieldset disabled={disabled}>
-      <div className="mb-3">
-        <legend className="text-[13px] font-semibold text-[var(--flow-text)]">
-          테스트 유형
-        </legend>
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <legend className="text-[13px] font-bold text-[var(--flow-text)]">테스트 유형</legend>
 
-        <p className="mt-1 text-[12px] leading-5 text-[var(--flow-text-muted)]">
-          한 카드에는 하나의 테스트 시나리오를 기록합니다. 유형을 바꾸면 설명
-          기본 구조도 함께 바뀝니다.
-        </p>
+        <span className="text-[10px] text-[var(--flow-text-placeholder)]">
+          한 카드 = 한 테스트 시나리오
+        </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="flex flex-wrap gap-2">
         {TEST_CASE_TYPES.map((testCaseType) => {
           const selected = testCaseType.id === value;
 
@@ -38,39 +32,48 @@ export default function TestCaseTypeSelector({
               type="button"
               aria-pressed={selected}
               disabled={disabled}
+              title={testCaseType.helperText}
               className={cn(
-                "min-w-0 rounded-xl border px-3 py-3 text-left transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--flow-primary)] focus-visible:ring-offset-2",
+                "inline-flex min-h-9 items-center gap-2 rounded-lg border px-3",
+                "text-[11px] font-semibold",
+                "transition-[border-color,background-color,color]",
+                "focus-visible:outline-none",
+                "focus-visible:ring-2",
+                "focus-visible:ring-[var(--flow-primary)]",
+                "focus-visible:ring-offset-2",
                 selected
-                  ? "border-[var(--flow-primary)] bg-[var(--flow-primary-50)]"
-                  : "border-[var(--flow-border)] bg-white hover:border-[var(--flow-gray-300)] hover:bg-[var(--flow-gray-50)]",
+                  ? [
+                      "border-[var(--flow-primary)]",
+                      "bg-[var(--flow-primary-50)]",
+                      "text-[var(--flow-primary-700)]",
+                    ]
+                  : [
+                      "border-[var(--flow-border)]",
+                      "bg-white",
+                      "text-[var(--flow-text-secondary)]",
+                      "hover:border-[var(--flow-primary-200)]",
+                      "hover:bg-[var(--flow-gray-50)]",
+                    ],
                 disabled && "cursor-not-allowed opacity-60",
               )}
               onClick={() => onChange(testCaseType.id)}
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-[12px] font-semibold text-[var(--flow-text)]">
-                  {testCaseType.name}
-                </span>
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  selected ? "bg-[var(--flow-primary)]" : "bg-[var(--flow-gray-300)]",
+                )}
+              />
 
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "h-2 w-2 shrink-0 rounded-full border",
-                    selected
-                      ? "border-[var(--flow-primary)] bg-[var(--flow-primary)]"
-                      : "border-[var(--flow-gray-300)] bg-white",
-                  )}
-                />
-              </div>
-
-              <p className="mt-1.5 line-clamp-2 text-[10px] leading-[1.5] text-[var(--flow-text-muted)]">
-                {testCaseType.helperText}
-              </p>
+              {testCaseType.name}
             </button>
           );
         })}
       </div>
+
+      <p className="mt-2 text-[10px] leading-5 text-[var(--flow-text-muted)]">
+        {TEST_CASE_TYPES.find((testCaseType) => testCaseType.id === value)?.helperText}
+      </p>
     </fieldset>
   );
 }

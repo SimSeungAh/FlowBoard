@@ -1,9 +1,4 @@
-import {
-  useMemo,
-  useState,
-  type CSSProperties,
-  type FormEvent,
-} from "react";
+import { useMemo, useState, type CSSProperties, type SubmitEvent } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -23,18 +18,11 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { useParams } from "react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 
-import {
-  getBoardDetail,
-  type BoardColumnResponse,
-} from "@/api/board";
+import { getBoardDetail, type BoardColumnResponse } from "@/api/board";
 import {
   createCard,
   getCardsByColumn,
@@ -49,6 +37,7 @@ import TaskCreateMetadataFields from "@/components/card/TaskCreateMetadataFields
 import TaskTemplateSelector from "@/components/card/TaskTemplateSelector";
 import TestCaseTypeSelector from "@/components/card/TestCaseTypeSelector";
 import ColumnSettingsModal from "@/components/board/ColumnSettingsModal";
+import KanbanBoardHeader from "@/components/board/KanbanBoardHeader";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import Input from "@/components/ui/Input";
@@ -57,6 +46,7 @@ import Skeleton from "@/components/ui/Skeleton";
 import Textarea from "@/components/ui/Textarea";
 import { applyTaskCreationRelations } from "@/features/card/applyTaskCreationRelations";
 import { createTaskTemplateChecklists } from "@/features/card/createTaskTemplateChecklists";
+import { getApiTestCaseType, getCardTaskType } from "@/features/card/taskTypeMapping";
 import {
   DEFAULT_TASK_TEMPLATE_ID,
   DEFAULT_TEST_CASE_TYPE_ID,
@@ -97,15 +87,8 @@ interface KanbanColumnProps {
 const getCardDndId = (cardId: number) => `card-${cardId}`;
 const getColumnDndId = (columnId: number) => `column-${columnId}`;
 
-const insertCardAtIndex = (
-  cards: CardResponse[],
-  card: CardResponse,
-  targetIndex: number,
-) => {
-  const safeIndex = Math.max(
-    0,
-    Math.min(targetIndex, cards.length),
-  );
+const insertCardAtIndex = (cards: CardResponse[], card: CardResponse, targetIndex: number) => {
+  const safeIndex = Math.max(0, Math.min(targetIndex, cards.length));
 
   const nextCards = [...cards];
   nextCards.splice(safeIndex, 0, card);
@@ -144,19 +127,6 @@ const isOverdue = (dueDate: string | null) => {
   return date.getTime() < Date.now();
 };
 
-const getRoleLabel = (
-  role: "OWNER" | "MEMBER" | "VIEWER",
-) => {
-  switch (role) {
-    case "OWNER":
-      return "OWNER";
-    case "MEMBER":
-      return "MEMBER";
-    case "VIEWER":
-      return "VIEWER";
-  }
-};
-
 function PlusIcon() {
   return (
     <svg
@@ -170,24 +140,6 @@ function PlusIcon() {
     >
       <path d="M12 5v14" />
       <path d="M5 12h14" />
-    </svg>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className="h-[17px] w-[17px]"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1Z" />
     </svg>
   );
 }
@@ -214,12 +166,7 @@ function CalendarIcon() {
 
 function DragIcon() {
   return (
-    <svg
-      viewBox="0 0 20 20"
-      aria-hidden="true"
-      className="h-4 w-4"
-      fill="currentColor"
-    >
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="currentColor">
       <circle cx="7" cy="5" r="1.1" />
       <circle cx="13" cy="5" r="1.1" />
       <circle cx="7" cy="10" r="1.1" />
@@ -250,12 +197,10 @@ function TaskContent({
 
   return (
     <>
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <h3 className="break-words text-[14px] font-semibold leading-[1.55] tracking-[-0.01em] text-[var(--flow-text)]">
-            {card.title}
-          </h3>
-        </div>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-[10px] font-semibold tracking-[0.03em] text-[var(--flow-text-placeholder)]">
+          #{card.id}
+        </span>
 
         <div className="flex shrink-0 items-center gap-1">
           {showDragHandle && dragHandle && (
@@ -263,7 +208,7 @@ function TaskContent({
               ref={dragHandle.setActivatorNodeRef}
               type="button"
               aria-label={`${card.title} 이동`}
-              className="flex h-7 w-7 cursor-grab touch-none items-center justify-center rounded-lg text-[var(--flow-gray-400)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text-secondary)] active:cursor-grabbing"
+              className="flex h-7 w-7 cursor-grab touch-none items-center justify-center rounded-lg text-[var(--flow-gray-400)] opacity-0 transition-[opacity,background-color,color] group-hover:opacity-100 hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text-secondary)] focus-visible:opacity-100 active:cursor-grabbing"
               onClick={(event) => {
                 event.stopPropagation();
               }}
@@ -278,7 +223,7 @@ function TaskContent({
             <button
               type="button"
               aria-label={`${card.title} 상세 보기`}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-base font-bold leading-none text-[var(--flow-gray-400)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text-secondary)]"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-base leading-none font-bold text-[var(--flow-gray-400)] opacity-0 transition-[opacity,background-color,color] group-hover:opacity-100 hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text-secondary)] focus-visible:opacity-100"
               onClick={(event) => {
                 event.stopPropagation();
                 onOpenCard();
@@ -290,13 +235,17 @@ function TaskContent({
         </div>
       </div>
 
+      <h3 className="text-[14px] leading-[1.55] font-semibold tracking-[-0.015em] break-words text-[var(--flow-text)]">
+        {card.title}
+      </h3>
+
       {card.description && (
-        <p className="mt-3 line-clamp-2 whitespace-pre-wrap break-words text-[12px] leading-[1.7] text-[var(--flow-text-muted)]">
+        <p className="mt-3 line-clamp-2 text-[12px] leading-[1.7] break-words whitespace-pre-wrap text-[var(--flow-text-muted)]">
           {card.description}
         </p>
       )}
 
-      <div className="mt-5 flex items-center justify-between gap-4">
+      <div className="mt-4 flex items-center justify-between gap-4 border-t border-[var(--flow-border)] pt-3.5">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--flow-gray-800)] text-[10px] font-bold text-white">
             {card.createdByNickname.charAt(0).toUpperCase()}
@@ -327,11 +276,7 @@ function TaskContent({
   );
 }
 
-function SortableTask({
-  card,
-  canDrag,
-  onOpenCard,
-}: SortableTaskProps) {
+function SortableTask({ card, canDrag, onOpenCard }: SortableTaskProps) {
   const {
     attributes,
     listeners,
@@ -363,7 +308,7 @@ function SortableTask({
       style={style}
       className={[
         "group cursor-pointer",
-        "rounded-[var(--flow-radius-md)]",
+        "rounded-xl",
         "border border-[var(--flow-border)]",
         "bg-white p-4",
         "shadow-[var(--flow-shadow-xs)]",
@@ -409,18 +354,20 @@ function KanbanColumn({
     <section
       ref={setNodeRef}
       className={[
-        "flex w-[320px] min-w-[320px] shrink-0 flex-col",
-        "rounded-[var(--flow-radius-lg)]",
+        "flex w-[312px] min-w-[312px] shrink-0 flex-col overflow-hidden",
+        "rounded-xl",
         "border",
         "transition-[border-color,background-color] duration-150",
         isOver && canDrag
           ? "border-[var(--flow-primary-300)] bg-[var(--flow-primary-50)]"
-          : "border-[var(--flow-border)] bg-[var(--flow-surface-muted)]",
+          : "border-[var(--flow-border)] bg-[var(--flow-gray-50)]",
       ].join(" ")}
     >
-      <header className="flex min-h-[58px] shrink-0 items-center justify-between gap-4 border-b border-[var(--flow-border)] px-4">
+      <div className="h-[3px] shrink-0 bg-[var(--flow-primary)]" />
+
+      <header className="flex min-h-[56px] shrink-0 items-center justify-between gap-4 border-b border-[var(--flow-border)] bg-white px-4">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--flow-primary)]" />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--flow-primary)]" />
 
           <h2 className="truncate text-[14px] font-bold tracking-[-0.01em] text-[var(--flow-text)]">
             {column.title}
@@ -461,40 +408,23 @@ function KanbanColumn({
               ].join(" ")}
             >
               <p className="text-[12px] leading-6 text-[var(--flow-text-placeholder)]">
-                {isOver && canDrag
-                  ? "여기에 작업을 놓으세요."
-                  : "아직 등록된 작업이 없습니다."}
+                {isOver && canDrag ? "여기에 작업을 놓으세요." : "아직 등록된 작업이 없습니다."}
               </p>
             </div>
           ) : (
             cards.map((card) => (
-              <SortableTask
-                key={card.id}
-                card={card}
-                canDrag={canDrag}
-                onOpenCard={onOpenCard}
-              />
+              <SortableTask key={card.id} card={card} canDrag={canDrag} onOpenCard={onOpenCard} />
             ))
           )}
 
           {canEdit && (
             <button
               type="button"
-              className={[
-                "mt-1 flex min-h-11 w-full shrink-0 items-center justify-center gap-2",
-                "rounded-[var(--flow-radius-md)]",
-                "border border-dashed border-[var(--flow-gray-300)]",
-                "bg-white/60",
-                "text-[12px] font-semibold text-[var(--flow-text-muted)]",
-                "transition-colors",
-                "hover:border-[var(--flow-primary-300)]",
-                "hover:bg-[var(--flow-primary-50)]",
-                "hover:text-[var(--flow-primary)]",
-              ].join(" ")}
+              className="mt-1 flex min-h-10 w-full shrink-0 items-center justify-start gap-2 rounded-lg px-2.5 text-[12px] font-semibold text-[var(--flow-text-muted)] transition-colors hover:bg-white hover:text-[var(--flow-primary)]"
               onClick={() => onCreateCard(column.id)}
             >
               <PlusIcon />
-              새 작업
+              작업 추가
             </button>
           )}
         </div>
@@ -507,11 +437,11 @@ export default function BoardPage() {
   const { boardId: boardIdParam } = useParams<{
     boardId: string;
   }>();
+  const navigate = useNavigate();
 
   const boardId = Number(boardIdParam);
 
-  const isValidBoardId =
-    Number.isInteger(boardId) && boardId > 0;
+  const isValidBoardId = Number.isInteger(boardId) && boardId > 0;
 
   const queryClient = useQueryClient();
 
@@ -532,12 +462,9 @@ export default function BoardPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [taskTemplateId, setTaskTemplateId] =
-    useState<TaskTemplateId>(DEFAULT_TASK_TEMPLATE_ID);
-  const [testCaseTypeId, setTestCaseTypeId] =
-    useState<TestCaseTypeId>(DEFAULT_TEST_CASE_TYPE_ID);
-  const [selectedAssigneeUserIds, setSelectedAssigneeUserIds] =
-    useState<number[]>([]);
+  const [taskTemplateId, setTaskTemplateId] = useState<TaskTemplateId>(DEFAULT_TASK_TEMPLATE_ID);
+  const [testCaseTypeId, setTestCaseTypeId] = useState<TestCaseTypeId>(DEFAULT_TEST_CASE_TYPE_ID);
+  const [selectedAssigneeUserIds, setSelectedAssigneeUserIds] = useState<number[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [activeCardId, setActiveCardId] = useState<number | null>(null);
   const [movingCardId, setMovingCardId] = useState<number | null>(null);
@@ -553,16 +480,9 @@ export default function BoardPage() {
 
   const columnIds = board?.columns.map((column) => column.id) ?? [];
 
-  const cardsQueryKey = [
-    "board",
-    boardId,
-    "cards",
-    columnIds,
-  ] as const;
+  const cardsQueryKey = ["board", boardId, "cards", columnIds] as const;
 
-  const canEdit =
-    board?.myRole === "OWNER" ||
-    board?.myRole === "MEMBER";
+  const canEdit = board?.myRole === "OWNER" || board?.myRole === "MEMBER";
 
   const canManageColumns = board?.myRole === "OWNER";
 
@@ -587,10 +507,7 @@ export default function BoardPage() {
 
       const entries = await Promise.all(
         board.columns.map(async (column) => {
-          const cards = await getCardsByColumn(
-            boardId,
-            column.id,
-          );
+          const cards = await getCardsByColumn(boardId, column.id);
 
           return [column.id, cards] as const;
         }),
@@ -603,15 +520,10 @@ export default function BoardPage() {
 
   const cardsByColumn = cardsQuery.data ?? {};
 
-  const allCards = useMemo(
-    () => Object.values(cardsByColumn).flat(),
-    [cardsByColumn],
-  );
+  const allCards = useMemo(() => Object.values(cardsByColumn).flat(), [cardsByColumn]);
 
   const activeCard =
-    activeCardId === null
-      ? null
-      : allCards.find((card) => card.id === activeCardId) ?? null;
+    activeCardId === null ? null : (allCards.find((card) => card.id === activeCardId) ?? null);
 
   const createMutation = useMutation({
     mutationFn: ({
@@ -629,10 +541,7 @@ export default function BoardPage() {
       let checklistFailed = false;
 
       try {
-        await createTaskTemplateChecklists(
-          createdCard.id,
-          variables.templateId,
-        );
+        await createTaskTemplateChecklists(createdCard.id, variables.templateId);
       } catch {
         checklistFailed = true;
       }
@@ -664,9 +573,7 @@ export default function BoardPage() {
       if (failedParts.length === 0) {
         toast.success("작업을 만들었습니다.");
       } else {
-        toast.warning(
-          `작업은 만들었지만 ${failedParts.join(", ")} 일부를 반영하지 못했습니다.`,
-        );
+        toast.warning(`작업은 만들었지만 ${failedParts.join(", ")} 일부를 반영하지 못했습니다.`);
       }
 
       setCreateModalOpen(false);
@@ -695,12 +602,7 @@ export default function BoardPage() {
     setTitle("");
     setTaskTemplateId(DEFAULT_TASK_TEMPLATE_ID);
     setTestCaseTypeId(DEFAULT_TEST_CASE_TYPE_ID);
-    setDescription(
-      getTaskDescriptionTemplate(
-        DEFAULT_TASK_TEMPLATE_ID,
-        DEFAULT_TEST_CASE_TYPE_ID,
-      ),
-    );
+    setDescription(getTaskDescriptionTemplate(DEFAULT_TASK_TEMPLATE_ID, DEFAULT_TEST_CASE_TYPE_ID));
     setDueDate("");
     setSelectedAssigneeUserIds([]);
     setSelectedTagIds([]);
@@ -725,35 +627,19 @@ export default function BoardPage() {
 
     if (templateId === "test-case") {
       setTestCaseTypeId(DEFAULT_TEST_CASE_TYPE_ID);
-      setDescription(
-        getTaskDescriptionTemplate(
-          templateId,
-          DEFAULT_TEST_CASE_TYPE_ID,
-        ),
-      );
+      setDescription(getTaskDescriptionTemplate(templateId, DEFAULT_TEST_CASE_TYPE_ID));
       return;
     }
 
-    setDescription(
-      getTaskDescriptionTemplate(templateId),
-    );
+    setDescription(getTaskDescriptionTemplate(templateId));
   };
 
-  const handleTestCaseTypeChange = (
-    nextTestCaseTypeId: TestCaseTypeId,
-  ) => {
+  const handleTestCaseTypeChange = (nextTestCaseTypeId: TestCaseTypeId) => {
     setTestCaseTypeId(nextTestCaseTypeId);
-    setDescription(
-      getTaskDescriptionTemplate(
-        "test-case",
-        nextTestCaseTypeId,
-      ),
-    );
+    setDescription(getTaskDescriptionTemplate("test-case", nextTestCaseTypeId));
   };
 
-  const handleCreateCard = (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
+  const handleCreateCard = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (createColumnId === null) {
@@ -777,6 +663,10 @@ export default function BoardPage() {
         title: trimmedTitle,
         description: trimmedDescription || null,
         dueDate: dueDate || null,
+
+        taskType: getCardTaskType(taskTemplateId),
+
+        testCaseType: taskTemplateId === "test-case" ? getApiTestCaseType(testCaseTypeId) : null,
       },
     });
   };
@@ -788,9 +678,7 @@ export default function BoardPage() {
   };
 
   const handleDragStart = (event: DragStartEvent) => {
-    const data = event.active.data.current as
-      | CardDragData
-      | undefined;
+    const data = event.active.data.current as CardDragData | undefined;
 
     if (!canEdit || !data || data.type !== "card") {
       return;
@@ -816,20 +704,11 @@ export default function BoardPage() {
       return;
     }
 
-    const activeData = active.data.current as
-      | CardDragData
-      | undefined;
+    const activeData = active.data.current as CardDragData | undefined;
 
-    const overData = over.data.current as
-      | CardDragData
-      | ColumnDragData
-      | undefined;
+    const overData = over.data.current as CardDragData | ColumnDragData | undefined;
 
-    if (
-      !activeData ||
-      activeData.type !== "card" ||
-      !overData
-    ) {
+    if (!activeData || activeData.type !== "card" || !overData) {
       return;
     }
 
@@ -840,68 +719,39 @@ export default function BoardPage() {
     const sourceCards = cardsByColumn[sourceColumnId] ?? [];
     const targetCards = cardsByColumn[targetColumnId] ?? [];
 
-    const movingCard = sourceCards.find(
-      (card) => card.id === cardId,
-    );
+    const movingCard = sourceCards.find((card) => card.id === cardId);
 
     if (!movingCard) {
       return;
     }
 
-    const sourceIndex = sourceCards.findIndex(
-      (card) => card.id === cardId,
-    );
+    const sourceIndex = sourceCards.findIndex((card) => card.id === cardId);
 
     let targetIndex: number;
 
     if (overData.type === "card") {
-      const overIndex = targetCards.findIndex(
-        (card) => card.id === overData.cardId,
-      );
+      const overIndex = targetCards.findIndex((card) => card.id === overData.cardId);
 
-      targetIndex =
-        overIndex >= 0
-          ? overIndex
-          : targetCards.length;
+      targetIndex = overIndex >= 0 ? overIndex : targetCards.length;
     } else if (sourceColumnId === targetColumnId) {
-      targetIndex = Math.max(
-        0,
-        targetCards.length - 1,
-      );
+      targetIndex = Math.max(0, targetCards.length - 1);
     } else {
       targetIndex = targetCards.length;
     }
 
-    if (
-      sourceColumnId === targetColumnId &&
-      sourceIndex === targetIndex
-    ) {
+    if (sourceColumnId === targetColumnId && sourceIndex === targetIndex) {
       return;
     }
 
-    const previousCardsByColumn: CardsByColumn =
-      Object.fromEntries(
-        Object.entries(cardsByColumn).map(
-          ([columnId, cards]) => [
-            Number(columnId),
-            [...cards],
-          ],
-        ),
-      );
-
-    const nextCardsByColumn: CardsByColumn =
-      Object.fromEntries(
-        Object.entries(cardsByColumn).map(
-          ([columnId, cards]) => [
-            Number(columnId),
-            [...cards],
-          ],
-        ),
-      );
-
-    const sourceWithoutMovingCard = sourceCards.filter(
-      (card) => card.id !== cardId,
+    const previousCardsByColumn: CardsByColumn = Object.fromEntries(
+      Object.entries(cardsByColumn).map(([columnId, cards]) => [Number(columnId), [...cards]]),
     );
+
+    const nextCardsByColumn: CardsByColumn = Object.fromEntries(
+      Object.entries(cardsByColumn).map(([columnId, cards]) => [Number(columnId), [...cards]]),
+    );
+
+    const sourceWithoutMovingCard = sourceCards.filter((card) => card.id !== cardId);
 
     const movedCard: CardResponse = {
       ...movingCard,
@@ -915,20 +765,12 @@ export default function BoardPage() {
         targetIndex,
       );
     } else {
-      nextCardsByColumn[sourceColumnId] =
-        sourceWithoutMovingCard;
+      nextCardsByColumn[sourceColumnId] = sourceWithoutMovingCard;
 
-      nextCardsByColumn[targetColumnId] = insertCardAtIndex(
-        targetCards,
-        movedCard,
-        targetIndex,
-      );
+      nextCardsByColumn[targetColumnId] = insertCardAtIndex(targetCards, movedCard, targetIndex);
     }
 
-    queryClient.setQueryData<CardsByColumn>(
-      cardsQueryKey,
-      nextCardsByColumn,
-    );
+    queryClient.setQueryData<CardsByColumn>(cardsQueryKey, nextCardsByColumn);
 
     setMovingCardId(cardId);
 
@@ -942,10 +784,7 @@ export default function BoardPage() {
         queryKey: ["board", boardId, "cards"],
       });
     } catch {
-      queryClient.setQueryData<CardsByColumn>(
-        cardsQueryKey,
-        previousCardsByColumn,
-      );
+      queryClient.setQueryData<CardsByColumn>(cardsQueryKey, previousCardsByColumn);
 
       toast.error("작업을 이동하지 못했습니다.");
     } finally {
@@ -957,9 +796,7 @@ export default function BoardPage() {
     return (
       <section className="p-8">
         <div className="max-w-2xl rounded-[var(--flow-radius-lg)] bg-white p-7 shadow-[var(--flow-shadow-sm)]">
-          <h1 className="text-xl font-bold text-[var(--flow-text)]">
-            보드를 열 수 없습니다.
-          </h1>
+          <h1 className="text-xl font-bold text-[var(--flow-text)]">보드를 열 수 없습니다.</h1>
 
           <p className="mt-2 text-[13px] leading-6 text-[var(--flow-text-muted)]">
             올바른 보드 주소인지 확인해주세요.
@@ -969,8 +806,7 @@ export default function BoardPage() {
     );
   }
 
-  const isLoading =
-    boardQuery.isLoading || cardsQuery.isLoading;
+  const isLoading = boardQuery.isLoading || cardsQuery.isLoading;
 
   const canDrag = Boolean(canEdit) && movingCardId === null;
 
@@ -1007,94 +843,152 @@ export default function BoardPage() {
         onClose={closeCreateModal}
       >
         <form onSubmit={handleCreateCard}>
-          <div className="space-y-7">
-            <TaskTemplateSelector
-              value={taskTemplateId}
-              disabled={createMutation.isPending}
-              onChange={handleTaskTemplateChange}
-            />
-
-            {taskTemplateId === "test-case" && (
-              <TestCaseTypeSelector
-                value={testCaseTypeId}
+          <div className="space-y-8">
+            {/* Template */}
+            <section>
+              <TaskTemplateSelector
+                value={taskTemplateId}
                 disabled={createMutation.isPending}
-                onChange={handleTestCaseTypeChange}
+                onChange={handleTaskTemplateChange}
               />
-            )}
 
-            <Input
-              label="작업 제목"
-              value={title}
-              required
-              autoFocus
-              maxLength={100}
-              placeholder={createTitlePlaceholder}
-              helperText={`${title.length}/100`}
-              disabled={createMutation.isPending}
-              onChange={(event) =>
-                setTitle(event.target.value)
-              }
-            />
+              {taskTemplateId === "test-case" && (
+                <div className="mt-5 rounded-xl border border-[var(--flow-border)] bg-[var(--flow-gray-50)] p-4">
+                  <TestCaseTypeSelector
+                    value={testCaseTypeId}
+                    disabled={createMutation.isPending}
+                    onChange={handleTestCaseTypeChange}
+                  />
+                </div>
+              )}
+            </section>
 
-            <Textarea
-              id="card-description"
-              label="설명"
-              value={description}
-              placeholder="기획, 디자인, 구현, 테스트, 보안 점검 등 진행할 내용을 적어주세요."
-              disabled={createMutation.isPending}
-              onChange={(event) =>
-                setDescription(event.target.value)
-              }
-            />
+            {/* Main content */}
+            <section>
+              <div className="mb-4 flex items-center gap-3">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--flow-primary-50)] text-[10px] font-bold text-[var(--flow-primary)]">
+                  1
+                </span>
 
-            <Input
-              label="마감일"
-              type="datetime-local"
-              value={dueDate}
-              disabled={createMutation.isPending}
-              onChange={(event) =>
-                setDueDate(event.target.value)
-              }
-            />
+                <div>
+                  <h3 className="text-[13px] font-bold text-[var(--flow-text)]">작업 내용</h3>
 
-            <TaskCreateMetadataFields
-              members={createMembersQuery.data ?? []}
-              tags={createTagsQuery.data ?? []}
-              selectedAssigneeUserIds={selectedAssigneeUserIds}
-              selectedTagIds={selectedTagIds}
-              membersLoading={createMembersQuery.isLoading}
-              membersError={createMembersQuery.isError}
-              tagsLoading={createTagsQuery.isLoading}
-              tagsError={createTagsQuery.isError}
-              disabled={createMutation.isPending}
-              onAssigneeUserIdsChange={setSelectedAssigneeUserIds}
-              onTagIdsChange={setSelectedTagIds}
-              onRetryMembers={() => {
-                void createMembersQuery.refetch();
-              }}
-              onRetryTags={() => {
-                void createTagsQuery.refetch();
-              }}
-            />
+                  <p className="mt-0.5 text-[10px] text-[var(--flow-text-muted)]">
+                    제목과 설명은 생성 후에도 언제든 수정할 수 있습니다.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-5 pl-9">
+                <Input
+                  label="작업 제목"
+                  value={title}
+                  required
+                  autoFocus
+                  maxLength={100}
+                  placeholder={createTitlePlaceholder}
+                  helperText={`${title.length}/100`}
+                  disabled={createMutation.isPending}
+                  onChange={(event) => setTitle(event.target.value)}
+                />
+
+                <Textarea
+                  id="card-description"
+                  label="설명"
+                  value={description}
+                  placeholder="작업에 필요한 내용을 자유롭게 작성해주세요."
+                  disabled={createMutation.isPending}
+                  onChange={(event) => setDescription(event.target.value)}
+                />
+              </div>
+            </section>
+
+            {/* Schedule */}
+            <section>
+              <div className="mb-4 flex items-center gap-3">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--flow-primary-50)] text-[10px] font-bold text-[var(--flow-primary)]">
+                  2
+                </span>
+
+                <div>
+                  <h3 className="text-[13px] font-bold text-[var(--flow-text)]">일정</h3>
+
+                  <p className="mt-0.5 text-[10px] text-[var(--flow-text-muted)]">
+                    필요할 때만 마감일을 지정하세요.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pl-9">
+                <Input
+                  label="마감일"
+                  type="datetime-local"
+                  value={dueDate}
+                  disabled={createMutation.isPending}
+                  onChange={(event) => setDueDate(event.target.value)}
+                />
+              </div>
+            </section>
+
+            {/* Collaboration */}
+            <section>
+              <div className="mb-4 flex items-center gap-3">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--flow-primary-50)] text-[10px] font-bold text-[var(--flow-primary)]">
+                  3
+                </span>
+
+                <div>
+                  <h3 className="text-[13px] font-bold text-[var(--flow-text)]">협업 정보</h3>
+
+                  <p className="mt-0.5 text-[10px] text-[var(--flow-text-muted)]">
+                    담당자와 보드 태그는 선택 사항입니다.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pl-9">
+                <TaskCreateMetadataFields
+                  members={createMembersQuery.data ?? []}
+                  tags={createTagsQuery.data ?? []}
+                  selectedAssigneeUserIds={selectedAssigneeUserIds}
+                  selectedTagIds={selectedTagIds}
+                  membersLoading={createMembersQuery.isLoading}
+                  membersError={createMembersQuery.isError}
+                  tagsLoading={createTagsQuery.isLoading}
+                  tagsError={createTagsQuery.isError}
+                  disabled={createMutation.isPending}
+                  onAssigneeUserIdsChange={setSelectedAssigneeUserIds}
+                  onTagIdsChange={setSelectedTagIds}
+                  onRetryMembers={() => {
+                    void createMembersQuery.refetch();
+                  }}
+                  onRetryTags={() => {
+                    void createTagsQuery.refetch();
+                  }}
+                />
+              </div>
+            </section>
           </div>
 
-          <div className="mt-8 flex justify-end gap-3 border-t border-[var(--flow-border)] pt-6">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={createMutation.isPending}
-              onClick={closeCreateModal}
-            >
-              취소
-            </Button>
+          <div className="sticky bottom-0 -mx-1 mt-8 flex items-center justify-between gap-4 border-t border-[var(--flow-border)] bg-white px-1 pt-5">
+            <p className="text-[10px] text-[var(--flow-text-placeholder)]">
+              * 작업 제목만 필수입니다.
+            </p>
 
-            <Button
-              type="submit"
-              loading={createMutation.isPending}
-              disabled={!title.trim()}
-            >
-              작업 만들기
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={createMutation.isPending}
+                onClick={closeCreateModal}
+              >
+                취소
+              </Button>
+
+              <Button type="submit" loading={createMutation.isPending} disabled={!title.trim()}>
+                작업 만들기
+              </Button>
+            </div>
           </div>
         </form>
       </Modal>
@@ -1112,10 +1006,7 @@ export default function BoardPage() {
 
             <div className="mt-8 flex gap-5 overflow-hidden">
               {Array.from({ length: 4 }).map((_, index) => (
-                <Skeleton
-                  key={index}
-                  className="h-[560px] w-[320px] shrink-0 rounded-[var(--flow-radius-lg)]"
-                />
+                <Skeleton key={index} className="h-[560px] w-[312px] shrink-0 rounded-xl" />
               ))}
             </div>
           </div>
@@ -1142,80 +1033,19 @@ export default function BoardPage() {
           </div>
         ) : (
           <>
-            <header className="shrink-0 bg-white px-8 py-6">
-              <div className="flex items-center justify-between gap-10">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-3">
-                    <h1 className="truncate text-[22px] font-bold tracking-[-0.025em] text-[var(--flow-text)]">
-                      {board.title}
-                    </h1>
-
-                    <span className="shrink-0 rounded-lg bg-[var(--flow-primary-50)] px-2.5 py-1.5 text-[10px] font-bold text-[var(--flow-primary)]">
-                      {getRoleLabel(board.myRole)}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 flex min-w-0 items-center gap-4">
-                    <p className="max-w-[620px] truncate text-[13px] text-[var(--flow-text-muted)]">
-                      {board.description || "보드 설명이 없습니다."}
-                    </p>
-
-                    <span className="h-4 w-px shrink-0 bg-[var(--flow-border)]" />
-
-                    <span className="shrink-0 text-[12px] text-[var(--flow-text-muted)]">
-                      소유자{" "}
-                      <strong className="font-semibold text-[var(--flow-text-secondary)]">
-                        {board.ownerNickname}
-                      </strong>
-                    </span>
-                  </div>
-                </div>
-
-                {canManageColumns && (
-                  <div className="shrink-0">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      leftIcon={<SettingsIcon />}
-                      onClick={() => setColumnSettingsOpen(true)}
-                    >
-                      워크플로우 설정
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </header>
-
-            <div className="flex min-h-[48px] shrink-0 items-center justify-between border-y border-[var(--flow-border)] bg-[var(--flow-surface-subtle)] px-8">
-              <div className="flex items-center gap-6 text-[12px] text-[var(--flow-text-muted)]">
-                <span className="whitespace-nowrap">
-                  컬럼{" "}
-                  <strong className="font-bold text-[var(--flow-text)]">
-                    {board.columns.length}
-                  </strong>
-                </span>
-
-                <span className="whitespace-nowrap">
-                  전체 작업{" "}
-                  <strong className="font-bold text-[var(--flow-text)]">
-                    {allCards.length}
-                  </strong>
-                </span>
-
-                {movingCardId !== null && (
-                  <span className="inline-flex items-center gap-2 whitespace-nowrap font-semibold text-[var(--flow-primary)]">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--flow-primary)]" />
-                    이동 저장 중
-                  </span>
-                )}
-              </div>
-
-              {!canEdit && (
-                <span className="whitespace-nowrap rounded-lg bg-[var(--flow-warning-soft)] px-2.5 py-1.5 text-[10px] font-bold text-[var(--flow-warning-dark)]">
-                  읽기 전용
-                </span>
-              )}
-            </div>
+            <KanbanBoardHeader
+              boardTitle={board.title}
+              boardDescription={board.description}
+              ownerNickname={board.ownerNickname}
+              role={board.myRole}
+              columnCount={board.columns.length}
+              cardCount={allCards.length}
+              moving={movingCardId !== null}
+              canManageColumns={Boolean(canManageColumns)}
+              readOnly={!canEdit}
+              onOpenSearch={() => navigate(`/boards/${boardId}/search`)}
+              onOpenWorkflowSettings={() => setColumnSettingsOpen(true)}
+            />
 
             {/*
              * min-h-0가 핵심이다.
@@ -1244,12 +1074,9 @@ export default function BoardPage() {
                   </div>
                 </div>
               ) : isLoading ? (
-                <div className="flex h-full gap-5 overflow-hidden p-6">
+                <div className="flex h-full gap-4 overflow-hidden p-5 xl:p-6">
                   {board.columns.map((column) => (
-                    <Skeleton
-                      key={column.id}
-                      className="h-[560px] w-[320px] shrink-0 rounded-[var(--flow-radius-lg)]"
-                    />
+                    <Skeleton key={column.id} className="h-[560px] w-[312px] shrink-0 rounded-xl" />
                   ))}
                 </div>
               ) : board.columns.length === 0 ? (
@@ -1273,7 +1100,7 @@ export default function BoardPage() {
                    * 화면 아래에 바로 가로 스크롤바가 나타난다.
                    */}
                   <div className="h-full min-h-0 overflow-x-auto overflow-y-auto overscroll-contain">
-                    <div className="flex min-h-full w-max min-w-full items-start gap-5 p-6 pb-8">
+                    <div className="flex min-h-full w-max min-w-full items-start gap-4 p-5 pb-8 xl:p-6 xl:pb-8">
                       {board.columns.map((column) => (
                         <KanbanColumn
                           key={column.id}
@@ -1290,7 +1117,7 @@ export default function BoardPage() {
 
                   <DragOverlay>
                     {activeCard ? (
-                      <div className="w-[320px] rotate-[1deg] rounded-[var(--flow-radius-md)] border border-[var(--flow-primary-200)] bg-white p-4 shadow-[var(--flow-shadow-lg)]">
+                      <div className="w-[312px] rotate-[1deg] rounded-xl border border-[var(--flow-primary-200)] bg-white p-4 shadow-[var(--flow-shadow-lg)]">
                         <TaskContent card={activeCard} />
                       </div>
                     ) : null}

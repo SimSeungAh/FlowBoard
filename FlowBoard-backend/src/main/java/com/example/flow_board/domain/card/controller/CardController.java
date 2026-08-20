@@ -10,6 +10,10 @@ import com.example.flow_board.domain.card.dto.response.CardSearchResponse;
 import com.example.flow_board.domain.card.service.CardService;
 import com.example.flow_board.global.response.ApiResponse;
 import com.example.flow_board.global.security.service.CustomUserDetails;
+import com.example.flow_board.domain.card.dto.response.TestCasePageResponse;
+import com.example.flow_board.domain.card.entity.TestCaseResult;
+import com.example.flow_board.domain.card.entity.TestCaseType;
+import com.example.flow_board.domain.card.dto.request.TestCaseResultUpdateRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -176,6 +180,76 @@ public class CardController {
   }
 
   /**
+   * 보드 테스트 케이스 전용 목록 조회
+   *
+   * TEST_CASE 타입의 카드만 조회합니다.
+   */
+  @GetMapping(
+      "/api/boards/{boardId}/test-cases"
+  )
+  @Operation(
+      summary = "테스트 케이스 목록 조회",
+      description =
+          "보드의 테스트 케이스만 조회합니다. "
+              + "테스트 유형, 결과, 검색어 필터와 "
+              + "페이지네이션을 지원합니다."
+  )
+  public ApiResponse<TestCasePageResponse>
+  getTestCases(
+      @AuthenticationPrincipal
+      CustomUserDetails userDetails,
+
+      @PathVariable
+      Long boardId,
+
+      @RequestParam(
+          name = "testCaseType",
+          required = false
+      )
+      TestCaseType testCaseType,
+
+      @RequestParam(
+          name = "testCaseResult",
+          required = false
+      )
+      TestCaseResult testCaseResult,
+
+      @RequestParam(
+          name = "keyword",
+          required = false
+      )
+      String keyword,
+
+      @RequestParam(
+          name = "page",
+          defaultValue = "0"
+      )
+      int page,
+
+      @RequestParam(
+          name = "size",
+          defaultValue = "20"
+      )
+      int size
+  ) {
+    TestCasePageResponse response =
+        cardService.getTestCases(
+            userDetails.getUser(),
+            boardId,
+            testCaseType,
+            testCaseResult,
+            keyword,
+            page,
+            size
+        );
+
+    return ApiResponse.success(
+        "테스트 케이스 목록 조회 성공",
+        response
+    );
+  }
+
+  /**
    * 카드 상세 조회
    */
   @GetMapping(
@@ -235,6 +309,43 @@ public class CardController {
     return ApiResponse.success(
             "카드 수정 성공",
             response
+    );
+  }
+
+  /**
+   * 테스트 케이스 결과 변경
+   */
+  @PatchMapping(
+      "/api/cards/{cardId}/test-case/result"
+  )
+  @Operation(
+      summary = "테스트 케이스 결과 변경",
+      description =
+          "테스트 케이스의 결과를 "
+              + "미실행, PASS, FAIL, BLOCKED 중 하나로 변경합니다."
+  )
+  public ApiResponse<CardResponse>
+  updateTestCaseResult(
+      @AuthenticationPrincipal
+      CustomUserDetails userDetails,
+
+      @PathVariable
+      Long cardId,
+
+      @Valid
+      @RequestBody
+      TestCaseResultUpdateRequest request
+  ) {
+    CardResponse response =
+        cardService.updateTestCaseResult(
+            userDetails.getUser(),
+            cardId,
+            request
+        );
+
+    return ApiResponse.success(
+        "테스트 결과 변경 성공",
+        response
     );
   }
 

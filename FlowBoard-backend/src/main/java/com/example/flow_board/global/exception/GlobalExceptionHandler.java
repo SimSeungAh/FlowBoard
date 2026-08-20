@@ -2,6 +2,7 @@ package com.example.flow_board.global.exception;
 
 import com.example.flow_board.global.response.ApiResponse;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -28,6 +29,20 @@ public class GlobalExceptionHandler {
     return ResponseEntity
         .badRequest()
         .body(ApiResponse.fail(ErrorCode.INVALID_INPUT.getCode(), message));
+  }
+
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadableException(
+      HttpMessageNotReadableException e
+  ) {
+    return ResponseEntity
+        .badRequest()
+        .body(
+            ApiResponse.fail(
+                ErrorCode.INVALID_INPUT.getCode(),
+                "요청 값의 형식이 올바르지 않습니다."
+            )
+        );
   }
 
   @ExceptionHandler(Exception.class)

@@ -136,9 +136,21 @@ public enum ErrorCode {
    * CARD
    */
   CARD_NOT_FOUND(
-          HttpStatus.NOT_FOUND,
-          "CARD_001",
-          "카드를 찾을 수 없습니다."
+      HttpStatus.NOT_FOUND,
+      "CARD_001",
+      "카드를 찾을 수 없습니다."
+  ),
+
+  CARD_NOT_TEST_CASE(
+      HttpStatus.BAD_REQUEST,
+      "CARD_002",
+      "테스트 케이스 카드에서만 사용할 수 있는 기능입니다."
+  ),
+
+  TEST_CASE_TYPE_REQUIRED(
+      HttpStatus.BAD_REQUEST,
+      "CARD_003",
+      "테스트 케이스 유형은 필수입니다."
   ),
 
   /*
