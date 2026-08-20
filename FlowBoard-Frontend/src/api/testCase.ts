@@ -51,6 +51,14 @@ export interface TestCasePageResponse {
   last: boolean;
 }
 
+export interface TestCaseSummaryResponse {
+  total: number;
+  notRun: number;
+  pass: number;
+  fail: number;
+  blocked: number;
+}
+
 export interface GetTestCasesParams {
   testCaseType?: TestCaseType;
   testCaseResult?: TestCaseResult;
@@ -76,12 +84,29 @@ export const getTestCases = async (
   return response.data.data;
 };
 
+export const getTestCaseSummary = async (boardId: number): Promise<TestCaseSummaryResponse> => {
+  const response = await api.get(`/boards/${boardId}/test-cases/summary`);
+
+  return response.data.data;
+};
+
 export const updateTestCaseResult = async (
   cardId: number,
   testCaseResult: TestCaseResult,
 ): Promise<CardResponse> => {
   const response = await api.patch(`/cards/${cardId}/test-case/result`, {
     testCaseResult,
+  });
+
+  return response.data.data;
+};
+
+export const updateTestCaseType = async (
+  cardId: number,
+  testCaseType: TestCaseType,
+): Promise<CardResponse> => {
+  const response = await api.patch(`/cards/${cardId}/test-case/type`, {
+    testCaseType,
   });
 
   return response.data.data;

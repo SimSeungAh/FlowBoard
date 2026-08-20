@@ -34,6 +34,9 @@ const getPageLabel = (pathname: string, boardId: number) => {
   if (pathname.endsWith("/search")) {
     return "작업 검색";
   }
+  if (pathname.endsWith("/test-cases")) {
+    return "테스트 케이스";
+  }
   if (pathname.endsWith("/whiteboard")) {
     return "화이트보드";
   }
@@ -72,9 +75,39 @@ export default function BoardToolsLayout() {
     const disconnect = connectCardWebSocket({
       boardId,
       onConnectionStateChange: setConnectionState,
-      onEvent: () => {
+      onEvent: (event) => {
+        /*
+         * 일반 칸반 카드 목록 갱신
+         */
         void queryClient.invalidateQueries({
           queryKey: ["board", boardId, "cards"],
+        });
+
+        /*
+         * 테스트 케이스 전용 목록도 같은 Card 데이터를
+         * 사용하므로 카드 변경 이벤트를 받으면 함께 갱신합니다.
+         *
+         * TEST_CASE가 아닌 카드 이벤트가 와도
+         * 서버 조회 조건에서 걸러지므로 문제 없습니다.
+         */
+        void queryClient.invalidateQueries({
+          queryKey: ["board", boardId, "test-cases"],
+        });
+
+        /*
+         * 현재 카드 상세 패널이 열려 있다면
+         * 그 카드의 상세 데이터도 최신화합니다.
+         */
+        if (event.type === "DELETED") {
+          queryClient.removeQueries({
+            queryKey: ["cards", event.cardId],
+          });
+
+          return;
+        }
+
+        void queryClient.invalidateQueries({
+          queryKey: ["cards", event.cardId],
         });
       },
       onError: (error) => {

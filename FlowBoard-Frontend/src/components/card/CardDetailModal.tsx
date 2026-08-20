@@ -1,16 +1,28 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type SubmitEvent } from "react";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
 import { useParams } from "react-router";
 import { toast } from "sonner";
 
 import { deleteCard, getCardDetail, updateCard, type CardUpdateRequest } from "@/api/card";
+
+import {
+  updateTestCaseResult,
+  updateTestCaseType,
+  type TestCaseResult,
+  type TestCaseType,
+} from "@/api/testCase";
+
 import {
   addCardAssignee,
   getBoardMembers,
   getCardAssignees,
   removeCardAssignee,
 } from "@/api/cardAssignee";
+
 import { addTagToCard, createTag, getBoardTags, getCardTags, removeTagFromCard } from "@/api/tag";
+
 import Button from "@/components/ui/Button";
 import ChecklistSection from "@/components/card/ChecklistSection";
 import CommentSection from "@/components/card/CommentSection";
@@ -162,6 +174,50 @@ const getRoleLabel = (role: "OWNER" | "MEMBER" | "VIEWER") => {
   }
 };
 
+const getTestCaseTypeLabel = (type: TestCaseType) => {
+  switch (type) {
+    case "NORMAL":
+      return "정상";
+
+    case "EXCEPTION":
+      return "예외";
+
+    case "BOUNDARY":
+      return "경계값";
+
+    case "PERMISSION":
+      return "권한";
+
+    case "SECURITY":
+      return "보안";
+
+    case "RECOVERY":
+      return "복구";
+
+    case "INTEGRATION":
+      return "통합";
+
+    case "E2E":
+      return "E2E";
+  }
+};
+
+const getTestCaseResultLabel = (result: TestCaseResult) => {
+  switch (result) {
+    case "NOT_RUN":
+      return "미실행";
+
+    case "PASS":
+      return "PASS";
+
+    case "FAIL":
+      return "FAIL";
+
+    case "BLOCKED":
+      return "BLOCKED";
+  }
+};
+
 export default function CardDetailModal({
   open,
   cardId,
@@ -182,6 +238,58 @@ export default function CardDetailModal({
   const [editMode, setEditMode] = useState(false);
 
   const [descriptionEditMode, setDescriptionEditMode] = useState(false);
+
+  const testCaseTypeMutation = useMutation({
+    mutationFn: (testCaseType: TestCaseType) => {
+      if (cardId === null) {
+        throw new Error("카드 ID가 없습니다.");
+      }
+
+      return updateTestCaseType(cardId, testCaseType);
+    },
+
+    onSuccess: async (updatedCard) => {
+      queryClient.setQueryData(["cards", updatedCard.id], updatedCard);
+
+      await queryClient.invalidateQueries({
+        queryKey: ["board", boardId, "test-cases"],
+      });
+
+      await onChanged();
+
+      toast.success("테스트 유형을 변경했습니다.");
+    },
+
+    onError: () => {
+      toast.error("테스트 유형을 변경하지 못했습니다.");
+    },
+  });
+
+  const testCaseResultMutation = useMutation({
+    mutationFn: (testCaseResult: TestCaseResult) => {
+      if (cardId === null) {
+        throw new Error("카드 ID가 없습니다.");
+      }
+
+      return updateTestCaseResult(cardId, testCaseResult);
+    },
+
+    onSuccess: async (updatedCard) => {
+      queryClient.setQueryData(["cards", updatedCard.id], updatedCard);
+
+      await queryClient.invalidateQueries({
+        queryKey: ["board", boardId, "test-cases"],
+      });
+
+      await onChanged();
+
+      toast.success("테스트 결과를 변경했습니다.");
+    },
+
+    onError: () => {
+      toast.error("테스트 결과를 변경하지 못했습니다.");
+    },
+  });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -589,7 +697,7 @@ export default function CardDetailModal({
     descriptionUpdateMutation.mutate(description);
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!canEdit || !card) {
@@ -690,6 +798,8 @@ export default function CardDetailModal({
     if (
       updateMutation.isPending ||
       descriptionUpdateMutation.isPending ||
+      testCaseTypeMutation.isPending ||
+      testCaseResultMutation.isPending ||
       deleteMutation.isPending ||
       isAssigneeBusy ||
       isTagBusy
@@ -1040,6 +1150,150 @@ export default function CardDetailModal({
                     </div>
                   </div>
                 </section>
+
+                {/* Test case metadata */}
+                {card.taskType === "TEST_CASE" && (
+                  <section className="border-b border-[var(--flow-border)] px-8 py-6">
+                    <div className="flex items-start justify-between gap-5">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-[14px] font-bold text-[var(--flow-text)]">
+                            테스트 케이스
+                          </h3>
+
+                          <span className="rounded-md bg-[var(--flow-primary-50)] px-2 py-1 text-[9px] font-bold tracking-[0.05em] text-[var(--flow-primary)]">
+                            QA
+                          </span>
+                        </div>
+
+                        <p className="mt-1.5 text-[11px] leading-5 text-[var(--flow-text-muted)]">
+                          테스트 유형과 현재 실행 결과를 관리합니다.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-2 gap-4">
+                      {/* 테스트 유형 */}
+                      <div className="rounded-xl bg-[var(--flow-gray-50)] p-4">
+                        <p className="mb-2 text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
+                          테스트 유형
+                        </p>
+
+                        {canEdit ? (
+                          <select
+                            value={card.testCaseType ?? "NORMAL"}
+                            disabled={
+                              testCaseTypeMutation.isPending || testCaseResultMutation.isPending
+                            }
+                            className={[
+                              "h-9 w-full rounded-lg",
+                              "border border-[var(--flow-border-strong)]",
+                              "bg-white px-3",
+                              "text-[11px] font-semibold",
+                              "text-[var(--flow-text-secondary)]",
+                              "outline-none",
+                              "transition-[border-color,box-shadow,opacity]",
+                              "focus:border-[var(--flow-primary)]",
+                              "focus:ring-4 focus:ring-[var(--flow-focus-ring)]",
+                              testCaseTypeMutation.isPending
+                                ? "cursor-wait opacity-50"
+                                : "cursor-pointer",
+                            ].join(" ")}
+                            onChange={(event) =>
+                              testCaseTypeMutation.mutate(event.target.value as TestCaseType)
+                            }
+                          >
+                            <option value="NORMAL">정상</option>
+
+                            <option value="EXCEPTION">예외</option>
+
+                            <option value="BOUNDARY">경계값</option>
+
+                            <option value="PERMISSION">권한</option>
+
+                            <option value="SECURITY">보안</option>
+
+                            <option value="RECOVERY">복구</option>
+
+                            <option value="INTEGRATION">통합</option>
+
+                            <option value="E2E">E2E</option>
+                          </select>
+                        ) : (
+                          <div className="flex h-9 items-center rounded-lg border border-[var(--flow-border)] bg-white px-3">
+                            <span className="text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                              {card.testCaseType
+                                ? getTestCaseTypeLabel(card.testCaseType)
+                                : "미지정"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 테스트 결과 */}
+                      <div className="rounded-xl bg-[var(--flow-gray-50)] p-4">
+                        <p className="mb-2 text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
+                          테스트 결과
+                        </p>
+
+                        {canEdit ? (
+                          <select
+                            value={card.testCaseResult ?? "NOT_RUN"}
+                            disabled={
+                              testCaseTypeMutation.isPending || testCaseResultMutation.isPending
+                            }
+                            className={[
+                              "h-9 w-full rounded-lg border px-3",
+                              "text-[11px] font-bold",
+                              "outline-none",
+                              "transition-[border-color,box-shadow,opacity]",
+                              "focus:ring-4 focus:ring-[var(--flow-focus-ring)]",
+
+                              card.testCaseResult === "PASS"
+                                ? "border-emerald-200 bg-[var(--flow-success-soft)] text-[var(--flow-success-dark)]"
+                                : "",
+
+                              card.testCaseResult === "FAIL"
+                                ? "border-red-200 bg-[var(--flow-danger-soft)] text-[var(--flow-danger-dark)]"
+                                : "",
+
+                              card.testCaseResult === "BLOCKED"
+                                ? "border-amber-200 bg-[var(--flow-warning-soft)] text-[var(--flow-warning-dark)]"
+                                : "",
+
+                              !card.testCaseResult || card.testCaseResult === "NOT_RUN"
+                                ? "border-[var(--flow-border-strong)] bg-white text-[var(--flow-text-secondary)]"
+                                : "",
+
+                              testCaseResultMutation.isPending
+                                ? "cursor-wait opacity-50"
+                                : "cursor-pointer",
+                            ].join(" ")}
+                            onChange={(event) =>
+                              testCaseResultMutation.mutate(event.target.value as TestCaseResult)
+                            }
+                          >
+                            <option value="NOT_RUN">미실행</option>
+
+                            <option value="PASS">PASS</option>
+
+                            <option value="FAIL">FAIL</option>
+
+                            <option value="BLOCKED">BLOCKED</option>
+                          </select>
+                        ) : (
+                          <div className="flex h-9 items-center rounded-lg border border-[var(--flow-border)] bg-white px-3">
+                            <span className="text-[11px] font-bold text-[var(--flow-text-secondary)]">
+                              {card.testCaseResult
+                                ? getTestCaseResultLabel(card.testCaseResult)
+                                : "미실행"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+                )}
 
                 {/* Description */}
                 <section className="border-b border-[var(--flow-border)] px-7 py-6">

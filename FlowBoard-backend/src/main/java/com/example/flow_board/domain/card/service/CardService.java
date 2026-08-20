@@ -8,10 +8,7 @@ import com.example.flow_board.domain.board.repository.BoardColumnRepository;
 import com.example.flow_board.domain.board.repository.BoardRepository;
 import com.example.flow_board.domain.board.service.BoardPermissionService;
 import com.example.flow_board.domain.card.dto.request.*;
-import com.example.flow_board.domain.card.dto.response.CardAssigneeResponse;
-import com.example.flow_board.domain.card.dto.response.CardResponse;
-import com.example.flow_board.domain.card.dto.response.CardSearchResponse;
-import com.example.flow_board.domain.card.dto.response.TagResponse;
+import com.example.flow_board.domain.card.dto.response.*;
 import com.example.flow_board.domain.card.entity.Card;
 import com.example.flow_board.domain.card.repository.CardAssigneeRepository;
 import com.example.flow_board.domain.card.repository.CardRepository;
@@ -22,11 +19,11 @@ import com.example.flow_board.domain.card.websocket.CardWebSocketEvent;
 import com.example.flow_board.domain.user.entity.User;
 import com.example.flow_board.global.exception.CustomException;
 import com.example.flow_board.global.exception.ErrorCode;
-import com.example.flow_board.domain.card.dto.response.TestCasePageResponse;
 import com.example.flow_board.domain.card.entity.CardTaskType;
 import com.example.flow_board.domain.card.entity.TestCaseResult;
 import com.example.flow_board.domain.card.entity.TestCaseType;
-import com.example.flow_board.domain.card.entity.TestCaseResult;
+import com.example.flow_board.domain.card.dto.request.TestCaseTypeUpdateRequest;
+
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -544,8 +541,7 @@ public class CardService {
      *
      * 일반 카드라면 CARD_NOT_TEST_CASE 예외가 발생합니다.
      */
-    card.updateTestCase(
-        null,
+    card.updateTestCaseResult(
         request.testCaseResult()
     );
 
@@ -586,6 +582,96 @@ public class CardService {
 
     return response;
   }
+
+  /**
+   * 테스트 케이스 유형 변경
+   *
+   * TEST_CASE 카드에서만 사용할 수 있습니다.
+   * OWNER와 MEMBER만 변경할 수 있습니다.
+   */
+  @Transactional
+  public CardResponse updateTestCaseType(
+      User user,
+      Long cardId,
+      TestCaseTypeUpdateRequest request
+  ) {
+    Card card =
+        getCardById(cardId);
+
+    Board board =
+        card.getBoardColumn()
+            .getBoard();
+
+    boardPermissionService.validateWritePermission(
+        board,
+        user
+    );
+
+    TestCaseType previousType =
+        card.getTestCaseType();
+
+    card.updateTestCaseType(
+        request.testCaseType()
+    );
+
+    CardResponse response =
+        CardResponse.from(card);
+
+    String previousTypeLabel =
+        previousType == null
+            ? "미지정"
+            : switch (previousType) {
+          case NORMAL -> "정상";
+          case EXCEPTION -> "예외";
+          case BOUNDARY -> "경계값";
+          case PERMISSION -> "권한";
+          case SECURITY -> "보안";
+          case RECOVERY -> "복구";
+          case INTEGRATION -> "통합";
+          case E2E -> "E2E";
+        };
+
+    TestCaseType updatedType =
+        card.getTestCaseType();
+
+    String updatedTypeLabel =
+        switch (updatedType) {
+          case NORMAL -> "정상";
+          case EXCEPTION -> "예외";
+          case BOUNDARY -> "경계값";
+          case PERMISSION -> "권한";
+          case SECURITY -> "보안";
+          case RECOVERY -> "복구";
+          case INTEGRATION -> "통합";
+          case E2E -> "E2E";
+        };
+
+    activityLogService.recordActivity(
+        board,
+        user,
+        ActivityType.CARD_UPDATED,
+        card.getId(),
+        card.getTitle(),
+        user.getNickname()
+            + "님이 '"
+            + card.getTitle()
+            + "' 테스트 유형을 "
+            + previousTypeLabel
+            + "에서 "
+            + updatedTypeLabel
+            + "(으)로 변경했습니다."
+    );
+
+    cardEventPublisher.publish(
+        CardWebSocketEvent.updated(
+            board.getId(),
+            response
+        )
+    );
+
+    return response;
+  }
+
 
   /**
    * 카드 이동 및 순서 변경
@@ -895,6 +981,74 @@ public class CardService {
       case FAIL -> "FAIL";
       case BLOCKED -> "BLOCKED";
     };
+  }
+
+  /**
+   * 보드 테스트 케이스 결과 요약
+   *
+   * 현재 페이지에 표시된 데이터가 아니라
+   * 보드 전체 TEST_CASE 카드를 기준으로 집계합니다.
+   *
+   * OWNER / MEMBER / VIEWER 모두 조회할 수 있습니다.
+   */
+  public TestCaseSummaryResponse getTestCaseSummary(
+      User user,
+      Long boardId
+  ) {
+    Board board =
+        getBoardById(boardId);
+
+    boardPermissionService.validateReadPermission(
+        board,
+        user
+    );
+
+    long total =
+        cardRepository
+            .countByBoardColumn_Board_IdAndTaskType(
+                boardId,
+                CardTaskType.TEST_CASE
+            );
+
+    long notRun =
+        cardRepository
+            .countByBoardColumn_Board_IdAndTaskTypeAndTestCaseResult(
+                boardId,
+                CardTaskType.TEST_CASE,
+                TestCaseResult.NOT_RUN
+            );
+
+    long pass =
+        cardRepository
+            .countByBoardColumn_Board_IdAndTaskTypeAndTestCaseResult(
+                boardId,
+                CardTaskType.TEST_CASE,
+                TestCaseResult.PASS
+            );
+
+    long fail =
+        cardRepository
+            .countByBoardColumn_Board_IdAndTaskTypeAndTestCaseResult(
+                boardId,
+                CardTaskType.TEST_CASE,
+                TestCaseResult.FAIL
+            );
+
+    long blocked =
+        cardRepository
+            .countByBoardColumn_Board_IdAndTaskTypeAndTestCaseResult(
+                boardId,
+                CardTaskType.TEST_CASE,
+                TestCaseResult.BLOCKED
+            );
+
+    return new TestCaseSummaryResponse(
+        total,
+        notRun,
+        pass,
+        fail,
+        blocked
+    );
   }
 
   /**

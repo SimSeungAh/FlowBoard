@@ -52,11 +52,9 @@ const buildWebSocketUrl = () => {
 };
 
 const createStompFrame = (command: string, headers: Record<string, string> = {}, body = "") => {
-  const headerText = Object.entries(headers)
-    .map(([key, value]) => `${key}:${value}`)
-    .join("\n");
+  const headerLines = Object.entries(headers).map(([key, value]) => `${key}:${value}`);
 
-  return `${command}\n${headerText}\n\n${body}\u0000`;
+  return [command, ...headerLines, "", body].join("\n") + "\u0000";
 };
 
 const parseStompFrame = (rawFrame: string): ParsedStompFrame | null => {

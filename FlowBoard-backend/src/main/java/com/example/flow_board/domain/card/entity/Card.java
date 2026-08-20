@@ -160,22 +160,44 @@ public class Card extends BaseEntity {
    *
    * 테스트 케이스가 아닌 카드에는 사용할 수 없습니다.
    */
-  public void updateTestCase(
-      TestCaseType testCaseType,
-      TestCaseResult testCaseResult
+  public void updateTestCaseType(
+      TestCaseType testCaseType
   ) {
-    if (taskType != CardTaskType.TEST_CASE) {
-      throw new IllegalStateException(
-          "테스트 케이스 카드만 테스트 정보를 수정할 수 있습니다."
+    validateTestCaseCard();
+
+    if (testCaseType == null) {
+      throw new CustomException(
+          ErrorCode.TEST_CASE_TYPE_REQUIRED
       );
     }
 
-    if (testCaseType != null) {
-      this.testCaseType = testCaseType;
+    this.testCaseType =
+        testCaseType;
+  }
+
+  public void updateTestCaseResult(
+      TestCaseResult testCaseResult
+  ) {
+    validateTestCaseCard();
+
+    if (testCaseResult == null) {
+      throw new CustomException(
+          ErrorCode.INVALID_INPUT
+      );
     }
 
-    if (testCaseResult != null) {
-      this.testCaseResult = testCaseResult;
+    this.testCaseResult =
+        testCaseResult;
+  }
+
+  private void validateTestCaseCard() {
+    if (
+        taskType !=
+            CardTaskType.TEST_CASE
+    ) {
+      throw new CustomException(
+          ErrorCode.CARD_NOT_TEST_CASE
+      );
     }
   }
   /**

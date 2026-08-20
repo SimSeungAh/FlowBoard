@@ -10,7 +10,9 @@ import { getBoardDetail } from "@/api/board";
 
 import {
   getTestCases,
+  getTestCaseSummary,
   updateTestCaseResult,
+  updateTestCaseType,
   type TestCaseResult,
   type TestCaseType,
 } from "@/api/testCase";
@@ -207,6 +209,16 @@ export default function TestCasesPage() {
     staleTime: 30_000,
   });
 
+  const summaryQuery = useQuery({
+    queryKey: ["board", boardId, "test-cases", "summary"],
+
+    queryFn: () => getTestCaseSummary(boardId),
+
+    enabled: isValidBoardId,
+
+    staleTime: 15_000,
+  });
+
   const testCasesQuery = useQuery({
     queryKey: [
       "board",
@@ -247,7 +259,7 @@ export default function TestCasesPage() {
         }),
 
         queryClient.invalidateQueries({
-          queryKey: ["card", card.id],
+          queryKey: ["cards", card.id],
         }),
 
         queryClient.invalidateQueries({
@@ -260,6 +272,33 @@ export default function TestCasesPage() {
 
     onError: () => {
       toast.error("테스트 결과를 변경하지 못했습니다.");
+    },
+  });
+
+  const typeMutation = useMutation({
+    mutationFn: ({ cardId, type }: { cardId: number; type: TestCaseType }) =>
+      updateTestCaseType(cardId, type),
+
+    onSuccess: async (card) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["board", boardId, "test-cases"],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: ["cards", card.id],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: ["board", boardId, "cards"],
+        }),
+      ]);
+
+      toast.success("테스트 유형을 변경했습니다.");
+    },
+
+    onError: () => {
+      toast.error("테스트 유형을 변경하지 못했습니다.");
     },
   });
 
@@ -336,6 +375,185 @@ export default function TestCasesPage() {
                 VIEWER · 읽기 전용
               </span>
             )}
+          </div>
+
+          {/* Result summary */}
+          <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <button
+              type="button"
+              className={[
+                "rounded-xl border p-4 text-left",
+                "transition-[border-color,background-color,box-shadow]",
+                testCaseResult === "ALL"
+                  ? [
+                      "border-[var(--flow-primary-300)]",
+                      "bg-[var(--flow-primary-50)]",
+                      "shadow-[var(--flow-shadow-xs)]",
+                    ].join(" ")
+                  : [
+                      "border-[var(--flow-border)]",
+                      "bg-white",
+                      "hover:border-[var(--flow-primary-200)]",
+                      "hover:bg-[var(--flow-gray-50)]",
+                    ].join(" "),
+              ].join(" ")}
+              onClick={() => {
+                setTestCaseResult("ALL");
+                setPage(1);
+              }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-semibold text-[var(--flow-text-muted)]">
+                  전체
+                </span>
+
+                <span className="h-2 w-2 rounded-full bg-[var(--flow-primary)]" />
+              </div>
+
+              <strong className="mt-2 block text-[22px] font-bold tracking-[-0.03em] text-[var(--flow-text)]">
+                {summaryQuery.isLoading ? "-" : (summaryQuery.data?.total ?? 0)}
+              </strong>
+            </button>
+
+            <button
+              type="button"
+              className={[
+                "rounded-xl border p-4 text-left",
+                "transition-[border-color,background-color,box-shadow]",
+                testCaseResult === "NOT_RUN"
+                  ? [
+                      "border-[var(--flow-border-strong)]",
+                      "bg-[var(--flow-gray-100)]",
+                      "shadow-[var(--flow-shadow-xs)]",
+                    ].join(" ")
+                  : [
+                      "border-[var(--flow-border)]",
+                      "bg-white",
+                      "hover:bg-[var(--flow-gray-50)]",
+                    ].join(" "),
+              ].join(" ")}
+              onClick={() => {
+                setTestCaseResult("NOT_RUN");
+                setPage(1);
+              }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-semibold text-[var(--flow-text-muted)]">
+                  미실행
+                </span>
+
+                <span className="h-2 w-2 rounded-full bg-[var(--flow-text-placeholder)]" />
+              </div>
+
+              <strong className="mt-2 block text-[22px] font-bold tracking-[-0.03em] text-[var(--flow-text)]">
+                {summaryQuery.isLoading ? "-" : (summaryQuery.data?.notRun ?? 0)}
+              </strong>
+            </button>
+
+            <button
+              type="button"
+              className={[
+                "rounded-xl border p-4 text-left",
+                "transition-[border-color,background-color,box-shadow]",
+                testCaseResult === "PASS"
+                  ? [
+                      "border-emerald-200",
+                      "bg-[var(--flow-success-soft)]",
+                      "shadow-[var(--flow-shadow-xs)]",
+                    ].join(" ")
+                  : [
+                      "border-[var(--flow-border)]",
+                      "bg-white",
+                      "hover:bg-[var(--flow-success-soft)]",
+                    ].join(" "),
+              ].join(" ")}
+              onClick={() => {
+                setTestCaseResult("PASS");
+                setPage(1);
+              }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-semibold text-[var(--flow-success-dark)]">
+                  PASS
+                </span>
+
+                <span className="h-2 w-2 rounded-full bg-[var(--flow-success)]" />
+              </div>
+
+              <strong className="mt-2 block text-[22px] font-bold tracking-[-0.03em] text-[var(--flow-text)]">
+                {summaryQuery.isLoading ? "-" : (summaryQuery.data?.pass ?? 0)}
+              </strong>
+            </button>
+
+            <button
+              type="button"
+              className={[
+                "rounded-xl border p-4 text-left",
+                "transition-[border-color,background-color,box-shadow]",
+                testCaseResult === "FAIL"
+                  ? [
+                      "border-red-200",
+                      "bg-[var(--flow-danger-soft)]",
+                      "shadow-[var(--flow-shadow-xs)]",
+                    ].join(" ")
+                  : [
+                      "border-[var(--flow-border)]",
+                      "bg-white",
+                      "hover:bg-[var(--flow-danger-soft)]",
+                    ].join(" "),
+              ].join(" ")}
+              onClick={() => {
+                setTestCaseResult("FAIL");
+                setPage(1);
+              }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-semibold text-[var(--flow-danger-dark)]">
+                  FAIL
+                </span>
+
+                <span className="h-2 w-2 rounded-full bg-[var(--flow-danger)]" />
+              </div>
+
+              <strong className="mt-2 block text-[22px] font-bold tracking-[-0.03em] text-[var(--flow-text)]">
+                {summaryQuery.isLoading ? "-" : (summaryQuery.data?.fail ?? 0)}
+              </strong>
+            </button>
+
+            <button
+              type="button"
+              className={[
+                "rounded-xl border p-4 text-left",
+                "transition-[border-color,background-color,box-shadow]",
+                testCaseResult === "BLOCKED"
+                  ? [
+                      "border-amber-200",
+                      "bg-[var(--flow-warning-soft)]",
+                      "shadow-[var(--flow-shadow-xs)]",
+                    ].join(" ")
+                  : [
+                      "border-[var(--flow-border)]",
+                      "bg-white",
+                      "hover:bg-[var(--flow-warning-soft)]",
+                    ].join(" "),
+              ].join(" ")}
+              onClick={() => {
+                setTestCaseResult("BLOCKED");
+                setPage(1);
+              }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-semibold text-[var(--flow-warning-dark)]">
+                  BLOCKED
+                </span>
+
+                <span className="h-2 w-2 rounded-full bg-[var(--flow-warning)]" />
+              </div>
+
+              <strong className="mt-2 block text-[22px] font-bold tracking-[-0.03em] text-[var(--flow-text)]">
+                {summaryQuery.isLoading ? "-" : (summaryQuery.data?.blocked ?? 0)}
+              </strong>
+            </button>
           </div>
 
           {/* Type tabs */}
@@ -564,10 +782,63 @@ export default function TestCasesPage() {
                               </p>
                             </td>
 
-                            <td className="px-4 py-4 align-middle">
-                              <span className="inline-flex rounded-md border border-[var(--flow-primary-100)] bg-[var(--flow-primary-50)] px-2 py-1 text-[10px] font-semibold text-[var(--flow-primary-700)]">
-                                {getTestCaseTypeLabel(testCase.testCaseType)}
-                              </span>
+                            <td
+                              className="px-4 py-4 align-middle"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {canEdit ? (
+                                <select
+                                  value={testCase.testCaseType}
+                                  disabled={
+                                    typeMutation.isPending &&
+                                    typeMutation.variables?.cardId === testCase.id
+                                  }
+                                  aria-label={`${testCase.title} 테스트 유형`}
+                                  className={[
+                                    "h-8 w-[96px] rounded-md",
+                                    "border border-[var(--flow-primary-100)]",
+                                    "bg-[var(--flow-primary-50)]",
+                                    "px-2",
+                                    "text-[10px] font-semibold",
+                                    "text-[var(--flow-primary-700)]",
+                                    "outline-none",
+                                    "transition-opacity",
+                                    "focus:border-[var(--flow-primary)]",
+                                    "focus:ring-2 focus:ring-[var(--flow-focus-ring)]",
+                                    typeMutation.isPending &&
+                                    typeMutation.variables?.cardId === testCase.id
+                                      ? "cursor-wait opacity-50"
+                                      : "cursor-pointer",
+                                  ].join(" ")}
+                                  onChange={(event) =>
+                                    typeMutation.mutate({
+                                      cardId: testCase.id,
+
+                                      type: event.target.value as TestCaseType,
+                                    })
+                                  }
+                                >
+                                  <option value="NORMAL">정상</option>
+
+                                  <option value="EXCEPTION">예외</option>
+
+                                  <option value="BOUNDARY">경계값</option>
+
+                                  <option value="PERMISSION">권한</option>
+
+                                  <option value="SECURITY">보안</option>
+
+                                  <option value="RECOVERY">복구</option>
+
+                                  <option value="INTEGRATION">통합</option>
+
+                                  <option value="E2E">E2E</option>
+                                </select>
+                              ) : (
+                                <span className="inline-flex rounded-md border border-[var(--flow-primary-100)] bg-[var(--flow-primary-50)] px-2 py-1 text-[10px] font-semibold text-[var(--flow-primary-700)]">
+                                  {getTestCaseTypeLabel(testCase.testCaseType)}
+                                </span>
+                              )}
                             </td>
 
                             <td

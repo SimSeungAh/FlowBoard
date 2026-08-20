@@ -94,4 +94,23 @@ public interface CardRepository
 
       Pageable pageable
   );
+
+  /**
+   * 보드의 특정 작업 유형 카드 개수 조회
+   *
+   * 테스트 케이스 전체 개수 집계에 사용합니다.
+   */
+  long countByBoardColumn_Board_IdAndTaskType(
+      Long boardId,
+      CardTaskType taskType
+  );
+
+  /**
+   * 보드의 특정 작업 유형 + 테스트 결과별 카드 개수 조회
+   */
+  long countByBoardColumn_Board_IdAndTaskTypeAndTestCaseResult(
+      Long boardId,
+      CardTaskType taskType,
+      TestCaseResult testCaseResult
+  );
 }
