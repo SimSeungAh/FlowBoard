@@ -428,6 +428,8 @@ export default function WhiteboardPage() {
 
   const objectDragSessionRef = useRef<ObjectDragSession | null>(null);
 
+  const composingStickyIdsRef = useRef<Set<number>>(new Set());
+
   const [undoGestureCount, setUndoGestureCount] = useState(0);
 
   const [redoGestureCount, setRedoGestureCount] = useState(0);
@@ -445,6 +447,8 @@ export default function WhiteboardPage() {
   const [selectedStrokeId, setSelectedStrokeId] = useState<number | null>(null);
 
   const [selectedObjectId, setSelectedObjectId] = useState<number | null>(null);
+
+  const [stickyDrafts, setStickyDrafts] = useState<Record<number, string>>({});
 
   const [deletingObjectId, setDeletingObjectId] = useState<number | null>(null);
 
@@ -1125,29 +1129,57 @@ export default function WhiteboardPage() {
     [queryClient, whiteboardObjectsQueryKey],
   );
 
-  const handleStickyContentChange = useCallback(
-    (objectId: number, content: string) => {
-      updateObjectInCache(objectId, (object) => ({
-        ...object,
-        content,
-      }));
-    },
-    [updateObjectInCache],
-  );
+  const handleStickyContentChange = useCallback((objectId: number, content: string) => {
+    /*
+     * 한글 IME는 한 글자를 입력하는 동안 composition 상태를 유지합니다.
+     * 이때 React Query 캐시를 매 키 입력마다 갱신하면 외부 store 업데이트로
+     * textarea의 value가 다시 주입되어 조합 중인 글자가 중복되거나 깨질 수 있습니다.
+     *
+     * 입력 중에는 로컬 draft만 변경하고, 포커스를 잃을 때 한 번만
+     * React Query 캐시와 서버에 반영합니다.
+     */
+    setStickyDrafts((current) => ({
+      ...current,
+      [objectId]: content,
+    }));
+  }, []);
 
   const handleStickyContentBlur = useCallback(
-    (objectId: number) => {
+    (objectId: number, content: string) => {
+      composingStickyIdsRef.current.delete(objectId);
+
       const currentObjects =
         queryClient.getQueryData<WhiteboardObjectResponse[]>(whiteboardObjectsQueryKey) ?? [];
       const object = currentObjects.find((item) => item.id === objectId);
+
+      setStickyDrafts((current) => {
+        if (!(objectId in current)) {
+          return current;
+        }
+
+        const next = { ...current };
+        delete next[objectId];
+
+        return next;
+      });
 
       if (!object || !canEdit) {
         return;
       }
 
-      updateObjectMutation.mutate(object);
+      const updatedObject: WhiteboardObjectResponse = {
+        ...object,
+        content,
+      };
+
+      /*
+       * blur 직후 draft를 제거해도 화면 내용이 되돌아가지 않도록
+       * 캐시는 최종 문자열로 한 번만 동기화합니다.
+       */
+      updateObjectInCache(objectId, () => updatedObject);
+      updateObjectMutation.mutate(updatedObject);
     },
-    [canEdit, queryClient, updateObjectMutation, whiteboardObjectsQueryKey],
+    [canEdit, queryClient, updateObjectInCache, updateObjectMutation, whiteboardObjectsQueryKey],
   );
 
   const handleStickyDragStart = useCallback(
@@ -2983,7 +3015,7 @@ export default function WhiteboardPage() {
                             </button>
 
                             <textarea
-                              value={object.content ?? ""}
+                              value={stickyDrafts[object.id] ?? object.content ?? ""}
                               readOnly={!canEdit}
                               maxLength={10000}
                               placeholder={canEdit ? "메모를 입력하세요" : "내용 없음"}
@@ -3000,12 +3032,32 @@ export default function WhiteboardPage() {
                               onFocus={() => {
                                 setSelectedStrokeId(null);
                                 setSelectedObjectId(object.id);
+
+                                setStickyDrafts((current) => {
+                                  if (object.id in current) {
+                                    return current;
+                                  }
+
+                                  return {
+                                    ...current,
+                                    [object.id]: object.content ?? "",
+                                  };
+                                });
                               }}
                               onPointerDown={(event) => event.stopPropagation()}
+                              onCompositionStart={() => {
+                                composingStickyIdsRef.current.add(object.id);
+                              }}
+                              onCompositionEnd={(event) => {
+                                composingStickyIdsRef.current.delete(object.id);
+                                handleStickyContentChange(object.id, event.currentTarget.value);
+                              }}
                               onChange={(event) =>
                                 handleStickyContentChange(object.id, event.target.value)
                               }
-                              onBlur={() => handleStickyContentBlur(object.id)}
+                              onBlur={(event) =>
+                                handleStickyContentBlur(object.id, event.currentTarget.value)
+                              }
                             />
                           </div>
                         );
