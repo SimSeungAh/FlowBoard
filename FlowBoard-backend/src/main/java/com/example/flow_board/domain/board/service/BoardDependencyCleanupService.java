@@ -10,6 +10,7 @@ import com.example.flow_board.domain.card.entity.Tag;
 import com.example.flow_board.domain.card.repository.CardRepository;
 import com.example.flow_board.domain.card.repository.TagRepository;
 import com.example.flow_board.domain.card.service.CardDependencyCleanupService;
+import com.example.flow_board.domain.whiteboard.repository.WhiteboardRepository;
 import com.example.flow_board.domain.whiteboard.repository.WhiteboardStrokeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,8 @@ public class BoardDependencyCleanupService {
   private final TagRepository tagRepository;
 
   private final WhiteboardStrokeRepository whiteboardStrokeRepository;
+  private final WhiteboardRepository whiteboardRepository;
+
   private final ActivityLogRepository activityLogRepository;
 
   private final CardDependencyCleanupService cardDependencyCleanupService;
@@ -58,39 +61,39 @@ public class BoardDependencyCleanupService {
      * 각 컬럼의 카드를 조회하고
      * 카드에 연결된 자식 데이터부터 삭제합니다.
      */
-    for (BoardColumn column : columns) {
-
+    for (
+        BoardColumn column :
+        columns
+    ) {
       List<Card> cards =
           cardRepository
               .findByBoardColumnOrderByRankAsc(
                   column
               );
 
-      for (Card card : cards) {
+      for (
+          Card card :
+          cards
+      ) {
         cardDependencyCleanupService
             .deleteDependencies(
                 card
             );
       }
 
-      /*
-       * 모든 카드 자식 데이터가 제거된 후
-       * 카드를 삭제합니다.
-       */
       cardRepository.deleteAll(
           cards
       );
 
-      /*
-       * 컬럼 삭제 전에 카드 삭제를
-       * 실제 DB에 반영합니다.
-       */
       cardRepository.flush();
     }
 
     /*
      * 3.
-     * 화이트보드 선 삭제
+     * 화이트보드 Stroke 삭제
+     *
+     * whiteboards보다 먼저 지워야
+     * whiteboard_strokes.whiteboard_id FK가 안전합니다.
      */
     whiteboardStrokeRepository
         .deleteByBoard(
@@ -99,6 +102,15 @@ public class BoardDependencyCleanupService {
 
     /*
      * 4.
+     * 화이트보드 작업 공간 삭제
+     */
+    whiteboardRepository
+        .deleteByBoard(
+            board
+        );
+
+    /*
+     * 5.
      * 보드 태그 삭제
      *
      * CardTag는 위의 카드 정리 과정에서
@@ -115,7 +127,7 @@ public class BoardDependencyCleanupService {
     );
 
     /*
-     * 5.
+     * 6.
      * 활동 로그 삭제
      */
     activityLogRepository
@@ -124,7 +136,7 @@ public class BoardDependencyCleanupService {
         );
 
     /*
-     * 6.
+     * 7.
      * 보드 멤버 삭제
      */
     boardMemberRepository.deleteAll(
@@ -135,7 +147,7 @@ public class BoardDependencyCleanupService {
     );
 
     /*
-     * 7.
+     * 8.
      * 마지막으로 보드 컬럼 삭제
      */
     boardColumnRepository.deleteAll(
@@ -145,10 +157,6 @@ public class BoardDependencyCleanupService {
     /*
      * BoardService에서 board를 삭제하기 전에
      * 위의 모든 삭제 작업을 DB에 반영합니다.
-     *
-     * 하나의 EntityManager를 사용하므로
-     * 여기서 flush 하면 앞의 Repository 삭제도
-     * 함께 반영됩니다.
      */
     boardColumnRepository.flush();
   }

@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type CSSProperties,
-  type FormEvent,
-} from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -31,6 +25,7 @@ import {
   deleteBoardColumn,
   reorderBoardColumns,
   updateBoardColumn,
+  updateBoardColumnCompletion,
 } from "@/api/boardColumn";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -54,20 +49,15 @@ interface SortableColumnRowProps {
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: () => void;
+  onToggleCompletion: () => void;
   onDelete: () => void;
 }
 
-const getColumnSortableId = (columnId: number) =>
-  `workflow-column-${columnId}`;
+const getColumnSortableId = (columnId: number) => `workflow-column-${columnId}`;
 
 function DragHandleIcon() {
   return (
-    <svg
-      viewBox="0 0 20 20"
-      aria-hidden="true"
-      className="h-[18px] w-[18px]"
-      fill="currentColor"
-    >
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-[18px] w-[18px]" fill="currentColor">
       <circle cx="7" cy="5" r="1.15" />
       <circle cx="13" cy="5" r="1.15" />
       <circle cx="7" cy="10" r="1.15" />
@@ -117,6 +107,62 @@ function TrashIcon() {
   );
 }
 
+function CompletionIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="8" />
+      <path d="m8.5 12 2.2 2.2 4.8-5" />
+    </svg>
+  );
+}
+
+function CompletionSwitch({
+  checked,
+  disabled,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={`${label} 완료 단계 ${checked ? "해제" : "설정"}`}
+      disabled={disabled}
+      title={checked ? "완료 단계 해제" : "완료 단계로 설정"}
+      className={[
+        "relative h-6 w-11 shrink-0 rounded-full border transition-[background-color,border-color]",
+        checked
+          ? "border-[var(--flow-success)] bg-[var(--flow-success)]"
+          : "border-[var(--flow-border-strong)] bg-[var(--flow-gray-200)]",
+        "disabled:cursor-not-allowed disabled:opacity-45",
+      ].join(" ")}
+      onClick={onChange}
+    >
+      <span
+        className={[
+          "absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white shadow-sm transition-[left]",
+          checked ? "left-[22px]" : "left-[3px]",
+        ].join(" ")}
+      />
+    </button>
+  );
+}
+
 function SortableColumnRow({
   column,
   index,
@@ -127,6 +173,7 @@ function SortableColumnRow({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
+  onToggleCompletion,
   onDelete,
 }: SortableColumnRowProps) {
   const {
@@ -154,12 +201,15 @@ function SortableColumnRow({
       ref={setNodeRef}
       style={style}
       className={[
-        "flex min-h-[72px] items-center gap-3",
+        "flex min-h-[76px] items-center gap-3",
         "rounded-[var(--flow-radius-md)]",
-        "border border-[var(--flow-border)]",
-        "bg-white px-3.5 py-3",
+        "border bg-white px-3.5 py-3",
         "shadow-[var(--flow-shadow-xs)]",
-        isDragging ? "border-[var(--flow-primary-300)]" : "",
+        isDragging
+          ? "border-[var(--flow-primary-300)]"
+          : column.completionColumn
+            ? "border-[var(--flow-success)]/35"
+            : "border-[var(--flow-border)]",
       ].join(" ")}
     >
       <button
@@ -186,7 +236,7 @@ function SortableColumnRow({
               maxLength={50}
               autoFocus
               disabled={disabled}
-              className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 text-[13px] font-semibold text-[var(--flow-text)] outline-none transition-[border-color,box-shadow] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
+              className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 text-[13px] font-semibold text-[var(--flow-text)] transition-[border-color,box-shadow] outline-none focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
               onChange={(event) => onEditTitleChange(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
@@ -222,9 +272,19 @@ function SortableColumnRow({
           </div>
         ) : (
           <>
-            <p className="truncate text-[13px] font-bold text-[var(--flow-text)]">
-              {column.title}
-            </p>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <p className="truncate text-[13px] font-bold text-[var(--flow-text)]">
+                {column.title}
+              </p>
+
+              {column.completionColumn && (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--flow-success-soft)] px-2 py-0.5 text-[9px] font-bold text-[var(--flow-success-dark)]">
+                  <CompletionIcon />
+                  완료 단계
+                </span>
+              )}
+            </div>
+
             <p className="mt-1 text-[11px] text-[var(--flow-text-muted)]">
               워크플로우 {index + 1}단계
             </p>
@@ -233,7 +293,20 @@ function SortableColumnRow({
       </div>
 
       {!editing && (
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="mr-1 flex items-center gap-2 rounded-lg border border-[var(--flow-border)] bg-[var(--flow-gray-50)] px-2.5 py-1.5">
+            <span className="text-[10px] font-semibold whitespace-nowrap text-[var(--flow-text-muted)]">
+              완료 단계
+            </span>
+
+            <CompletionSwitch
+              checked={column.completionColumn}
+              disabled={disabled}
+              label={column.title}
+              onChange={onToggleCompletion}
+            />
+          </div>
+
           <button
             type="button"
             aria-label={`${column.title} 이름 변경`}
@@ -283,11 +356,14 @@ export default function ColumnSettingsModal({
     [columns],
   );
 
-  const [localColumns, setLocalColumns] =
-    useState<BoardColumnResponse[]>(orderedColumns);
+  const [localColumns, setLocalColumns] = useState<BoardColumnResponse[]>(orderedColumns);
+
   const [newTitle, setNewTitle] = useState("");
+
   const [editingColumnId, setEditingColumnId] = useState<number | null>(null);
+
   const [editTitle, setEditTitle] = useState("");
+
   const [deleteTarget, setDeleteTarget] = useState<BoardColumnResponse | null>(null);
 
   useEffect(() => {
@@ -303,9 +379,15 @@ export default function ColumnSettingsModal({
   }, [open, orderedColumns]);
 
   const refreshBoard = async () => {
-    await queryClient.invalidateQueries({
-      queryKey: ["boards", boardId],
-    });
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["boards", boardId],
+      }),
+
+      queryClient.invalidateQueries({
+        queryKey: ["board", boardId, "dashboard"],
+      }),
+    ]);
   };
 
   const createMutation = useMutation({
@@ -313,49 +395,76 @@ export default function ColumnSettingsModal({
       createBoardColumn(boardId, {
         title,
       }),
+
     onSuccess: async () => {
       setNewTitle("");
+
       await refreshBoard();
+
       toast.success("새 컬럼을 추가했습니다.");
     },
+
     onError: () => {
       toast.error("컬럼을 추가하지 못했습니다.");
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({
-      columnId,
-      title,
-    }: {
-      columnId: number;
-      title: string;
-    }) =>
+    mutationFn: ({ columnId, title }: { columnId: number; title: string }) =>
       updateBoardColumn(boardId, columnId, {
         title,
       }),
+
     onSuccess: async () => {
       setEditingColumnId(null);
       setEditTitle("");
+
       await refreshBoard();
+
       toast.success("컬럼 이름을 변경했습니다.");
     },
+
     onError: () => {
       toast.error("컬럼 이름을 변경하지 못했습니다.");
     },
   });
 
+  const completionMutation = useMutation({
+    mutationFn: ({ columnId, completionColumn }: { columnId: number; completionColumn: boolean }) =>
+      updateBoardColumnCompletion(boardId, columnId, completionColumn),
+
+    onSuccess: async (updatedColumn) => {
+      setLocalColumns((current) =>
+        current.map((column) => (column.id === updatedColumn.id ? updatedColumn : column)),
+      );
+
+      await refreshBoard();
+
+      toast.success(
+        updatedColumn.completionColumn
+          ? `"${updatedColumn.title}" 컬럼을 완료 단계로 설정했습니다.`
+          : `"${updatedColumn.title}" 컬럼의 완료 단계 설정을 해제했습니다.`,
+      );
+    },
+
+    onError: () => {
+      toast.error("완료 단계 설정을 변경하지 못했습니다.");
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (columnId: number) => deleteBoardColumn(boardId, columnId),
+
     onSuccess: async () => {
       setDeleteTarget(null);
+
       await refreshBoard();
+
       toast.success("컬럼을 삭제했습니다.");
     },
+
     onError: () => {
-      toast.error(
-        "컬럼을 삭제하지 못했습니다. 작업이 남아 있거나 마지막 컬럼인지 확인해주세요.",
-      );
+      toast.error("컬럼을 삭제하지 못했습니다. 작업이 남아 있거나 마지막 컬럼인지 확인해주세요.");
     },
   });
 
@@ -364,10 +473,13 @@ export default function ColumnSettingsModal({
       reorderBoardColumns(boardId, {
         columnIds,
       }),
+
     onSuccess: async () => {
       await refreshBoard();
+
       toast.success("컬럼 순서를 변경했습니다.");
     },
+
     onError: () => {
       toast.error("컬럼 순서를 저장하지 못했습니다.");
     },
@@ -376,6 +488,7 @@ export default function ColumnSettingsModal({
   const isBusy =
     createMutation.isPending ||
     updateMutation.isPending ||
+    completionMutation.isPending ||
     deleteMutation.isPending ||
     reorderMutation.isPending;
 
@@ -417,12 +530,24 @@ export default function ColumnSettingsModal({
     if (current?.title === title) {
       setEditingColumnId(null);
       setEditTitle("");
+
       return;
     }
 
     updateMutation.mutate({
       columnId: editingColumnId,
       title,
+    });
+  };
+
+  const handleToggleCompletion = (column: BoardColumnResponse) => {
+    if (isBusy) {
+      return;
+    }
+
+    completionMutation.mutate({
+      columnId: column.id,
+      completionColumn: !column.completionColumn,
     });
   };
 
@@ -440,21 +565,19 @@ export default function ColumnSettingsModal({
     const oldIndex = localColumns.findIndex(
       (column) => getColumnSortableId(column.id) === active.id,
     );
-    const newIndex = localColumns.findIndex(
-      (column) => getColumnSortableId(column.id) === over.id,
-    );
+
+    const newIndex = localColumns.findIndex((column) => getColumnSortableId(column.id) === over.id);
 
     if (oldIndex < 0 || newIndex < 0) {
       return;
     }
 
     const previousColumns = localColumns;
-    const nextColumns = arrayMove(localColumns, oldIndex, newIndex).map(
-      (column, index) => ({
-        ...column,
-        position: index,
-      }),
-    );
+
+    const nextColumns = arrayMove(localColumns, oldIndex, newIndex).map((column, index) => ({
+      ...column,
+      position: index,
+    }));
 
     setLocalColumns(nextColumns);
 
@@ -476,6 +599,8 @@ export default function ColumnSettingsModal({
     onClose();
   };
 
+  const completionColumnCount = localColumns.filter((column) => column.completionColumn).length;
+
   return (
     <>
       <Modal
@@ -491,27 +616,46 @@ export default function ColumnSettingsModal({
             <p className="text-[13px] font-semibold text-[var(--flow-text-secondary)]">
               컬럼이 개발 흐름의 단계가 됩니다.
             </p>
+
             <p className="mt-1 text-[11px] leading-5 text-[var(--flow-text-muted)]">
-              기획 → 디자인 → 개발 → QA → 배포처럼 자유롭게 구성할 수 있습니다.
-              왼쪽 드래그 핸들을 잡아 순서를 바꾸세요.
+              기획 → 디자인 → 개발 → QA → 배포처럼 자유롭게 구성할 수 있습니다. 왼쪽 드래그 핸들을
+              잡아 순서를 바꾸고, 실제로 작업이 끝나는 컬럼은 완료 단계로 지정하세요.
             </p>
+          </div>
+
+          <div className="mt-4 flex items-start justify-between gap-4 rounded-[var(--flow-radius-md)] border border-[var(--flow-success)]/25 bg-[var(--flow-success-soft)] px-4 py-3.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-[11px] font-bold text-[var(--flow-success-dark)]">
+                <CompletionIcon />
+                완료 단계 기준
+              </div>
+
+              <p className="mt-1 text-[10px] leading-5 text-[var(--flow-success-dark)]/80">
+                완료율, 마감 지연 제외, 이후 번다운 차트와 누적 흐름도 계산에 사용됩니다. 여러
+                컬럼을 완료 단계로 지정할 수 있습니다.
+              </p>
+            </div>
+
+            <span className="shrink-0 rounded-full bg-white/80 px-2.5 py-1 text-[9px] font-bold text-[var(--flow-success-dark)]">
+              현재 {completionColumnCount}개
+            </span>
           </div>
 
           <div className="mt-6">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h3 className="text-[14px] font-bold text-[var(--flow-text)]">
-                  현재 컬럼
-                </h3>
+                <h3 className="text-[14px] font-bold text-[var(--flow-text)]">현재 컬럼</h3>
+
                 <p className="mt-1 text-[11px] text-[var(--flow-text-muted)]">
                   총 {localColumns.length}개
                 </p>
               </div>
 
-              {reorderMutation.isPending && (
+              {(reorderMutation.isPending || completionMutation.isPending) && (
                 <span className="inline-flex items-center gap-2 text-[11px] font-semibold text-[var(--flow-primary)]">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--flow-primary)]" />
-                  순서 저장 중
+
+                  {completionMutation.isPending ? "설정 저장 중" : "순서 저장 중"}
                 </span>
               )}
             </div>
@@ -541,6 +685,7 @@ export default function ColumnSettingsModal({
                         setEditTitle("");
                       }}
                       onSaveEdit={saveEdit}
+                      onToggleCompletion={() => handleToggleCompletion(column)}
                       onDelete={() => setDeleteTarget(column)}
                     />
                   ))}
@@ -550,9 +695,8 @@ export default function ColumnSettingsModal({
           </div>
 
           <div className="mt-7 border-t border-[var(--flow-border)] pt-6">
-            <h3 className="text-[14px] font-bold text-[var(--flow-text)]">
-              새 컬럼 추가
-            </h3>
+            <h3 className="text-[14px] font-bold text-[var(--flow-text)]">새 컬럼 추가</h3>
+
             <p className="mt-1 text-[11px] leading-5 text-[var(--flow-text-muted)]">
               새 컬럼은 현재 워크플로우의 마지막 단계에 추가됩니다.
             </p>
@@ -563,7 +707,7 @@ export default function ColumnSettingsModal({
                   label="컬럼 이름"
                   value={newTitle}
                   maxLength={50}
-                  placeholder="예: 코드 리뷰, QA, 배포"
+                  placeholder="예: 코드 리뷰, QA, 배포, 완료"
                   helperText={`${newTitle.length}/50`}
                   disabled={isBusy}
                   onChange={(event) => setNewTitle(event.target.value)}
@@ -585,9 +729,10 @@ export default function ColumnSettingsModal({
             <p className="text-[11px] font-semibold text-[var(--flow-text-secondary)]">
               삭제 안전장치
             </p>
+
             <p className="mt-1 text-[11px] leading-5 text-[var(--flow-text-muted)]">
-              작업이 들어 있는 컬럼은 삭제할 수 없습니다. 먼저 작업을 다른 컬럼으로
-              이동해주세요. 보드에는 최소 1개의 컬럼이 유지됩니다.
+              작업이 들어 있는 컬럼은 삭제할 수 없습니다. 먼저 작업을 다른 컬럼으로 이동해주세요.
+              보드에는 최소 1개의 컬럼이 유지됩니다.
             </p>
           </div>
 
@@ -604,7 +749,7 @@ export default function ColumnSettingsModal({
         title="컬럼 삭제"
         description={
           deleteTarget
-            ? `\"${deleteTarget.title}\" 컬럼을 삭제할까요? 작업이 들어 있는 컬럼은 삭제되지 않습니다.`
+            ? `"${deleteTarget.title}" 컬럼을 삭제할까요? 작업이 들어 있는 컬럼은 삭제되지 않습니다.`
             : undefined
         }
         confirmText="컬럼 삭제"

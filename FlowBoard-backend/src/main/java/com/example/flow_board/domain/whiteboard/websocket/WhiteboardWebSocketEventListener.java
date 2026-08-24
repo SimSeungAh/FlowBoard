@@ -12,18 +12,28 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class WhiteboardWebSocketEventListener {
 
-  private static final String WHITEBOARD_TOPIC_PREFIX =
+  private static final String BOARD_TOPIC_PREFIX =
       "/topic/boards/";
 
-  private static final String WHITEBOARD_TOPIC_SUFFIX =
+  private static final String LEGACY_WHITEBOARD_SUFFIX =
       "/whiteboard";
+
+  private static final String WORKSPACE_WHITEBOARD_PREFIX =
+      "/whiteboards/";
 
   private final SimpMessagingTemplate messagingTemplate;
 
   /**
-   * 화이트보드 DB 작업이 정상 커밋된 후
-   * 해당 보드를 구독하고 있는 사용자에게
-   * WebSocket 이벤트를 전달합니다.
+   * DB 작업이 정상 커밋된 후에만
+   * WebSocket 이벤트를 전송합니다.
+   *
+   * 기존 이벤트:
+   *
+   * /topic/boards/{boardId}/whiteboard
+   *
+   * 신규 이벤트:
+   *
+   * /topic/boards/{boardId}/whiteboards/{whiteboardId}
    */
   @TransactionalEventListener(
       phase = TransactionPhase.AFTER_COMMIT
@@ -32,9 +42,9 @@ public class WhiteboardWebSocketEventListener {
       WhiteboardWebSocketEvent event
   ) {
     String destination =
-        WHITEBOARD_TOPIC_PREFIX
-            + event.boardId()
-            + WHITEBOARD_TOPIC_SUFFIX;
+        resolveDestination(
+            event
+        );
 
     try {
       messagingTemplate.convertAndSend(
@@ -43,28 +53,57 @@ public class WhiteboardWebSocketEventListener {
       );
 
       log.debug(
-          "화이트보드 WebSocket 이벤트 전송 성공: type={}, boardId={}, strokeId={}",
+          "화이트보드 WebSocket 이벤트 전송 성공: type={}, boardId={}, whiteboardId={}, strokeId={}, destination={}",
           event.type(),
           event.boardId(),
-          event.strokeId()
+          event.whiteboardId(),
+          event.strokeId(),
+          destination
       );
 
-    } catch (RuntimeException exception) {
-
+    } catch (
+        RuntimeException exception
+    ) {
       /*
-       * DB 트랜잭션은 이미 정상적으로
-       * 커밋된 상태입니다.
+       * DB 트랜잭션은 이미 정상 커밋된 상태입니다.
        *
-       * WebSocket 전송 실패가 REST 요청 실패로
-       * 이어지지 않도록 로그만 남깁니다.
+       * WebSocket 전송 실패 때문에
+       * 이미 저장된 REST 요청까지 실패한 것으로
+       * 처리하지 않습니다.
        */
       log.error(
-          "화이트보드 WebSocket 이벤트 전송 실패: type={}, boardId={}, strokeId={}",
+          "화이트보드 WebSocket 이벤트 전송 실패: type={}, boardId={}, whiteboardId={}, strokeId={}, destination={}",
           event.type(),
           event.boardId(),
+          event.whiteboardId(),
           event.strokeId(),
+          destination,
           exception
       );
     }
+  }
+
+  private String resolveDestination(
+      WhiteboardWebSocketEvent event
+  ) {
+    /*
+     * whiteboardId가 없는 이벤트는
+     * 아직 기존 프론트에서 발생한 요청입니다.
+     */
+    if (
+        event.whiteboardId() == null
+    ) {
+      return BOARD_TOPIC_PREFIX
+          + event.boardId()
+          + LEGACY_WHITEBOARD_SUFFIX;
+    }
+
+    /*
+     * 다중 화이트보드 신규 채널
+     */
+    return BOARD_TOPIC_PREFIX
+        + event.boardId()
+        + WORKSPACE_WHITEBOARD_PREFIX
+        + event.whiteboardId();
   }
 }

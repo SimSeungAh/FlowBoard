@@ -1,13 +1,18 @@
 import type { ReactNode } from "react";
+
 import { useQuery } from "@tanstack/react-query";
+
 import { Link, NavLink } from "react-router";
 
 import { getMyBoards } from "@/api/board";
+
 import { cn } from "@/utils/cn";
 
 type IconType =
   | "boards"
+  | "dashboard"
   | "kanban"
+  | "schedule"
   | "search"
   | "testcase"
   | "security"
@@ -18,8 +23,11 @@ type IconType =
 
 interface NavigationItem {
   label: string;
+
   path: string;
+
   icon: IconType;
+
   end?: boolean;
 }
 
@@ -32,10 +40,15 @@ const projectDotColors = ["#2563eb", "#f97316", "#8b5cf6", "#10b981", "#ec4899"]
 function SidebarIcon({ type }: { type: IconType }) {
   const commonProps = {
     viewBox: "0 0 24 24",
+
     fill: "none",
+
     stroke: "currentColor",
+
     strokeWidth: 1.8,
+
     strokeLinecap: "round" as const,
+
     strokeLinejoin: "round" as const,
   };
 
@@ -57,6 +70,21 @@ function SidebarIcon({ type }: { type: IconType }) {
 
       break;
 
+    case "dashboard":
+      content = (
+        <>
+          <rect x="4" y="4" width="7" height="6" rx="1.5" />
+
+          <rect x="13" y="4" width="7" height="10" rx="1.5" />
+
+          <rect x="4" y="12" width="7" height="8" rx="1.5" />
+
+          <rect x="13" y="16" width="7" height="4" rx="1.5" />
+        </>
+      );
+
+      break;
+
     case "kanban":
       content = (
         <>
@@ -65,6 +93,25 @@ function SidebarIcon({ type }: { type: IconType }) {
           <rect x="9.5" y="4" width="5" height="11" rx="1.5" />
 
           <rect x="15.5" y="4" width="5" height="14" rx="1.5" />
+        </>
+      );
+
+      break;
+
+    case "schedule":
+      content = (
+        <>
+          <rect x="4" y="5" width="16" height="15" rx="2" />
+
+          <path d="M8 3v4" />
+
+          <path d="M16 3v4" />
+
+          <path d="M4 10h16" />
+
+          <path d="M8 14h3" />
+
+          <path d="M14 14h2" />
         </>
       );
 
@@ -143,19 +190,9 @@ function SidebarIcon({ type }: { type: IconType }) {
     case "settings":
       content = (
         <>
-          <circle cx="12" cy="12" r="3.2" />
+          <circle cx="12" cy="12" r="3" />
 
-          <path d="M12 3.5v2" />
-          <path d="M12 18.5v2" />
-
-          <path d="M3.5 12h2" />
-          <path d="M18.5 12h2" />
-
-          <path d="m6 6 1.4 1.4" />
-          <path d="m16.6 16.6 1.4 1.4" />
-
-          <path d="m18 6-1.4 1.4" />
-          <path d="m7.4 16.6-1.4 1.4" />
+          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.1h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1Z" />
         </>
       );
 
@@ -174,27 +211,14 @@ function NavigationLink({ item }: { item: NavigationItem }) {
     <NavLink
       to={item.path}
       end={item.end}
+      title={item.label}
       className={({ isActive }) =>
         cn(
-          [
-            "group",
-            "flex min-h-10",
-            "items-center",
-            "gap-3",
-            "rounded-[10px]",
-            "px-3 py-2",
-            "text-[13px]",
-            "font-semibold",
-            "transition-colors",
-          ].join(" "),
+          "group flex min-h-10 items-center gap-3 rounded-[10px] px-3 py-2 text-[13px] font-semibold transition-colors",
 
           isActive
-            ? ["bg-[var(--flow-primary-50)]", "text-[var(--flow-primary)]"].join(" ")
-            : [
-                "text-[var(--flow-text-secondary)]",
-                "hover:bg-[var(--flow-gray-100)]",
-                "hover:text-[var(--flow-text)]",
-              ].join(" "),
+            ? "bg-[var(--flow-primary-50)] text-[var(--flow-primary)]"
+            : "text-[var(--flow-text-secondary)] hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-text)]",
         )
       }
     >
@@ -219,21 +243,40 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
   const navigationItems: NavigationItem[] = [
     {
       label: "내 보드",
+
       path: "/boards",
+
       icon: "boards",
+
       end: true,
     },
 
     ...(boardId
       ? [
           {
-            label: "칸반 보드",
+            label: "대시보드",
 
             path: `/boards/${boardId}`,
 
-            icon: "kanban" as const,
+            icon: "dashboard" as const,
 
             end: true,
+          },
+
+          {
+            label: "일정",
+
+            path: `/boards/${boardId}/schedule`,
+
+            icon: "schedule" as const,
+          },
+
+          {
+            label: "칸반 보드",
+
+            path: `/boards/${boardId}/kanban`,
+
+            icon: "kanban" as const,
           },
 
           {
@@ -288,13 +331,20 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
 
     {
       label: "설정",
+
       path: "/mypage",
+
       icon: "settings",
+
       end: true,
     },
   ];
 
-  const recentBoards = boards.slice(0, 5);
+  const activeBoard = boardId ? boards.find((board) => board.id === boardId) : undefined;
+
+  const otherBoards = boards.filter((board) => board.id !== boardId);
+
+  const recentBoards = activeBoard ? [activeBoard, ...otherBoards].slice(0, 5) : boards.slice(0, 5);
 
   return (
     <aside className="sticky top-[var(--flow-header-height)] h-[calc(100vh-var(--flow-header-height))] w-[var(--flow-sidebar-width)] shrink-0 border-r border-[var(--flow-border)] bg-white">
@@ -316,16 +366,8 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
             <Link
               to="/boards"
               aria-label="보드 목록 열기"
-              className={[
-                "flex",
-                "h-7 w-7",
-                "items-center justify-center",
-                "rounded-lg",
-                "text-[var(--flow-text-placeholder)]",
-                "transition-colors",
-                "hover:bg-[var(--flow-gray-100)]",
-                "hover:text-[var(--flow-primary)]",
-              ].join(" ")}
+              title="보드 목록"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--flow-text-placeholder)] transition-colors hover:bg-[var(--flow-gray-100)] hover:text-[var(--flow-primary)]"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -337,6 +379,7 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
                 strokeLinecap="round"
               >
                 <path d="M12 5v14" />
+
                 <path d="M5 12h14" />
               </svg>
             </Link>
@@ -352,26 +395,11 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
                     key={board.id}
                     to={`/boards/${board.id}`}
                     className={cn(
-                      [
-                        "group",
-                        "flex",
-                        "min-h-9",
-                        "items-center",
-                        "gap-3",
-                        "rounded-[10px]",
-                        "px-3 py-2",
-                        "text-[12px]",
-                        "font-medium",
-                        "transition-colors",
-                      ].join(" "),
+                      "group flex min-h-9 items-center gap-3 rounded-[10px] px-3 py-2 text-[12px] font-medium transition-colors",
 
                       active
-                        ? ["bg-[var(--flow-gray-100)]", "text-[var(--flow-text)]"].join(" ")
-                        : [
-                            "text-[var(--flow-text-muted)]",
-                            "hover:bg-[var(--flow-gray-50)]",
-                            "hover:text-[var(--flow-text)]",
-                          ].join(" "),
+                        ? "bg-[var(--flow-gray-100)] text-[var(--flow-text)]"
+                        : "text-[var(--flow-text-muted)] hover:bg-[var(--flow-gray-50)] hover:text-[var(--flow-text)]",
                     )}
                     title={board.title}
                   >
@@ -418,7 +446,9 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
                 strokeLinejoin="round"
               >
                 <path d="M6 18V9" />
+
                 <path d="M12 18V5" />
+
                 <path d="M18 18v-6" />
               </svg>
             </span>

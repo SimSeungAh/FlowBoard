@@ -1,4 +1,5 @@
 import { api } from "@/api/axios";
+import type { CardResponse } from "@/api/card";
 import type { CardAssigneeResponse } from "@/api/cardAssignee";
 import type { TagResponse } from "@/api/tag";
 
@@ -94,6 +95,8 @@ export const getSecurityReviewSummary = async (
 export const updateSecurityReview = async (
   cardId: number,
   data: SecurityReviewUpdateRequest,
-): Promise<void> => {
-  await api.patch(`/cards/${cardId}/security-review`, data);
+): Promise<CardResponse> => {
+  const response = await api.patch(`/cards/${cardId}/security-review`, data);
+
+  return response.data.data;
 };

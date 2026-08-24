@@ -9,7 +9,9 @@ import com.example.flow_board.domain.user.entity.User;
 import com.example.flow_board.domain.whiteboard.dto.WhiteboardPoint;
 import com.example.flow_board.domain.whiteboard.dto.request.WhiteboardStrokeCreateRequest;
 import com.example.flow_board.domain.whiteboard.dto.response.WhiteboardStrokeResponse;
+import com.example.flow_board.domain.whiteboard.entity.Whiteboard;
 import com.example.flow_board.domain.whiteboard.entity.WhiteboardStroke;
+import com.example.flow_board.domain.whiteboard.repository.WhiteboardRepository;
 import com.example.flow_board.domain.whiteboard.repository.WhiteboardStrokeRepository;
 import com.example.flow_board.domain.whiteboard.websocket.WhiteboardEventPublisher;
 import com.example.flow_board.domain.whiteboard.websocket.WhiteboardWebSocketEvent;
@@ -29,23 +31,44 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class WhiteboardService {
 
+  private static final String DEFAULT_WHITEBOARD_TITLE =
+      "기본 화이트보드";
+
   private static final TypeReference<List<WhiteboardPoint>>
       WHITEBOARD_POINT_LIST_TYPE =
       new TypeReference<>() {
       };
 
   private final BoardRepository boardRepository;
+
   private final BoardPermissionService boardPermissionService;
+
+  private final WhiteboardRepository whiteboardRepository;
+
   private final WhiteboardStrokeRepository whiteboardStrokeRepository;
+
   private final WhiteboardEventPublisher whiteboardEventPublisher;
+
   private final ActivityLogService activityLogService;
+
   private final JsonMapper jsonMapper;
 
   /**
-   * 화이트보드 선 저장
+   * ============================================================
+   * 기존 단일 화이트보드 API
+   * ============================================================
    *
-   * OWNER와 MEMBER만 가능합니다.
+   * 기존 프론트:
+   *
+   * /boards/{boardId}/whiteboard/strokes
+   *
+   * 기존 WebSocket:
+   *
+   * /topic/boards/{boardId}/whiteboard
+   *
+   * 를 그대로 사용할 수 있도록 유지합니다.
    */
+
   @Transactional
   public WhiteboardStrokeResponse createStroke(
       User user,
@@ -53,13 +76,432 @@ public class WhiteboardService {
       WhiteboardStrokeCreateRequest request
   ) {
     Board board =
-        getBoardById(boardId);
+        getBoardById(
+            boardId
+        );
 
-    boardPermissionService.validateWritePermission(
+    boardPermissionService
+        .validateWritePermission(
+            board,
+            user
+        );
+
+    Whiteboard whiteboard =
+        getOrCreateDefaultWhiteboard(
+            board
+        );
+
+    migrateLegacyStrokes(
         board,
-        user
+        whiteboard
     );
 
+    return createStrokeInternal(
+        board,
+        whiteboard,
+        user,
+        request,
+        null
+    );
+  }
+
+  @Transactional
+  public List<WhiteboardStrokeResponse> getStrokes(
+      User user,
+      Long boardId
+  ) {
+    Board board =
+        getBoardById(
+            boardId
+        );
+
+    boardPermissionService
+        .validateReadPermission(
+            board,
+            user
+        );
+
+    Whiteboard whiteboard =
+        getOrCreateDefaultWhiteboard(
+            board
+        );
+
+    migrateLegacyStrokes(
+        board,
+        whiteboard
+    );
+
+    return getStrokeResponses(
+        whiteboard
+    );
+  }
+
+  @Transactional
+  public void deleteStroke(
+      User user,
+      Long boardId,
+      Long strokeId
+  ) {
+    Board board =
+        getBoardById(
+            boardId
+        );
+
+    boardPermissionService
+        .validateWritePermission(
+            board,
+            user
+        );
+
+    Whiteboard defaultWhiteboard =
+        getOrCreateDefaultWhiteboard(
+            board
+        );
+
+    migrateLegacyStrokes(
+        board,
+        defaultWhiteboard
+    );
+
+    WhiteboardStroke stroke =
+        whiteboardStrokeRepository
+            .findById(
+                strokeId
+            )
+            .orElseThrow(
+                () ->
+                    new CustomException(
+                        ErrorCode.WHITEBOARD_STROKE_NOT_FOUND
+                    )
+            );
+
+    if (
+        !stroke
+            .getBoard()
+            .getId()
+            .equals(
+                board.getId()
+            )
+    ) {
+      throw new CustomException(
+          ErrorCode.WHITEBOARD_STROKE_NOT_FOUND
+      );
+    }
+
+    whiteboardStrokeRepository
+        .delete(
+            stroke
+        );
+
+    /*
+     * 기존 API 호출이므로
+     * 기존 board 단위 WebSocket 채널로 보냅니다.
+     */
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.strokeDeleted(
+            board.getId(),
+            strokeId
+        )
+    );
+  }
+
+  @Transactional
+  public void clearWhiteboard(
+      User user,
+      Long boardId
+  ) {
+    Board board =
+        getBoardById(
+            boardId
+        );
+
+    boardPermissionService
+        .validateWritePermission(
+            board,
+            user
+        );
+
+    Whiteboard whiteboard =
+        getOrCreateDefaultWhiteboard(
+            board
+        );
+
+    migrateLegacyStrokes(
+        board,
+        whiteboard
+    );
+
+    whiteboardStrokeRepository
+        .deleteByWhiteboard(
+            whiteboard
+        );
+
+    activityLogService
+        .recordActivity(
+            board,
+            user,
+            ActivityType.WHITEBOARD_CLEARED,
+            whiteboard.getId(),
+            whiteboard.getTitle(),
+            user.getNickname()
+                + "님이 '"
+                + whiteboard.getTitle()
+                + "' 화이트보드를 전체 삭제했습니다."
+        );
+
+    /*
+     * 기존 API 호출이므로
+     * 기존 board 단위 WebSocket 채널로 보냅니다.
+     */
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.cleared(
+            board.getId()
+        )
+    );
+  }
+
+  /**
+   * ============================================================
+   * 신규 다중 화이트보드 API
+   * ============================================================
+   *
+   * REST:
+   *
+   * /boards/{boardId}/whiteboards/{whiteboardId}/strokes
+   *
+   * WebSocket:
+   *
+   * /topic/boards/{boardId}/whiteboards/{whiteboardId}
+   */
+
+  @Transactional
+  public WhiteboardStrokeResponse createStroke(
+      User user,
+      Long boardId,
+      Long whiteboardId,
+      WhiteboardStrokeCreateRequest request
+  ) {
+    Board board =
+        getBoardById(
+            boardId
+        );
+
+    boardPermissionService
+        .validateWritePermission(
+            board,
+            user
+        );
+
+    Whiteboard defaultWhiteboard =
+        getOrCreateDefaultWhiteboard(
+            board
+        );
+
+    /*
+     * 과거 Stroke는 기본 화이트보드에만 이전합니다.
+     */
+    migrateLegacyStrokes(
+        board,
+        defaultWhiteboard
+    );
+
+    Whiteboard whiteboard =
+        getWhiteboardInBoard(
+            board,
+            whiteboardId
+        );
+
+    return createStrokeInternal(
+        board,
+        whiteboard,
+        user,
+        request,
+        whiteboard.getId()
+    );
+  }
+
+  @Transactional
+  public List<WhiteboardStrokeResponse> getStrokes(
+      User user,
+      Long boardId,
+      Long whiteboardId
+  ) {
+    Board board =
+        getBoardById(
+            boardId
+        );
+
+    boardPermissionService
+        .validateReadPermission(
+            board,
+            user
+        );
+
+    Whiteboard defaultWhiteboard =
+        getOrCreateDefaultWhiteboard(
+            board
+        );
+
+    migrateLegacyStrokes(
+        board,
+        defaultWhiteboard
+    );
+
+    Whiteboard whiteboard =
+        getWhiteboardInBoard(
+            board,
+            whiteboardId
+        );
+
+    return getStrokeResponses(
+        whiteboard
+    );
+  }
+
+  @Transactional
+  public void deleteStroke(
+      User user,
+      Long boardId,
+      Long whiteboardId,
+      Long strokeId
+  ) {
+    Board board =
+        getBoardById(
+            boardId
+        );
+
+    boardPermissionService
+        .validateWritePermission(
+            board,
+            user
+        );
+
+    Whiteboard defaultWhiteboard =
+        getOrCreateDefaultWhiteboard(
+            board
+        );
+
+    migrateLegacyStrokes(
+        board,
+        defaultWhiteboard
+    );
+
+    Whiteboard whiteboard =
+        getWhiteboardInBoard(
+            board,
+            whiteboardId
+        );
+
+    WhiteboardStroke stroke =
+        whiteboardStrokeRepository
+            .findByIdAndWhiteboard(
+                strokeId,
+                whiteboard
+            )
+            .orElseThrow(
+                () ->
+                    new CustomException(
+                        ErrorCode.WHITEBOARD_STROKE_NOT_FOUND
+                    )
+            );
+
+    whiteboardStrokeRepository
+        .delete(
+            stroke
+        );
+
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.strokeDeleted(
+            board.getId(),
+            whiteboard.getId(),
+            strokeId
+        )
+    );
+  }
+
+  @Transactional
+  public void clearWhiteboard(
+      User user,
+      Long boardId,
+      Long whiteboardId
+  ) {
+    Board board =
+        getBoardById(
+            boardId
+        );
+
+    boardPermissionService
+        .validateWritePermission(
+            board,
+            user
+        );
+
+    Whiteboard defaultWhiteboard =
+        getOrCreateDefaultWhiteboard(
+            board
+        );
+
+    migrateLegacyStrokes(
+        board,
+        defaultWhiteboard
+    );
+
+    Whiteboard whiteboard =
+        getWhiteboardInBoard(
+            board,
+            whiteboardId
+        );
+
+    whiteboardStrokeRepository
+        .deleteByWhiteboard(
+            whiteboard
+        );
+
+    activityLogService
+        .recordActivity(
+            board,
+            user,
+            ActivityType.WHITEBOARD_CLEARED,
+            whiteboard.getId(),
+            whiteboard.getTitle(),
+            user.getNickname()
+                + "님이 '"
+                + whiteboard.getTitle()
+                + "' 화이트보드를 전체 삭제했습니다."
+        );
+
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.cleared(
+            board.getId(),
+            whiteboard.getId()
+        )
+    );
+  }
+
+  /**
+   * 실제 Stroke 저장 공통 로직입니다.
+   *
+   * eventWhiteboardId == null
+   * → 기존 단일 화이트보드 WebSocket 채널
+   *
+   * eventWhiteboardId != null
+   * → 신규 whiteboardId별 WebSocket 채널
+   */
+  private WhiteboardStrokeResponse createStrokeInternal(
+      Board board,
+      Whiteboard whiteboard,
+      User user,
+      WhiteboardStrokeCreateRequest request,
+      Long eventWhiteboardId
+  ) {
+    /*
+     * 현재 DB에는 기존
+     *
+     * board_id + client_stroke_id
+     *
+     * unique constraint가 남아 있으므로
+     * 마이그레이션 중에는 board 단위 중복 검사도 유지합니다.
+     */
     boolean alreadyExists =
         whiteboardStrokeRepository
             .existsByBoardAndClientStrokeId(
@@ -67,7 +509,9 @@ public class WhiteboardService {
                 request.clientStrokeId()
             );
 
-    if (alreadyExists) {
+    if (
+        alreadyExists
+    ) {
       throw new CustomException(
           ErrorCode.WHITEBOARD_STROKE_ALREADY_EXISTS
       );
@@ -80,7 +524,7 @@ public class WhiteboardService {
 
     WhiteboardStroke whiteboardStroke =
         new WhiteboardStroke(
-            board,
+            whiteboard,
             user,
             request.clientStrokeId(),
             request.tool(),
@@ -90,9 +534,10 @@ public class WhiteboardService {
         );
 
     WhiteboardStroke savedStroke =
-        whiteboardStrokeRepository.save(
-            whiteboardStroke
-        );
+        whiteboardStrokeRepository
+            .save(
+                whiteboardStroke
+            );
 
     WhiteboardStrokeResponse response =
         WhiteboardStrokeResponse.from(
@@ -100,10 +545,6 @@ public class WhiteboardService {
             request.points()
         );
 
-    /**
-     * 같은 사용자가 같은 보드에서 계속 작업할 경우
-     * 5분에 최대 하나의 화이트보드 활동 로그만 남깁니다.
-     */
     activityLogService
         .recordWhiteboardActivityIfNeeded(
             board,
@@ -111,40 +552,34 @@ public class WhiteboardService {
             savedStroke.getId()
         );
 
-    /**
-     * DB 트랜잭션 정상 커밋 후
-     * WebSocket으로 선 생성 이벤트가 전달됩니다.
-     */
-    whiteboardEventPublisher.publish(
-        WhiteboardWebSocketEvent.strokeCreated(
-            board.getId(),
-            response
-        )
-    );
+    if (
+        eventWhiteboardId == null
+    ) {
+      whiteboardEventPublisher.publish(
+          WhiteboardWebSocketEvent.strokeCreated(
+              board.getId(),
+              response
+          )
+      );
+    } else {
+      whiteboardEventPublisher.publish(
+          WhiteboardWebSocketEvent.strokeCreated(
+              board.getId(),
+              eventWhiteboardId,
+              response
+          )
+      );
+    }
 
     return response;
   }
 
-  /**
-   * 화이트보드 선 전체 조회
-   *
-   * OWNER, MEMBER, VIEWER 모두 가능합니다.
-   */
-  public List<WhiteboardStrokeResponse> getStrokes(
-      User user,
-      Long boardId
+  private List<WhiteboardStrokeResponse> getStrokeResponses(
+      Whiteboard whiteboard
   ) {
-    Board board =
-        getBoardById(boardId);
-
-    boardPermissionService.validateReadPermission(
-        board,
-        user
-    );
-
     return whiteboardStrokeRepository
-        .findByBoardOrderByIdAsc(
-            board
+        .findByWhiteboardOrderByIdAsc(
+            whiteboard
         )
         .stream()
         .map(
@@ -160,143 +595,115 @@ public class WhiteboardService {
   }
 
   /**
-   * 화이트보드 개별 선 삭제
+   * 기존 단일 화이트보드 Stroke를
+   * 기본 Whiteboard workspace로 자동 이전합니다.
    *
-   * OWNER와 MEMBER만 가능합니다.
-   *
-   * Undo 또는 선 단위 지우기에서 사용합니다.
+   * 별도의 수동 SQL 없이 기존 그림을 보존합니다.
    */
-  @Transactional
-  public void deleteStroke(
-      User user,
-      Long boardId,
-      Long strokeId
+  private void migrateLegacyStrokes(
+      Board board,
+      Whiteboard defaultWhiteboard
   ) {
-    Board board =
-        getBoardById(boardId);
-
-    boardPermissionService.validateWritePermission(
-        board,
-        user
-    );
-
-    WhiteboardStroke stroke =
+    List<WhiteboardStroke> legacyStrokes =
         whiteboardStrokeRepository
-            .findById(strokeId)
-            .orElseThrow(
-                () -> new CustomException(
-                    ErrorCode.WHITEBOARD_STROKE_NOT_FOUND
-                )
+            .findByBoardAndWhiteboardIsNullOrderByIdAsc(
+                board
             );
 
-    /*
-     * URL의 boardId와 실제 Stroke의 보드가
-     * 반드시 일치해야 합니다.
-     *
-     * 이를 검사하지 않으면
-     * 다른 보드의 strokeId를 이용해
-     * 잘못된 선을 삭제할 수 있습니다.
-     */
-    if (
-        !stroke.getBoard()
-            .getId()
-            .equals(board.getId())
+    for (
+        WhiteboardStroke stroke :
+        legacyStrokes
     ) {
-      throw new CustomException(
-          ErrorCode.WHITEBOARD_STROKE_NOT_FOUND
+      stroke.assignWhiteboard(
+          defaultWhiteboard
       );
     }
-
-    whiteboardStrokeRepository.delete(
-        stroke
-    );
-
-    /**
-     * 개별 선 삭제는 Undo/선 지우기에서
-     * 매우 자주 발생할 수 있으므로
-     * 활동 로그에는 매번 기록하지 않습니다.
-     *
-     * 기존 선 생성 로그도 5분 단위로 제한하고 있기 때문에
-     * 같은 취지로 활동 로그 과다 생성을 방지합니다.
-     */
-
-    /**
-     * DB 트랜잭션이 정상 커밋된 후
-     * 다른 참여자에게 해당 Stroke 삭제를 알립니다.
-     */
-    whiteboardEventPublisher.publish(
-        WhiteboardWebSocketEvent.strokeDeleted(
-            board.getId(),
-            strokeId
-        )
-    );
   }
 
   /**
-   * 화이트보드 전체 삭제
-   *
-   * OWNER와 MEMBER만 가능합니다.
+   * 기존 보드에 Whiteboard workspace가 없다면
+   * 기본 화이트보드를 자동 생성합니다.
    */
-  @Transactional
-  public void clearWhiteboard(
-      User user,
-      Long boardId
+  private Whiteboard getOrCreateDefaultWhiteboard(
+      Board board
   ) {
-    Board board =
-        getBoardById(boardId);
-
-    boardPermissionService.validateWritePermission(
-        board,
-        user
-    );
-
-    whiteboardStrokeRepository.deleteByBoard(
-        board
-    );
-
-    /**
-     * 전체 삭제는 중요한 활동이므로
-     * 시간 제한 없이 항상 기록합니다.
-     */
-    activityLogService.recordActivity(
-        board,
-        user,
-        ActivityType.WHITEBOARD_CLEARED,
-        null,
-        null,
-        user.getNickname()
-            + "님이 화이트보드를 전체 삭제했습니다."
-    );
-
-    /**
-     * 다른 사용자 Canvas에도
-     * 전체 삭제 이벤트를 전달합니다.
-     */
-    whiteboardEventPublisher.publish(
-        WhiteboardWebSocketEvent.cleared(
-            board.getId()
+    return whiteboardRepository
+        .findByBoardAndDefaultWhiteboardTrue(
+            board
         )
-    );
-  }
+        .orElseGet(
+            () -> {
+              List<Whiteboard> whiteboards =
+                  whiteboardRepository
+                      .findByBoardOrderByPositionAsc(
+                          board
+                      );
 
-  /**
-   * 보드 조회
-   */
-  private Board getBoardById(
-      Long boardId
-  ) {
-    return boardRepository
-        .findById(boardId)
-        .orElseThrow(
-            () -> new CustomException(
-                ErrorCode.BOARD_NOT_FOUND
-            )
+              if (
+                  !whiteboards.isEmpty()
+              ) {
+                Whiteboard first =
+                    whiteboards.get(0);
+
+                first.updateDefaultWhiteboard(
+                    true
+                );
+
+                return first;
+              }
+
+              Whiteboard created =
+                  new Whiteboard(
+                      board,
+                      DEFAULT_WHITEBOARD_TITLE,
+                      null,
+                      0,
+                      true
+                  );
+
+              return whiteboardRepository
+                  .save(
+                      created
+                  );
+            }
         );
   }
 
   /**
-   * 좌표 목록 -> JSON
+   * whiteboardId가 진짜 현재 board 소속인지까지 확인합니다.
    */
+  private Whiteboard getWhiteboardInBoard(
+      Board board,
+      Long whiteboardId
+  ) {
+    return whiteboardRepository
+        .findByIdAndBoard(
+            whiteboardId,
+            board
+        )
+        .orElseThrow(
+            () ->
+                new CustomException(
+                    ErrorCode.WHITEBOARD_NOT_FOUND
+                )
+        );
+  }
+
+  private Board getBoardById(
+      Long boardId
+  ) {
+    return boardRepository
+        .findById(
+            boardId
+        )
+        .orElseThrow(
+            () ->
+                new CustomException(
+                    ErrorCode.BOARD_NOT_FOUND
+                )
+        );
+  }
+
   private String convertPointsToJson(
       List<WhiteboardPoint> points
   ) {
@@ -304,16 +711,16 @@ public class WhiteboardService {
       return jsonMapper.writeValueAsString(
           points
       );
-    } catch (JacksonException exception) {
+
+    } catch (
+        JacksonException exception
+    ) {
       throw new CustomException(
           ErrorCode.WHITEBOARD_DATA_PROCESSING_FAILED
       );
     }
   }
 
-  /**
-   * JSON -> 좌표 목록
-   */
   private List<WhiteboardPoint> convertJsonToPoints(
       String pointsJson
   ) {
@@ -322,7 +729,10 @@ public class WhiteboardService {
           pointsJson,
           WHITEBOARD_POINT_LIST_TYPE
       );
-    } catch (JacksonException exception) {
+
+    } catch (
+        JacksonException exception
+    ) {
       throw new CustomException(
           ErrorCode.WHITEBOARD_DATA_PROCESSING_FAILED
       );

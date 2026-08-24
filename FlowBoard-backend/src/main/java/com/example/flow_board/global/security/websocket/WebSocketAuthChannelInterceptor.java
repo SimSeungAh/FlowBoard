@@ -42,10 +42,11 @@ public class WebSocketAuthChannelInterceptor
    * /topic/boards/{boardId}/cards
    * /topic/boards/{boardId}/comments
    * /topic/boards/{boardId}/whiteboard
+   * /topic/boards/{boardId}/whiteboards/{whiteboardId}
    */
   private static final Pattern BOARD_TOPIC_PATTERN =
       Pattern.compile(
-          "^/topic/boards/(\\d+)/(cards|comments|whiteboard)$"
+          "^/topic/boards/(\\d+)/(cards|comments|whiteboard|whiteboards/\\d+)$"
       );
 
   private final JwtProvider jwtProvider;

@@ -46,6 +46,7 @@ function SettingsIcon() {
       strokeLinejoin="round"
     >
       <circle cx="12" cy="12" r="3" />
+
       <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1Z" />
     </svg>
   );
@@ -55,8 +56,10 @@ const getRoleLabel = (role: BoardRole) => {
   switch (role) {
     case "OWNER":
       return "OWNER";
+
     case "MEMBER":
       return "MEMBER";
+
     case "VIEWER":
       return "VIEWER";
   }
@@ -76,49 +79,63 @@ export default function KanbanBoardHeader({
   onOpenWorkflowSettings,
 }: KanbanBoardHeaderProps) {
   return (
-    <div className="shrink-0 border-b border-[var(--flow-border)] bg-white px-6 py-5 xl:px-8">
-      <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-[24px] font-bold tracking-[-0.03em] text-[var(--flow-text)]">
-              칸반 보드
+    <div className="shrink-0 border-b border-[var(--flow-border)] bg-white px-5 py-3 xl:px-6">
+      <div className="flex min-h-14 items-center justify-between gap-6">
+        <div className="min-w-0 flex-1" title={boardDescription || undefined}>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h1 className="max-w-[620px] truncate text-[21px] font-bold tracking-[-0.03em] text-[var(--flow-text)]">
+              {boardTitle}
             </h1>
 
-            <span className="rounded-full border border-[var(--flow-primary-200)] bg-[var(--flow-primary-50)] px-2.5 py-1 text-[10px] font-bold tracking-[0.04em] text-[var(--flow-primary-700)]">
+            <span className="rounded-full border border-[var(--flow-primary-200)] bg-[var(--flow-primary-50)] px-2 py-0.5 text-[9px] font-bold tracking-[0.04em] text-[var(--flow-primary-700)]">
               {getRoleLabel(role)}
             </span>
 
             {readOnly && (
-              <span className="rounded-full bg-[var(--flow-warning-soft)] px-2.5 py-1 text-[10px] font-bold text-[var(--flow-warning-dark)]">
+              <span className="rounded-full bg-[var(--flow-warning-soft)] px-2 py-0.5 text-[9px] font-bold text-[var(--flow-warning-dark)]">
                 읽기 전용
               </span>
             )}
           </div>
 
-          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
-            <span className="max-w-[360px] truncate text-[13px] font-semibold text-[var(--flow-text-secondary)]">
-              {boardTitle}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[var(--flow-text-muted)]">
+            <span>
+              소유자{" "}
+              <strong className="font-semibold text-[var(--flow-text-secondary)]">
+                {ownerNickname}
+              </strong>
             </span>
 
-            <span className="h-3.5 w-px bg-[var(--flow-border-strong)]" />
+            <span className="h-3 w-px bg-[var(--flow-border-strong)]" />
 
-            <span className="text-[12px] text-[var(--flow-text-muted)]">
-              소유자 <strong className="font-semibold text-[var(--flow-text-secondary)]">{ownerNickname}</strong>
+            <span>
+              컬럼 <strong className="font-bold text-[var(--flow-text)]">{columnCount}</strong>
             </span>
+
+            <span className="h-3 w-px bg-[var(--flow-border-strong)]" />
+
+            <span>
+              작업 <strong className="font-bold text-[var(--flow-text)]">{cardCount}</strong>
+            </span>
+
+            {moving && (
+              <>
+                <span className="h-3 w-px bg-[var(--flow-border-strong)]" />
+
+                <span className="inline-flex items-center gap-1.5 font-semibold text-[var(--flow-primary-700)]">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--flow-primary)]" />
+                  이동 저장 중
+                </span>
+              </>
+            )}
           </div>
-
-          {boardDescription && (
-            <p className="mt-2 max-w-[760px] truncate text-[12px] leading-5 text-[var(--flow-text-muted)]">
-              {boardDescription}
-            </p>
-          )}
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Button
             type="button"
             variant="outline"
-            size="md"
+            size="sm"
             leftIcon={<SearchIcon />}
             onClick={onOpenSearch}
           >
@@ -129,7 +146,7 @@ export default function KanbanBoardHeader({
             <Button
               type="button"
               variant="outline"
-              size="md"
+              size="sm"
               leftIcon={<SettingsIcon />}
               onClick={onOpenWorkflowSettings}
             >
@@ -137,25 +154,6 @@ export default function KanbanBoardHeader({
             </Button>
           )}
         </div>
-      </div>
-
-      <div className="mt-5 flex min-h-9 flex-wrap items-center gap-2.5">
-        <div className="inline-flex h-8 items-center gap-2 rounded-lg border border-[var(--flow-border)] bg-[var(--flow-gray-50)] px-3 text-[11px] text-[var(--flow-text-muted)]">
-          <span>컬럼</span>
-          <strong className="font-bold text-[var(--flow-text)]">{columnCount}</strong>
-        </div>
-
-        <div className="inline-flex h-8 items-center gap-2 rounded-lg border border-[var(--flow-border)] bg-[var(--flow-gray-50)] px-3 text-[11px] text-[var(--flow-text-muted)]">
-          <span>전체 작업</span>
-          <strong className="font-bold text-[var(--flow-text)]">{cardCount}</strong>
-        </div>
-
-        {moving && (
-          <div className="inline-flex h-8 items-center gap-2 rounded-lg border border-[var(--flow-primary-200)] bg-[var(--flow-primary-50)] px-3 text-[11px] font-semibold text-[var(--flow-primary-700)]">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--flow-primary)]" />
-            이동 저장 중
-          </div>
-        )}
       </div>
     </div>
   );

@@ -5,17 +5,26 @@ import {
 import {
   useQuery,
 } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   useParams,
 } from "react-router";
 
 import {
   getBoardActivities,
+  type ActivityLogResponse,
   type ActivityType,
 } from "@/api/activity";
 import {
   getBoardDetail,
 } from "@/api/board";
+import {
+  getCardDetail,
+} from "@/api/card";
+import {
+  searchCards,
+} from "@/api/cardSearch";
+import CardDetailModal from "@/components/card/CardDetailModal";
 import Avatar from "@/components/ui/Avatar";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
@@ -24,6 +33,43 @@ import Pagination from "@/components/ui/Pagination";
 import Skeleton from "@/components/ui/Skeleton";
 
 const PAGE_SIZE = 20;
+
+const directCardTargetActivityTypes = new Set<ActivityType>([
+  "CARD_CREATED",
+  "CARD_UPDATED",
+  "CARD_MOVED",
+  "CARD_ASSIGNEE_ADDED",
+  "CARD_ASSIGNEE_REMOVED",
+  "CARD_TAG_ADDED",
+  "CARD_TAG_REMOVED",
+  "CHECKLIST_CREATED",
+  "CHECKLIST_UPDATED",
+  "CHECKLIST_DELETED",
+  "CHECKLIST_ITEM_CREATED",
+  "CHECKLIST_ITEM_UPDATED",
+  "CHECKLIST_ITEM_TOGGLED",
+  "CHECKLIST_ITEM_DELETED",
+]);
+
+const commentActivityTypes = new Set<ActivityType>([
+  "COMMENT_CREATED",
+  "COMMENT_UPDATED",
+  "COMMENT_DELETED",
+]);
+
+const isCardRelatedActivity = (
+  type: ActivityType,
+) =>
+  type === "CARD_DELETED" ||
+  directCardTargetActivityTypes.has(type) ||
+  commentActivityTypes.has(type);
+
+const canOpenRelatedCard = (
+  activity: ActivityLogResponse,
+) =>
+  activity.type !== "CARD_DELETED" &&
+  isCardRelatedActivity(activity.type) &&
+  Boolean(activity.targetName);
 
 interface ActivityDisplayInfo {
   label: string;
@@ -509,6 +555,24 @@ function ActivityIcon({
   );
 }
 
+function OpenTargetIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 12h14" />
+      <path d="m14 7 5 5-5 5" />
+    </svg>
+  );
+}
+
 export default function ActivityPage() {
   const {
     boardId:
@@ -533,6 +597,18 @@ export default function ActivityPage() {
     setPage,
   ] =
     useState(0);
+
+  const [
+    selectedCardId,
+    setSelectedCardId,
+  ] =
+    useState<number | null>(null);
+
+  const [
+    resolvingActivityId,
+    setResolvingActivityId,
+  ] =
+    useState<number | null>(null);
 
   const {
     data: board,
@@ -622,6 +698,123 @@ export default function ActivityPage() {
       });
     };
 
+  const openExistingCard = async (
+    cardId: number,
+  ) => {
+    try {
+      await getCardDetail(cardId);
+
+      setSelectedCardId(cardId);
+    } catch {
+      toast.info(
+        "해당 작업은 삭제되었거나 더 이상 확인할 수 없습니다.",
+      );
+    }
+  };
+
+  const handleOpenRelatedTarget = async (
+    activity: ActivityLogResponse,
+  ) => {
+    if (
+      resolvingActivityId !== null
+    ) {
+      return;
+    }
+
+    if (
+      activity.type ===
+      "CARD_DELETED"
+    ) {
+      toast.info(
+        "삭제된 작업의 활동 기록입니다. 카드 상세는 열 수 없습니다.",
+      );
+
+      return;
+    }
+
+    if (
+      !canOpenRelatedCard(activity)
+    ) {
+      return;
+    }
+
+    setResolvingActivityId(
+      activity.id,
+    );
+
+    try {
+      if (
+        directCardTargetActivityTypes.has(
+          activity.type,
+        ) &&
+        activity.targetId !== null
+      ) {
+        await openExistingCard(
+          activity.targetId,
+        );
+
+        return;
+      }
+
+      if (
+        commentActivityTypes.has(
+          activity.type,
+        ) &&
+        activity.targetName
+      ) {
+        const candidates =
+          await searchCards(
+            boardId,
+            {
+              keyword:
+                activity.targetName,
+            },
+          );
+
+        const exactMatches =
+          candidates.filter(
+            (card) =>
+              card.title.trim() ===
+              activity.targetName?.trim(),
+          );
+
+        if (
+          exactMatches.length ===
+          1
+        ) {
+          setSelectedCardId(
+            exactMatches[0].id,
+          );
+
+          return;
+        }
+
+        if (
+          exactMatches.length >
+          1
+        ) {
+          toast.info(
+            "같은 제목의 작업이 여러 개 있어 카드를 자동으로 특정할 수 없습니다.",
+          );
+
+          return;
+        }
+
+        toast.info(
+          "관련 작업이 삭제되었거나 더 이상 검색되지 않습니다.",
+        );
+      }
+    } catch {
+      toast.error(
+        "관련 작업을 확인하지 못했습니다. 잠시 후 다시 시도해주세요.",
+      );
+    } finally {
+      setResolvingActivityId(
+        null,
+      );
+    }
+  };
+
   if (
     !isValidBoardId
   ) {
@@ -647,7 +840,30 @@ export default function ActivityPage() {
     [];
 
   return (
-    <section className="flow-page">
+    <>
+      <CardDetailModal
+        open={
+          selectedCardId !==
+          null
+        }
+        cardId={
+          selectedCardId
+        }
+        canEdit={
+          board?.myRole !==
+          "VIEWER"
+        }
+        onClose={() =>
+          setSelectedCardId(
+            null,
+          )
+        }
+        onChanged={async () => {
+          await refetch();
+        }}
+      />
+
+      <section className="flow-page">
       {/* Page Header */}
       <div className="flow-page-header">
         <div>
@@ -906,27 +1122,85 @@ export default function ActivityPage() {
                             </p>
 
                             {activity.targetName && (
-                              <div className="mt-4 inline-flex items-center gap-3 rounded-xl bg-[var(--flow-gray-50)] px-3.5 py-2.5">
-                                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-[var(--flow-primary)] shadow-[var(--flow-shadow-xs)]">
-                                  <ActivityIcon
-                                    type={
-                                      activity.type
-                                    }
-                                  />
-                                </span>
+                              canOpenRelatedCard(
+                                activity,
+                              ) ? (
+                                <button
+                                  type="button"
+                                  disabled={
+                                    resolvingActivityId !==
+                                    null
+                                  }
+                                  title={`관련 작업 열기: ${activity.targetName}`}
+                                  className="mt-4 inline-flex max-w-full items-center gap-3 rounded-xl border border-transparent bg-[var(--flow-gray-50)] px-3.5 py-2.5 text-left transition-[border-color,background-color,box-shadow] hover:border-[var(--flow-primary-200)] hover:bg-[var(--flow-primary-50)] hover:shadow-[var(--flow-shadow-xs)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--flow-focus-ring)] disabled:cursor-wait disabled:opacity-60"
+                                  onClick={() =>
+                                    void handleOpenRelatedTarget(
+                                      activity,
+                                    )
+                                  }
+                                >
+                                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-[var(--flow-primary)] shadow-[var(--flow-shadow-xs)]">
+                                    <ActivityIcon
+                                      type={
+                                        activity.type
+                                      }
+                                    />
+                                  </span>
 
-                                <div className="min-w-0">
-                                  <p className="text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
-                                    관련 대상
-                                  </p>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
+                                      관련 대상
+                                    </p>
 
-                                  <p className="mt-0.5 max-w-[500px] truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
-                                    {
-                                      activity.targetName
-                                    }
-                                  </p>
+                                    <p className="mt-0.5 max-w-[500px] truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
+                                      {
+                                        activity.targetName
+                                      }
+                                    </p>
+                                  </div>
+
+                                  <span className="ml-1 flex shrink-0 items-center gap-1 text-[9px] font-bold text-[var(--flow-primary)]">
+                                    {resolvingActivityId ===
+                                    activity.id
+                                      ? "확인 중"
+                                      : "카드 열기"}
+
+                                    {resolvingActivityId !==
+                                      activity.id && (
+                                      <OpenTargetIcon />
+                                    )}
+                                  </span>
+                                </button>
+                              ) : (
+                                <div className="mt-4 inline-flex max-w-full items-center gap-3 rounded-xl bg-[var(--flow-gray-50)] px-3.5 py-2.5">
+                                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-[var(--flow-text-muted)] shadow-[var(--flow-shadow-xs)]">
+                                    <ActivityIcon
+                                      type={
+                                        activity.type
+                                      }
+                                    />
+                                  </span>
+
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
+                                      관련 대상
+                                    </p>
+
+                                    <p className="mt-0.5 max-w-[500px] truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
+                                      {
+                                        activity.targetName
+                                      }
+                                    </p>
+                                  </div>
+
+                                  {activity.type ===
+                                    "CARD_DELETED" && (
+                                    <span className="ml-1 shrink-0 rounded-md bg-[var(--flow-danger-soft)] px-2 py-1 text-[8px] font-bold text-[var(--flow-danger)]">
+                                      삭제됨
+                                    </span>
+                                  )}
                                 </div>
-                              </div>
+                              )
                             )}
                           </div>
 
@@ -985,6 +1259,7 @@ export default function ActivityPage() {
           </>
         )}
       </section>
-    </section>
+      </section>
+    </>
   );
 }

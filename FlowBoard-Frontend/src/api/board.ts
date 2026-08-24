@@ -32,6 +32,7 @@ export interface BoardColumnResponse {
   id: number;
   title: string;
   position: number;
+  completionColumn: boolean;
 }
 
 export interface BoardDetailResponse {

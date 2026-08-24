@@ -25,36 +25,20 @@ public record CardResponse(
 
     String rank,
 
+    LocalDateTime startDate,
+
     LocalDateTime dueDate,
 
-    /*
-     * 카드의 작업 형식
-     */
     CardTaskType taskType,
 
-    /*
-     * TEST_CASE에서만 사용
-     */
     TestCaseType testCaseType,
 
-    /*
-     * TEST_CASE에서만 사용
-     */
     TestCaseResult testCaseResult,
 
-    /*
-     * SECURITY_REVIEW에서만 사용
-     */
     SecuritySeverity securitySeverity,
 
-    /*
-     * SECURITY_REVIEW에서만 사용
-     */
     String securityImpactScope,
 
-    /*
-     * SECURITY_REVIEW에서만 사용
-     */
     SecurityVerificationStatus securityVerificationStatus,
 
     LocalDateTime createdAt,
@@ -74,6 +58,8 @@ public record CardResponse(
         card.getTitle(),
         card.getDescription(),
         card.getRank(),
+
+        card.getStartDate(),
         card.getDueDate(),
 
         card.getTaskType(),

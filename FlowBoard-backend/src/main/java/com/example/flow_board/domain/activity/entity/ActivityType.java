@@ -60,7 +60,15 @@ public enum ActivityType {
   CHECKLIST_ITEM_DELETED,
 
   /*
-   * 화이트보드
+   * 화이트보드 작업 공간
+   */
+  WHITEBOARD_CREATED,
+  WHITEBOARD_UPDATED,
+  WHITEBOARD_DELETED,
+  WHITEBOARD_DEFAULT_CHANGED,
+
+  /*
+   * 화이트보드 Canvas
    */
   WHITEBOARD_STROKE_CREATED,
   WHITEBOARD_CLEARED

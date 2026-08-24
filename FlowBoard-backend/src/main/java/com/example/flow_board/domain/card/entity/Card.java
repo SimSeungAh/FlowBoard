@@ -39,6 +39,14 @@ public class Card extends BaseEntity {
   @Column(name = "sort_rank", nullable = false, length = 50)
   private String rank;
 
+  /**
+   * 일정/간트에서 사용하는 작업 시작일입니다.
+   *
+   * 시작일이 없고 마감일만 있는 기존 카드는
+   * 일정 화면에서 마감 마일스톤으로 표현할 수 있습니다.
+   */
+  private LocalDateTime startDate;
+
   private LocalDateTime dueDate;
 
   /**
@@ -96,9 +104,6 @@ public class Card extends BaseEntity {
 
   /**
    * 보안 점검 카드에서만 사용하는 영향 범위입니다.
-   *
-   * 예:
-   * Web Platform /api/auth/login
    */
   @Column(
       name = "security_impact_scope",
@@ -108,8 +113,6 @@ public class Card extends BaseEntity {
 
   /**
    * 보안 점검 카드에서만 사용하는 검증 상태입니다.
-   *
-   * 신규 보안 점검 카드는 PENDING으로 시작합니다.
    */
   @Enumerated(EnumType.STRING)
   @Column(
@@ -119,10 +122,7 @@ public class Card extends BaseEntity {
   private SecurityVerificationStatus securityVerificationStatus;
 
   /**
-   * 기존 카드 생성 로직과의 호환성을 유지하기 위한 생성자입니다.
-   *
-   * 기존 코드에서 이 생성자를 사용하면
-   * 일반 작업(GENERAL)으로 생성됩니다.
+   * 기존 코드 호환용 생성자.
    */
   public Card(
       BoardColumn boardColumn,
@@ -146,7 +146,7 @@ public class Card extends BaseEntity {
   }
 
   /**
-   * 작업 유형을 포함한 카드 생성자입니다.
+   * 기존 작업 유형 생성자와의 호환성을 유지합니다.
    */
   public Card(
       BoardColumn boardColumn,
@@ -159,11 +159,46 @@ public class Card extends BaseEntity {
       TestCaseType testCaseType,
       TestCaseResult testCaseResult
   ) {
+    this(
+        boardColumn,
+        createdBy,
+        title,
+        description,
+        rank,
+        null,
+        dueDate,
+        taskType,
+        testCaseType,
+        testCaseResult
+    );
+  }
+
+  /**
+   * 시작일과 마감일을 모두 포함한 일정용 카드 생성자입니다.
+   */
+  public Card(
+      BoardColumn boardColumn,
+      User createdBy,
+      String title,
+      String description,
+      String rank,
+      LocalDateTime startDate,
+      LocalDateTime dueDate,
+      CardTaskType taskType,
+      TestCaseType testCaseType,
+      TestCaseResult testCaseResult
+  ) {
+    validateSchedule(
+        startDate,
+        dueDate
+    );
+
     this.boardColumn = boardColumn;
     this.createdBy = createdBy;
     this.title = title;
     this.description = description;
     this.rank = rank;
+    this.startDate = startDate;
     this.dueDate = dueDate;
 
     applyTaskMetadata(
@@ -178,10 +213,17 @@ public class Card extends BaseEntity {
   public void update(
       String title,
       String description,
+      LocalDateTime startDate,
       LocalDateTime dueDate
   ) {
+    validateSchedule(
+        startDate,
+        dueDate
+    );
+
     this.title = title;
     this.description = description;
+    this.startDate = startDate;
     this.dueDate = dueDate;
   }
 
@@ -193,11 +235,6 @@ public class Card extends BaseEntity {
     this.rank = rank;
   }
 
-  /**
-   * 테스트 케이스의 유형과 결과를 수정합니다.
-   *
-   * 테스트 케이스가 아닌 카드에는 사용할 수 없습니다.
-   */
   public void updateTestCaseType(
       TestCaseType testCaseType
   ) {
@@ -228,9 +265,6 @@ public class Card extends BaseEntity {
         testCaseResult;
   }
 
-  /**
-   * 보안 점검 심각도를 변경합니다.
-   */
   public void updateSecuritySeverity(
       SecuritySeverity securitySeverity
   ) {
@@ -246,11 +280,6 @@ public class Card extends BaseEntity {
         securitySeverity;
   }
 
-  /**
-   * 보안 점검 영향 범위를 변경합니다.
-   *
-   * 공백만 전달되면 미설정(null)으로 정리합니다.
-   */
   public void updateSecurityImpactScope(
       String securityImpactScope
   ) {
@@ -262,9 +291,6 @@ public class Card extends BaseEntity {
         );
   }
 
-  /**
-   * 보안 점검 검증 상태를 변경합니다.
-   */
   public void updateSecurityVerificationStatus(
       SecurityVerificationStatus securityVerificationStatus
   ) {
@@ -280,10 +306,6 @@ public class Card extends BaseEntity {
         securityVerificationStatus;
   }
 
-  /**
-   * 기존 SECURITY_REVIEW 카드에 새 컬럼 값이 아직 없더라도
-   * 화면에서는 기본 심각도 MEDIUM으로 처리할 수 있도록 합니다.
-   */
   public SecuritySeverity getSecuritySeverity() {
     if (taskType != CardTaskType.SECURITY_REVIEW) {
       return null;
@@ -294,10 +316,6 @@ public class Card extends BaseEntity {
         : securitySeverity;
   }
 
-  /**
-   * 기존 SECURITY_REVIEW 카드에 새 컬럼 값이 아직 없더라도
-   * 화면에서는 기본 검증 상태 PENDING으로 처리할 수 있도록 합니다.
-   */
   public SecurityVerificationStatus getSecurityVerificationStatus() {
     if (taskType != CardTaskType.SECURITY_REVIEW) {
       return null;
@@ -330,38 +348,22 @@ public class Card extends BaseEntity {
     }
   }
 
-  /**
-   * 카드의 작업 메타데이터를 초기화합니다.
-   */
   private void applyTaskMetadata(
       CardTaskType taskType,
       TestCaseType testCaseType,
       TestCaseResult testCaseResult
   ) {
-    /*
-     * 이전 프론트나 외부 클라이언트가 taskType을 생략해도
-     * 기존 카드 생성 흐름이 깨지지 않도록 GENERAL로 처리합니다.
-     */
     this.taskType =
         taskType == null
             ? CardTaskType.GENERAL
             : taskType;
 
-    /*
-     * 테스트 케이스가 아니면
-     * 테스트 전용 필드를 사용하지 않습니다.
-     */
     if (this.taskType != CardTaskType.TEST_CASE) {
       this.testCaseType = null;
       this.testCaseResult = null;
       return;
     }
 
-    /*
-     * 테스트 케이스는 반드시 세부 유형을 가져야 합니다.
-     * 프론트에서는 기본값 NORMAL을 선택해서 전달하고,
-     * 잘못된 외부 요청은 백엔드에서 차단합니다.
-     */
     if (testCaseType == null) {
       throw new CustomException(
           ErrorCode.TEST_CASE_TYPE_REQUIRED
@@ -371,18 +373,12 @@ public class Card extends BaseEntity {
     this.testCaseType =
         testCaseType;
 
-    /*
-     * 테스트 결과는 최초 생성 시 미실행(NOT_RUN)입니다.
-     */
     this.testCaseResult =
         testCaseResult == null
             ? TestCaseResult.NOT_RUN
             : testCaseResult;
   }
 
-  /**
-   * 보안 점검 전용 메타데이터를 초기화합니다.
-   */
   private void applySecurityMetadata() {
     if (this.taskType != CardTaskType.SECURITY_REVIEW) {
       this.securitySeverity = null;
@@ -399,6 +395,24 @@ public class Card extends BaseEntity {
 
     this.securityVerificationStatus =
         SecurityVerificationStatus.PENDING;
+  }
+
+  /**
+   * 시작일이 마감일보다 늦는 잘못된 일정을 차단합니다.
+   */
+  private void validateSchedule(
+      LocalDateTime startDate,
+      LocalDateTime dueDate
+  ) {
+    if (
+        startDate != null &&
+            dueDate != null &&
+            startDate.isAfter(dueDate)
+    ) {
+      throw new CustomException(
+          ErrorCode.INVALID_INPUT
+      );
+    }
   }
 
   private String normalizeSecurityImpactScope(

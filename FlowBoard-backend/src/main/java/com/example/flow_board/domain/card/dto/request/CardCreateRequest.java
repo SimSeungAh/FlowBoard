@@ -18,6 +18,8 @@ public record CardCreateRequest(
 
     String description,
 
+    LocalDateTime startDate,
+
     LocalDateTime dueDate,
 
     /*

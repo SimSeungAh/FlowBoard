@@ -7,6 +7,7 @@ export type WhiteboardEventType = "STROKE_CREATED" | "STROKE_DELETED" | "CLEARED
 export interface WhiteboardWebSocketEvent {
   type: WhiteboardEventType;
   boardId: number;
+  whiteboardId: number | null;
   strokeId: number | null;
   stroke: WhiteboardStrokeResponse | null;
   occurredAt: string;
@@ -14,11 +15,9 @@ export interface WhiteboardWebSocketEvent {
 
 interface ConnectWhiteboardWebSocketOptions {
   boardId: number;
-
+  whiteboardId?: number | null;
   onEvent: (event: WhiteboardWebSocketEvent) => void;
-
   onConnectionStateChange?: (state: WhiteboardConnectionState) => void;
-
   onError?: (error: Error) => void;
 }
 
@@ -71,11 +70,8 @@ const parseStompFrame = (rawFrame: string): ParsedStompFrame | null => {
   }
 
   const headerSection = frame.slice(0, headerEndIndex);
-
   const body = frame.slice(headerEndIndex + 2);
-
   const lines = headerSection.split("\n");
-
   const command = lines.shift()?.trim();
 
   if (!command) {
@@ -92,7 +88,6 @@ const parseStompFrame = (rawFrame: string): ParsedStompFrame | null => {
     }
 
     const key = line.slice(0, separatorIndex);
-
     const value = line.slice(separatorIndex + 1);
 
     headers[key] = value;
@@ -107,19 +102,23 @@ const parseStompFrame = (rawFrame: string): ParsedStompFrame | null => {
 
 export const connectWhiteboardWebSocket = ({
   boardId,
+  whiteboardId = null,
   onEvent,
   onConnectionStateChange,
   onError,
 }: ConnectWhiteboardWebSocketOptions) => {
   let socket: WebSocket | null = null;
-
   let reconnectTimer: number | null = null;
-
   let manuallyClosed = false;
-
   let messageBuffer = "";
 
-  const subscriptionId = `whiteboard-${boardId}`;
+  const subscriptionId =
+    whiteboardId === null ? `whiteboard-${boardId}` : `whiteboard-${boardId}-${whiteboardId}`;
+
+  const destination =
+    whiteboardId === null
+      ? `/topic/boards/${boardId}/whiteboard`
+      : `/topic/boards/${boardId}/whiteboards/${whiteboardId}`;
 
   const changeConnectionState = (state: WhiteboardConnectionState) => {
     onConnectionStateChange?.(state);
@@ -132,7 +131,6 @@ export const connectWhiteboardWebSocket = ({
   const clearReconnectTimer = () => {
     if (reconnectTimer !== null) {
       window.clearTimeout(reconnectTimer);
-
       reconnectTimer = null;
     }
   };
@@ -157,9 +155,7 @@ export const connectWhiteboardWebSocket = ({
     socket.send(
       createStompFrame("SUBSCRIBE", {
         id: subscriptionId,
-
-        destination: `/topic/boards/${boardId}/whiteboard`,
-
+        destination,
         ack: "auto",
       }),
     );
@@ -170,6 +166,10 @@ export const connectWhiteboardWebSocket = ({
       const event = JSON.parse(frame.body) as WhiteboardWebSocketEvent;
 
       if (event.boardId !== boardId) {
+        return;
+      }
+
+      if (whiteboardId !== null && event.whiteboardId !== whiteboardId) {
         return;
       }
 
@@ -189,21 +189,16 @@ export const connectWhiteboardWebSocket = ({
     switch (frame.command) {
       case "CONNECTED":
         changeConnectionState("connected");
-
         subscribe();
-
         break;
 
       case "MESSAGE":
         handleMessageFrame(frame);
-
         break;
 
       case "ERROR":
         changeConnectionState("disconnected");
-
         reportError(new Error(frame.body || "WebSocket 서버에서 오류가 발생했습니다."));
-
         break;
 
       default:
@@ -242,9 +237,7 @@ export const connectWhiteboardWebSocket = ({
 
     if (!accessToken) {
       changeConnectionState("disconnected");
-
       reportError(new Error("WebSocket 인증 토큰이 없습니다."));
-
       return;
     }
 
@@ -254,16 +247,13 @@ export const connectWhiteboardWebSocket = ({
       webSocketUrl = buildWebSocketUrl();
     } catch (error) {
       changeConnectionState("disconnected");
-
       reportError(
         error instanceof Error ? error : new Error("WebSocket 주소를 생성하지 못했습니다."),
       );
-
       return;
     }
 
     changeConnectionState("connecting");
-
     messageBuffer = "";
 
     socket = new WebSocket(webSocketUrl, ["v12.stomp", "v11.stomp", "v10.stomp"]);
@@ -278,11 +268,8 @@ export const connectWhiteboardWebSocket = ({
       socket.send(
         createStompFrame("CONNECT", {
           "accept-version": "1.2,1.1,1.0",
-
           host,
-
           "heart-beat": "0,0",
-
           Authorization: `Bearer ${accessToken}`,
         }),
       );
@@ -296,11 +283,8 @@ export const connectWhiteboardWebSocket = ({
 
     socket.onclose = () => {
       socket = null;
-
       messageBuffer = "";
-
       changeConnectionState("disconnected");
-
       scheduleReconnect();
     };
   };
@@ -309,7 +293,6 @@ export const connectWhiteboardWebSocket = ({
 
   return () => {
     manuallyClosed = true;
-
     clearReconnectTimer();
 
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -320,14 +303,11 @@ export const connectWhiteboardWebSocket = ({
       );
 
       socket.send(createStompFrame("DISCONNECT"));
-
       socket.close();
     }
 
     socket = null;
-
     messageBuffer = "";
-
     changeConnectionState("disconnected");
   };
 };

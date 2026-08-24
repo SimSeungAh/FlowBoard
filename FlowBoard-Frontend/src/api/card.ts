@@ -29,6 +29,7 @@ export interface CardResponse {
   title: string;
   description: string | null;
   rank: string;
+  startDate: string | null;
   dueDate: string | null;
 
   /**
@@ -50,6 +51,21 @@ export interface CardResponse {
    */
   testCaseResult: TestCaseResult | null;
 
+  /**
+   * SECURITY_REVIEW 카드에서만 값이 존재합니다.
+   */
+  securitySeverity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
+
+  /**
+   * SECURITY_REVIEW 카드에서만 값이 존재합니다.
+   */
+  securityImpactScope: string | null;
+
+  /**
+   * SECURITY_REVIEW 카드에서만 값이 존재합니다.
+   */
+  securityVerificationStatus: "PENDING" | "IN_PROGRESS" | "RETEST_REQUIRED" | "VERIFIED" | null;
+
   createdAt: string;
   updatedAt: string;
 }
@@ -57,6 +73,7 @@ export interface CardResponse {
 export interface CardCreateRequest {
   title: string;
   description?: string | null;
+  startDate?: string | null;
   dueDate?: string | null;
 
   /**
@@ -73,6 +90,7 @@ export interface CardCreateRequest {
 export interface CardUpdateRequest {
   title: string;
   description?: string | null;
+  startDate?: string | null;
   dueDate?: string | null;
 }
 

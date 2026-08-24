@@ -1,11 +1,20 @@
-import { useEffect, useMemo, useState, type SubmitEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useParams } from "react-router";
 import { toast } from "sonner";
 
-import { deleteCard, getCardDetail, updateCard, type CardUpdateRequest } from "@/api/card";
+import {
+  deleteCard,
+  getCardDetail,
+  getCardsByColumn,
+  moveCard,
+  updateCard,
+  type CardUpdateRequest,
+} from "@/api/card";
+
+import { getBoardDetail } from "@/api/board";
 
 import {
   updateTestCaseResult,
@@ -13,6 +22,13 @@ import {
   type TestCaseResult,
   type TestCaseType,
 } from "@/api/testCase";
+
+import {
+  updateSecurityReview,
+  type SecurityReviewUpdateRequest,
+  type SecuritySeverity,
+  type SecurityVerificationStatus,
+} from "@/api/securityReview";
 
 import {
   addCardAssignee,
@@ -38,6 +54,8 @@ interface CardDetailModalProps {
   onClose: () => void;
   onChanged: () => void | Promise<void>;
 }
+
+type MovePositionValue = "TOP" | "BOTTOM" | `BEFORE:${number}`;
 
 const DEFAULT_TAG_COLOR = "#3B82F6";
 
@@ -218,6 +236,107 @@ const getTestCaseResultLabel = (result: TestCaseResult) => {
   }
 };
 
+const getTaskTypeLabel = (taskType: string) => {
+  switch (taskType) {
+    case "GENERAL":
+      return "일반 작업";
+
+    case "BUG":
+      return "버그";
+
+    case "TEST_CASE":
+      return "테스트 케이스";
+
+    case "DESIGN_REVIEW":
+      return "디자인 리뷰";
+
+    case "REQUIREMENT":
+      return "기획 / 요구사항";
+
+    case "SECURITY_REVIEW":
+      return "보안 점검";
+
+    case "RELEASE_CHECK":
+      return "릴리즈 체크";
+
+    default:
+      return "작업";
+  }
+};
+
+const getTaskTypeClassName = (taskType: string) => {
+  switch (taskType) {
+    case "BUG":
+      return "border-red-200 bg-[var(--flow-danger-soft)] text-[var(--flow-danger-dark)]";
+
+    case "TEST_CASE":
+      return "border-emerald-200 bg-[var(--flow-success-soft)] text-[var(--flow-success-dark)]";
+
+    case "SECURITY_REVIEW":
+      return "border-amber-200 bg-[var(--flow-warning-soft)] text-[var(--flow-warning-dark)]";
+
+    case "REQUIREMENT":
+      return "border-[var(--flow-primary-200)] bg-[var(--flow-primary-50)] text-[var(--flow-primary-700)]";
+
+    case "DESIGN_REVIEW":
+      return "border-[var(--flow-border-strong)] bg-[var(--flow-gray-100)] text-[var(--flow-text-secondary)]";
+
+    case "RELEASE_CHECK":
+      return "border-[var(--flow-primary-200)] bg-[var(--flow-primary-50)] text-[var(--flow-primary-700)]";
+
+    default:
+      return "border-[var(--flow-border)] bg-[var(--flow-gray-100)] text-[var(--flow-text-secondary)]";
+  }
+};
+
+const getSecuritySeverityLabel = (severity: SecuritySeverity) => {
+  switch (severity) {
+    case "CRITICAL":
+      return "CRITICAL";
+
+    case "HIGH":
+      return "HIGH";
+
+    case "MEDIUM":
+      return "MEDIUM";
+
+    case "LOW":
+      return "LOW";
+  }
+};
+
+const getSecuritySeverityClassName = (severity: SecuritySeverity) => {
+  switch (severity) {
+    case "CRITICAL":
+      return "border-red-300 bg-[var(--flow-danger-soft)] text-[var(--flow-danger-dark)]";
+
+    case "HIGH":
+      return "border-orange-200 bg-orange-50 text-orange-700";
+
+    case "MEDIUM":
+      return "border-amber-200 bg-[var(--flow-warning-soft)] text-[var(--flow-warning-dark)]";
+
+    case "LOW":
+      return "border-sky-200 bg-sky-50 text-sky-700";
+  }
+};
+
+const getSecurityVerificationLabel = (status: SecurityVerificationStatus) => {
+  switch (status) {
+    case "PENDING":
+      return "대기";
+
+    case "IN_PROGRESS":
+      return "검증 중";
+
+    case "RETEST_REQUIRED":
+      return "재검증 필요";
+
+    case "VERIFIED":
+      return "검증 완료";
+  }
+};
+
 export default function CardDetailModal({
   open,
   cardId,
@@ -297,7 +416,11 @@ export default function CardDetailModal({
 
   const [description, setDescription] = useState("");
 
+  const [startDate, setStartDate] = useState("");
+
   const [dueDate, setDueDate] = useState("");
+
+  const [securityImpactScope, setSecurityImpactScope] = useState("");
 
   const [selectedAssigneeUserId, setSelectedAssigneeUserId] = useState("");
 
@@ -307,12 +430,55 @@ export default function CardDetailModal({
 
   const [newTagColor, setNewTagColor] = useState(DEFAULT_TAG_COLOR);
 
+  const [moveTargetColumnId, setMoveTargetColumnId] = useState<number | null>(null);
+
+  const [movePosition, setMovePosition] = useState<MovePositionValue>("BOTTOM");
+
   const cardQuery = useQuery({
     queryKey: ["cards", cardId],
 
     queryFn: () => getCardDetail(cardId as number),
 
     enabled: open && cardId !== null,
+  });
+
+  const boardQuery = useQuery({
+    queryKey: ["boards", boardId],
+
+    queryFn: () => getBoardDetail(boardId),
+
+    enabled: open && cardId !== null && isValidBoardId,
+
+    staleTime: 30_000,
+  });
+
+  const moveTargetCardsQuery = useQuery({
+    queryKey: [
+      "board",
+      boardId,
+      "move-target-cards",
+      moveTargetColumnId,
+      cardId,
+    ],
+
+    queryFn: async () => {
+      if (moveTargetColumnId === null || cardId === null) {
+        return [];
+      }
+
+      const cards = await getCardsByColumn(boardId, moveTargetColumnId);
+
+      return cards.filter((item) => item.id !== cardId);
+    },
+
+    enabled:
+      open &&
+      canEdit &&
+      isValidBoardId &&
+      cardId !== null &&
+      moveTargetColumnId !== null,
+
+    staleTime: 5_000,
   });
 
   const membersQuery = useQuery({
@@ -349,6 +515,8 @@ export default function CardDetailModal({
 
   const card = cardQuery.data;
 
+  const board = boardQuery.data;
+
   const members = membersQuery.data ?? [];
 
   const assignees = assigneesQuery.data ?? [];
@@ -356,6 +524,8 @@ export default function CardDetailModal({
   const boardTags = boardTagsQuery.data ?? [];
 
   const cardTags = cardTagsQuery.data ?? [];
+
+  const moveTargetCards = moveTargetCardsQuery.data ?? [];
 
   const availableMembers = useMemo(
     () =>
@@ -377,7 +547,11 @@ export default function CardDetailModal({
 
     setDescription(card.description ?? "");
 
+    setStartDate(toDateTimeInputValue(card.startDate));
+
     setDueDate(toDateTimeInputValue(card.dueDate));
+
+    setSecurityImpactScope(card.securityImpactScope ?? "");
 
     setEditMode(false);
 
@@ -390,6 +564,10 @@ export default function CardDetailModal({
     setNewTagName("");
 
     setNewTagColor(DEFAULT_TAG_COLOR);
+
+    setMoveTargetColumnId(card.columnId);
+
+    setMovePosition("BOTTOM");
   }, [card, open]);
 
   useEffect(() => {
@@ -403,6 +581,8 @@ export default function CardDetailModal({
 
     setDeleteDialogOpen(false);
 
+    setSecurityImpactScope("");
+
     setSelectedAssigneeUserId("");
 
     setSelectedTagId("");
@@ -410,6 +590,10 @@ export default function CardDetailModal({
     setNewTagName("");
 
     setNewTagColor(DEFAULT_TAG_COLOR);
+
+    setMoveTargetColumnId(null);
+
+    setMovePosition("BOTTOM");
   }, [open]);
 
   const updateMutation = useMutation({
@@ -444,7 +628,11 @@ export default function CardDetailModal({
 
       return updateCard(cardId, {
         title: card.title,
+
         description: nextDescription.trim() || null,
+
+        startDate: card.startDate,
+
         dueDate: card.dueDate,
       });
     },
@@ -463,6 +651,159 @@ export default function CardDetailModal({
 
     onError: () => {
       toast.error("설명을 수정하지 못했습니다.");
+    },
+  });
+
+  const securityReviewMutation = useMutation({
+    mutationFn: (data: SecurityReviewUpdateRequest) => {
+      if (cardId === null) {
+        throw new Error("카드 ID가 없습니다.");
+      }
+
+      return updateSecurityReview(cardId, data);
+    },
+
+    onSuccess: async (updatedCard) => {
+      queryClient.setQueryData(["cards", updatedCard.id], updatedCard);
+
+      setSecurityImpactScope(updatedCard.securityImpactScope ?? "");
+
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["board", boardId, "security-reviews"],
+        }),
+
+        onChanged(),
+      ]);
+
+      toast.success("보안 점검 정보를 변경했습니다.");
+    },
+
+    onError: () => {
+      toast.error("보안 점검 정보를 변경하지 못했습니다.");
+    },
+  });
+
+  const columnMoveMutation = useMutation({
+    mutationFn: async ({
+      targetColumnId,
+      position,
+    }: {
+      targetColumnId: number;
+      position: MovePositionValue;
+    }) => {
+      if (cardId === null || !card) {
+        throw new Error("카드 정보를 확인할 수 없습니다.");
+      }
+
+      const latestTargetCards = await getCardsByColumn(boardId, targetColumnId);
+
+      const currentIndex =
+        targetColumnId === card.columnId
+          ? latestTargetCards.findIndex((item) => item.id === cardId)
+          : -1;
+
+      const targetCards = latestTargetCards.filter((item) => item.id !== cardId);
+
+      let targetIndex: number;
+
+      if (position === "TOP") {
+        targetIndex = 0;
+      } else if (position === "BOTTOM") {
+        targetIndex = targetCards.length;
+      } else {
+        const beforeCardId = Number(position.replace("BEFORE:", ""));
+
+        targetIndex = targetCards.findIndex((item) => item.id === beforeCardId);
+
+        if (targetIndex < 0) {
+          throw new Error("MOVE_TARGET_POSITION_CHANGED");
+        }
+      }
+
+      if (targetColumnId === card.columnId && currentIndex === targetIndex) {
+        return {
+          updatedCard: card,
+          moved: false,
+          targetColumnId,
+        };
+      }
+
+      const updatedCard = await moveCard(cardId, {
+        targetColumnId,
+        targetIndex,
+      });
+
+      return {
+        updatedCard,
+        moved: true,
+        targetColumnId,
+      };
+    },
+
+    onSuccess: async ({ updatedCard, moved, targetColumnId }) => {
+      queryClient.setQueryData(["cards", updatedCard.id], updatedCard);
+
+      if (!moved) {
+        toast.info("이미 선택한 위치에 있습니다.");
+
+        return;
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["board", boardId, "cards"],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: ["board", boardId, "dashboard"],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: ["board", boardId, "test-cases"],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: ["board", boardId, "security-reviews"],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: ["boards", boardId, "card-search"],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: ["boards", boardId, "activities"],
+        }),
+
+        queryClient.invalidateQueries({
+          queryKey: ["board", boardId, "move-target-cards"],
+        }),
+
+        onChanged(),
+      ]);
+
+      const targetColumn =
+        board?.columns.find((column) => column.id === targetColumnId) ?? null;
+
+      toast.success(
+        targetColumn
+          ? `"${targetColumn.title}" 컬럼의 선택한 위치로 이동했습니다.`
+          : "카드를 선택한 위치로 이동했습니다.",
+      );
+    },
+
+    onError: (error) => {
+      if (error instanceof Error && error.message === "MOVE_TARGET_POSITION_CHANGED") {
+        toast.error("선택한 위치의 카드가 변경되었습니다. 위치를 다시 선택해주세요.");
+
+        void moveTargetCardsQuery.refetch();
+
+        setMovePosition("BOTTOM");
+
+        return;
+      }
+
+      toast.error("카드를 이동하지 못했습니다.");
     },
   });
 
@@ -602,10 +943,6 @@ export default function CardDetailModal({
         throw new Error("태그 이름이 없습니다.");
       }
 
-      /*
-       * 새 태그를 보드에 만든 뒤
-       * 현재 카드에도 바로 연결합니다.
-       */
       const tag = await createTag(boardId, {
         name,
         color: newTagColor,
@@ -648,6 +985,8 @@ export default function CardDetailModal({
 
     setDescription(card.description ?? "");
 
+    setStartDate(toDateTimeInputValue(card.startDate));
+
     setDueDate(toDateTimeInputValue(card.dueDate));
 
     setDescriptionEditMode(false);
@@ -663,6 +1002,8 @@ export default function CardDetailModal({
     setTitle(card.title);
 
     setDescription(card.description ?? "");
+
+    setStartDate(toDateTimeInputValue(card.startDate));
 
     setDueDate(toDateTimeInputValue(card.dueDate));
 
@@ -697,7 +1038,7 @@ export default function CardDetailModal({
     descriptionUpdateMutation.mutate(description);
   };
 
-  const handleSubmit = (event: SubmitEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!canEdit || !card) {
@@ -714,10 +1055,23 @@ export default function CardDetailModal({
       return;
     }
 
+    if (startDate && dueDate) {
+      const startTime = new Date(startDate).getTime();
+      const dueTime = new Date(dueDate).getTime();
+
+      if (Number.isFinite(startTime) && Number.isFinite(dueTime) && startTime > dueTime) {
+        toast.error("시작일은 마감일보다 늦을 수 없습니다.");
+
+        return;
+      }
+    }
+
     updateMutation.mutate({
       title: trimmedTitle,
 
       description: trimmedDescription || null,
+
+      startDate: startDate || null,
 
       dueDate: dueDate || null,
     });
@@ -800,6 +1154,8 @@ export default function CardDetailModal({
       descriptionUpdateMutation.isPending ||
       testCaseTypeMutation.isPending ||
       testCaseResultMutation.isPending ||
+      securityReviewMutation.isPending ||
+      columnMoveMutation.isPending ||
       deleteMutation.isPending ||
       isAssigneeBusy ||
       isTagBusy
@@ -821,6 +1177,7 @@ export default function CardDetailModal({
       if (event.key === "Escape") {
         if (descriptionEditMode) {
           cancelDescriptionEdit();
+
           return;
         }
 
@@ -837,6 +1194,10 @@ export default function CardDetailModal({
     open,
     updateMutation.isPending,
     descriptionUpdateMutation.isPending,
+    testCaseTypeMutation.isPending,
+    testCaseResultMutation.isPending,
+    securityReviewMutation.isPending,
+    columnMoveMutation.isPending,
     deleteMutation.isPending,
     descriptionEditMode,
     isAssigneeBusy,
@@ -890,7 +1251,6 @@ export default function CardDetailModal({
           ].join(" ")}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          {/* Panel header */}
           <header className="flex h-[64px] shrink-0 items-center justify-between gap-5 border-b border-[var(--flow-border)] bg-white px-6">
             <div className="flex min-w-0 items-center gap-2.5">
               <span className="text-[12px] font-bold text-[var(--flow-primary)]">
@@ -948,7 +1308,6 @@ export default function CardDetailModal({
             </div>
           </header>
 
-          {/* Panel content */}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {cardQuery.isLoading ? (
               <div className="flex min-h-[460px] items-center justify-center px-8">
@@ -994,7 +1353,7 @@ export default function CardDetailModal({
                     </h2>
 
                     <p className="mt-2 text-[13px] leading-6 text-[var(--flow-text-muted)]">
-                      제목, 설명, 마감일을 수정합니다. 담당자와 태그, 체크리스트는 상세 화면에서
+                      제목, 설명, 시작일과 마감일을 수정합니다. 담당자와 태그, 체크리스트는 상세 화면에서
                       관리합니다.
                     </p>
                   </div>
@@ -1019,13 +1378,23 @@ export default function CardDetailModal({
                       onChange={(event) => setDescription(event.target.value)}
                     />
 
-                    <Input
-                      label="마감일"
-                      type="datetime-local"
-                      value={dueDate}
-                      disabled={updateMutation.isPending}
-                      onChange={(event) => setDueDate(event.target.value)}
-                    />
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <Input
+                        label="시작일"
+                        type="datetime-local"
+                        value={startDate}
+                        disabled={updateMutation.isPending}
+                        onChange={(event) => setStartDate(event.target.value)}
+                      />
+
+                      <Input
+                        label="마감일"
+                        type="datetime-local"
+                        value={dueDate}
+                        disabled={updateMutation.isPending}
+                        onChange={(event) => setDueDate(event.target.value)}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1046,10 +1415,20 @@ export default function CardDetailModal({
               </form>
             ) : (
               <>
-                {/* Overview */}
                 <section className="border-b border-[var(--flow-border)] px-7 py-7">
-                  {/* Tags */}
                   <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={[
+                        "inline-flex h-7 items-center rounded-lg border px-2.5",
+                        "text-[10px] font-bold",
+                        getTaskTypeClassName(card.taskType),
+                      ].join(" ")}
+                    >
+                      {getTaskTypeLabel(card.taskType)}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     {cardTagsQuery.isLoading ? (
                       <>
                         <span className="h-6 w-16 animate-pulse rounded-md bg-[var(--flow-gray-100)]" />
@@ -1081,7 +1460,6 @@ export default function CardDetailModal({
                     )}
                   </div>
 
-                  {/* Title */}
                   <h2 className="mt-4 text-[24px] leading-[1.45] font-bold tracking-[-0.03em] break-words text-[var(--flow-text)]">
                     {card.title}
                   </h2>
@@ -1090,9 +1468,7 @@ export default function CardDetailModal({
                     작업 #{card.id}
                   </p>
 
-                  {/* Metadata */}
                   <div className="mt-6 divide-y divide-[var(--flow-border)] rounded-xl border border-[var(--flow-border)] bg-white">
-                    {/* Creator */}
                     <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4 px-4 py-3.5">
                       <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--flow-text-muted)]">
                         <UserIcon />
@@ -1110,7 +1486,211 @@ export default function CardDetailModal({
                       </div>
                     </div>
 
-                    {/* Due date */}
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4 px-4 py-3.5">
+                      <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--flow-text-muted)]">
+                        <svg
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect x="4" y="4" width="5" height="16" rx="1.5" />
+                          <rect x="10.5" y="4" width="5" height="12" rx="1.5" />
+                          <rect x="17" y="4" width="3" height="8" rx="1.5" />
+                        </svg>
+                        현재 컬럼
+                      </div>
+
+                      {boardQuery.isLoading ? (
+                        <div className="h-8 w-24 animate-pulse rounded-lg bg-[var(--flow-gray-100)]" />
+                      ) : boardQuery.isError || !board ? (
+                        <button
+                          type="button"
+                          className="w-fit text-[11px] font-semibold text-[var(--flow-primary)] hover:underline"
+                          onClick={() => void boardQuery.refetch()}
+                        >
+                          컬럼 다시 불러오기
+                        </button>
+                      ) : (
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="inline-flex min-w-0 items-center rounded-lg bg-[var(--flow-primary-50)] px-3 py-1.5 text-[11px] font-bold text-[var(--flow-primary-700)]">
+                            <span className="truncate">
+                              {board.columns.find((column) => column.id === card.columnId)?.title ??
+                                `컬럼 #${card.columnId}`}
+                            </span>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] items-start gap-4 px-4 py-3.5">
+                      <div className="flex items-center gap-2 pt-2 text-[11px] font-medium text-[var(--flow-text-muted)]">
+                        <svg
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M5 12h14" />
+                          <path d="m14 7 5 5-5 5" />
+                        </svg>
+                        카드 이동
+                      </div>
+
+                      {!board || boardQuery.isLoading ? (
+                        <div className="h-[82px] w-full animate-pulse rounded-lg bg-[var(--flow-gray-100)]" />
+                      ) : boardQuery.isError ? (
+                        <button
+                          type="button"
+                          className="w-fit pt-2 text-[11px] font-semibold text-[var(--flow-primary)] hover:underline"
+                          onClick={() => void boardQuery.refetch()}
+                        >
+                          이동 정보를 다시 불러오기
+                        </button>
+                      ) : canEdit ? (
+                        <div className="min-w-0 space-y-2">
+                          <select
+                            aria-label="이동할 컬럼"
+                            value={String(moveTargetColumnId ?? card.columnId)}
+                            disabled={columnMoveMutation.isPending}
+                            className={[
+                              "h-9 w-full min-w-0 rounded-lg",
+                              "border border-[var(--flow-border-strong)]",
+                              "bg-white px-3",
+                              "text-[11px] font-semibold",
+                              "text-[var(--flow-text-secondary)]",
+                              "outline-none",
+                              "transition-[border-color,box-shadow,opacity]",
+                              "focus:border-[var(--flow-primary)]",
+                              "focus:ring-4 focus:ring-[var(--flow-focus-ring)]",
+                              "disabled:cursor-not-allowed disabled:opacity-55",
+                            ].join(" ")}
+                            onChange={(event) => {
+                              const targetColumnId = Number(event.target.value);
+
+                              if (!Number.isInteger(targetColumnId) || targetColumnId <= 0) {
+                                return;
+                              }
+
+                              setMoveTargetColumnId(targetColumnId);
+                              setMovePosition("BOTTOM");
+                            }}
+                          >
+                            {board.columns.map((column) => (
+                              <option key={column.id} value={column.id}>
+                                {column.title}
+                              </option>
+                            ))}
+                          </select>
+
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                            <select
+                              aria-label="이동할 위치"
+                              value={movePosition}
+                              disabled={
+                                columnMoveMutation.isPending ||
+                                moveTargetCardsQuery.isLoading ||
+                                moveTargetCardsQuery.isError
+                              }
+                              className={[
+                                "h-9 min-w-0 rounded-lg",
+                                "border border-[var(--flow-border-strong)]",
+                                "bg-white px-3",
+                                "text-[11px] font-semibold",
+                                "text-[var(--flow-text-secondary)]",
+                                "outline-none",
+                                "transition-[border-color,box-shadow,opacity]",
+                                "focus:border-[var(--flow-primary)]",
+                                "focus:ring-4 focus:ring-[var(--flow-focus-ring)]",
+                                "disabled:cursor-not-allowed disabled:opacity-55",
+                              ].join(" ")}
+                              onChange={(event) => {
+                                setMovePosition(event.target.value as MovePositionValue);
+                              }}
+                            >
+                              <option value="TOP">맨 위</option>
+
+                              {moveTargetCards.map((targetCard) => (
+                                <option key={targetCard.id} value={`BEFORE:${targetCard.id}`}>
+                                  #{targetCard.id} {targetCard.title} 앞
+                                </option>
+                              ))}
+
+                              <option value="BOTTOM">맨 아래</option>
+                            </select>
+
+                            <Button
+                              type="button"
+                              size="sm"
+                              loading={columnMoveMutation.isPending}
+                              disabled={
+                                columnMoveMutation.isPending ||
+                                moveTargetColumnId === null ||
+                                moveTargetCardsQuery.isLoading ||
+                                moveTargetCardsQuery.isError
+                              }
+                              onClick={() => {
+                                if (moveTargetColumnId === null) {
+                                  return;
+                                }
+
+                                columnMoveMutation.mutate({
+                                  targetColumnId: moveTargetColumnId,
+                                  position: movePosition,
+                                });
+                              }}
+                            >
+                              이동
+                            </Button>
+                          </div>
+
+                          <div className="min-h-5">
+                            {moveTargetCardsQuery.isLoading ? (
+                              <span className="inline-flex items-center gap-1.5 text-[9px] font-semibold text-[var(--flow-text-muted)]">
+                                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--flow-primary)]" />
+                                이동 위치 불러오는 중
+                              </span>
+                            ) : moveTargetCardsQuery.isError ? (
+                              <button
+                                type="button"
+                                className="text-[9px] font-semibold text-[var(--flow-danger)] hover:underline"
+                                onClick={() => void moveTargetCardsQuery.refetch()}
+                              >
+                                위치를 불러오지 못했습니다. 다시 시도
+                              </button>
+                            ) : (
+                              <span className="text-[9px] leading-5 text-[var(--flow-text-placeholder)]">
+                                컬럼과 위치를 고른 뒤 이동을 누르면 정확한 순서로 배치됩니다.
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="pt-2 text-[11px] font-medium text-[var(--flow-text-placeholder)]">
+                          VIEWER는 카드를 이동할 수 없습니다.
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4 px-4 py-3.5">
+                      <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--flow-text-muted)]">
+                        <CalendarIcon />
+                        시작일
+                      </div>
+
+                      <span className="truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
+                        {formatDateTime(card.startDate)}
+                      </span>
+                    </div>
+
                     <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4 px-4 py-3.5">
                       <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--flow-text-muted)]">
                         <CalendarIcon />
@@ -1137,7 +1717,6 @@ export default function CardDetailModal({
                       </div>
                     </div>
 
-                    {/* Updated */}
                     <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4 px-4 py-3.5">
                       <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--flow-text-muted)]">
                         <ClockIcon />
@@ -1151,7 +1730,6 @@ export default function CardDetailModal({
                   </div>
                 </section>
 
-                {/* Test case metadata */}
                 {card.taskType === "TEST_CASE" && (
                   <section className="border-b border-[var(--flow-border)] px-8 py-6">
                     <div className="flex items-start justify-between gap-5">
@@ -1173,7 +1751,6 @@ export default function CardDetailModal({
                     </div>
 
                     <div className="mt-5 grid grid-cols-2 gap-4">
-                      {/* 테스트 유형 */}
                       <div className="rounded-xl bg-[var(--flow-gray-50)] p-4">
                         <p className="mb-2 text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
                           테스트 유형
@@ -1230,7 +1807,6 @@ export default function CardDetailModal({
                         )}
                       </div>
 
-                      {/* 테스트 결과 */}
                       <div className="rounded-xl bg-[var(--flow-gray-50)] p-4">
                         <p className="mb-2 text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
                           테스트 결과
@@ -1295,22 +1871,189 @@ export default function CardDetailModal({
                   </section>
                 )}
 
-                {/* Description */}
-                <section className="border-b border-[var(--flow-border)] px-7 py-6">
-                  <div className="mb-5 flex items-start justify-between gap-5">
-                    <div className="mb-4 flex items-center justify-between gap-5">
-                      <h3 className="text-[14px] font-bold text-[var(--flow-text)]">설명</h3>
+                {card.taskType === "SECURITY_REVIEW" && (
+                  <section className="border-b border-[var(--flow-border)] px-8 py-6">
+                    <div className="flex items-start justify-between gap-5">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-[14px] font-bold text-[var(--flow-text)]">
+                            보안 점검
+                          </h3>
 
-                      {canEdit && !descriptionEditMode && (
-                        <button
-                          type="button"
-                          className="shrink-0 rounded-lg px-3 py-2 text-[11px] font-semibold text-[var(--flow-primary)] transition-colors hover:bg-[var(--flow-primary-50)]"
-                          onClick={startDescriptionEdit}
-                        >
-                          설명 수정
-                        </button>
+                          <span className="rounded-md bg-[var(--flow-warning-soft)] px-2 py-1 text-[9px] font-bold tracking-[0.05em] text-[var(--flow-warning-dark)]">
+                            SECURITY
+                          </span>
+                        </div>
+
+                        <p className="mt-1.5 text-[11px] leading-5 text-[var(--flow-text-muted)]">
+                          심각도, 영향 범위, 재검증 상태를 카드 상세에서도 바로 관리합니다.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-2 gap-4">
+                      <div className="rounded-xl bg-[var(--flow-gray-50)] p-4">
+                        <p className="mb-2 text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
+                          심각도
+                        </p>
+
+                        {canEdit ? (
+                          <select
+                            value={card.securitySeverity ?? "MEDIUM"}
+                            disabled={securityReviewMutation.isPending}
+                            className={[
+                              "h-9 w-full rounded-lg border px-3",
+                              "text-[11px] font-bold",
+                              "outline-none",
+                              "transition-[border-color,box-shadow,opacity]",
+                              "focus:ring-4 focus:ring-[var(--flow-focus-ring)]",
+                              getSecuritySeverityClassName(card.securitySeverity ?? "MEDIUM"),
+                              securityReviewMutation.isPending
+                                ? "cursor-wait opacity-50"
+                                : "cursor-pointer",
+                            ].join(" ")}
+                            onChange={(event) =>
+                              securityReviewMutation.mutate({
+                                securitySeverity: event.target.value as SecuritySeverity,
+                              })
+                            }
+                          >
+                            <option value="CRITICAL">CRITICAL</option>
+
+                            <option value="HIGH">HIGH</option>
+
+                            <option value="MEDIUM">MEDIUM</option>
+
+                            <option value="LOW">LOW</option>
+                          </select>
+                        ) : (
+                          <div
+                            className={[
+                              "flex h-9 items-center rounded-lg border px-3",
+                              getSecuritySeverityClassName(card.securitySeverity ?? "MEDIUM"),
+                            ].join(" ")}
+                          >
+                            <span className="text-[11px] font-bold">
+                              {getSecuritySeverityLabel(card.securitySeverity ?? "MEDIUM")}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl bg-[var(--flow-gray-50)] p-4">
+                        <p className="mb-2 text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
+                          검증 상태
+                        </p>
+
+                        {canEdit ? (
+                          <select
+                            value={card.securityVerificationStatus ?? "PENDING"}
+                            disabled={securityReviewMutation.isPending}
+                            className={[
+                              "h-9 w-full rounded-lg",
+                              "border border-[var(--flow-border-strong)]",
+                              "bg-white px-3",
+                              "text-[11px] font-semibold",
+                              "text-[var(--flow-text-secondary)]",
+                              "outline-none",
+                              "transition-[border-color,box-shadow,opacity]",
+                              "focus:border-[var(--flow-primary)]",
+                              "focus:ring-4 focus:ring-[var(--flow-focus-ring)]",
+                              securityReviewMutation.isPending
+                                ? "cursor-wait opacity-50"
+                                : "cursor-pointer",
+                            ].join(" ")}
+                            onChange={(event) =>
+                              securityReviewMutation.mutate({
+                                securityVerificationStatus: event.target
+                                  .value as SecurityVerificationStatus,
+                              })
+                            }
+                          >
+                            <option value="PENDING">대기</option>
+
+                            <option value="IN_PROGRESS">검증 중</option>
+
+                            <option value="RETEST_REQUIRED">재검증 필요</option>
+
+                            <option value="VERIFIED">검증 완료</option>
+                          </select>
+                        ) : (
+                          <div className="flex h-9 items-center rounded-lg border border-[var(--flow-border)] bg-white px-3">
+                            <span className="text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                              {getSecurityVerificationLabel(
+                                card.securityVerificationStatus ?? "PENDING",
+                              )}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-xl bg-[var(--flow-gray-50)] p-4">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-semibold text-[var(--flow-text-placeholder)]">
+                            영향 범위
+                          </p>
+
+                          <p className="mt-1 text-[10px] leading-4 text-[var(--flow-text-muted)]">
+                            영향을 받는 화면, API, 기능 또는 컴포넌트를 기록합니다.
+                          </p>
+                        </div>
+                      </div>
+
+                      {canEdit ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={securityImpactScope}
+                            maxLength={255}
+                            placeholder="예: Web /api/auth/login"
+                            disabled={securityReviewMutation.isPending}
+                            className="h-10 min-w-0 flex-1 rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 text-[12px] text-[var(--flow-text)] outline-none placeholder:text-[var(--flow-text-placeholder)] focus:border-[var(--flow-primary)] focus:ring-4 focus:ring-[var(--flow-focus-ring)] disabled:opacity-60"
+                            onChange={(event) => setSecurityImpactScope(event.target.value)}
+                          />
+
+                          <Button
+                            type="button"
+                            size="sm"
+                            loading={securityReviewMutation.isPending}
+                            disabled={
+                              securityReviewMutation.isPending ||
+                              securityImpactScope.trim() === (card.securityImpactScope ?? "").trim()
+                            }
+                            onClick={() =>
+                              securityReviewMutation.mutate({
+                                securityImpactScope: securityImpactScope.trim(),
+                              })
+                            }
+                          >
+                            저장
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-[var(--flow-border)] bg-white px-3.5 py-3 text-[12px] leading-5 text-[var(--flow-text-secondary)]">
+                          {card.securityImpactScope || "영향 범위가 아직 등록되지 않았습니다."}
+                        </div>
                       )}
                     </div>
+                  </section>
+                )}
+
+                <section className="border-b border-[var(--flow-border)] px-7 py-6">
+                  <div className="mb-5 flex items-center justify-between gap-5">
+                    <h3 className="text-[14px] font-bold text-[var(--flow-text)]">설명</h3>
+
+                    {canEdit && !descriptionEditMode && (
+                      <button
+                        type="button"
+                        className="shrink-0 rounded-lg px-3 py-2 text-[11px] font-semibold text-[var(--flow-primary)] transition-colors hover:bg-[var(--flow-primary-50)]"
+                        onClick={startDescriptionEdit}
+                      >
+                        설명 수정
+                      </button>
+                    )}
                   </div>
 
                   {descriptionEditMode ? (
@@ -1367,7 +2110,6 @@ export default function CardDetailModal({
                   )}
                 </section>
 
-                {/* Assignees */}
                 <section className="border-b border-[var(--flow-border)] px-7 py-6">
                   <div className="flex items-start justify-between gap-5">
                     <div>
@@ -1496,7 +2238,6 @@ export default function CardDetailModal({
                   </div>
                 </section>
 
-                {/* Tags */}
                 <section className="border-b border-[var(--flow-border)] px-8 py-8">
                   <div className="flex items-start justify-between gap-5">
                     <div>
@@ -1663,7 +2404,6 @@ export default function CardDetailModal({
                   </div>
                 </section>
 
-                {/* Checklist */}
                 <section className="border-b border-[var(--flow-border)] px-8 py-8">
                   <div className="mb-5">
                     <h3 className="text-base font-bold text-[var(--flow-text)]">체크리스트</h3>
@@ -1672,7 +2412,6 @@ export default function CardDetailModal({
                   <ChecklistSection cardId={card.id} canEdit={canEdit} />
                 </section>
 
-                {/* Comments */}
                 <section className="px-6 py-6">
                   <div className="mb-5">
                     <h3 className="text-base font-bold text-[var(--flow-text)]">댓글</h3>
@@ -1684,7 +2423,6 @@ export default function CardDetailModal({
             )}
           </div>
 
-          {/* Panel footer */}
           {!editMode && card && (
             <footer className="flex h-[72px] shrink-0 items-center justify-between gap-4 border-t border-[var(--flow-border)] bg-white px-8">
               <div>
@@ -1703,12 +2441,6 @@ export default function CardDetailModal({
                 <Button type="button" variant="outline" size="sm" onClick={handleClose}>
                   닫기
                 </Button>
-
-                {canEdit && (
-                  <Button type="button" size="sm" onClick={startEdit}>
-                    수정
-                  </Button>
-                )}
               </div>
             </footer>
           )}

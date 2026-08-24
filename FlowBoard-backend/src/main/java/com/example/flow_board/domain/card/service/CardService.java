@@ -93,6 +93,7 @@ public class CardService {
         request.title(),
         request.description(),
         createLexoRank(boardColumn),
+        request.startDate(),
         request.dueDate(),
         request.taskType(),
         request.testCaseType(),
@@ -503,6 +504,7 @@ public class CardService {
     card.update(
         request.title(),
         request.description(),
+        request.startDate(),
         request.dueDate()
     );
 

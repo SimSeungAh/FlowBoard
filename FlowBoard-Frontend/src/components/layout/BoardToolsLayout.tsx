@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
+
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+
 import { Link, Outlet, useLocation, useParams } from "react-router";
 
 import { getBoardDetail } from "@/api/board";
+
 import { connectCardWebSocket, type CardConnectionState } from "@/services/cardWebSocket";
 
 const getConnectionLabel = (state: CardConnectionState) => {
   switch (state) {
     case "connected":
       return "실시간 연결됨";
+
     case "connecting":
       return "실시간 연결 중";
+
     case "disconnected":
       return "실시간 연결 끊김";
   }
@@ -20,29 +25,52 @@ const getConnectionDotClassName = (state: CardConnectionState) => {
   switch (state) {
     case "connected":
       return "bg-[var(--flow-success)]";
+
     case "connecting":
       return "bg-[var(--flow-warning)]";
+
     case "disconnected":
       return "bg-[var(--flow-danger)]";
   }
 };
 
-const getPageLabel = (pathname: string, boardId: number) => {
+const getPageLabel = (
+  pathname: string,
+
+  boardId: number,
+) => {
   if (pathname === `/boards/${boardId}`) {
+    return "대시보드";
+  }
+
+  if (pathname.endsWith("/kanban")) {
     return "칸반 보드";
   }
+
+  if (pathname.endsWith("/schedule")) {
+    return "일정";
+  }
+
   if (pathname.endsWith("/search")) {
     return "작업 검색";
   }
+
   if (pathname.endsWith("/test-cases")) {
     return "테스트 케이스";
   }
+
+  if (pathname.endsWith("/security-reviews")) {
+    return "보안 점검";
+  }
+
   if (pathname.endsWith("/whiteboard")) {
     return "화이트보드";
   }
+
   if (pathname.endsWith("/activities")) {
     return "활동 기록";
   }
+
   if (pathname.endsWith("/members")) {
     return "팀원 및 권한";
   }
@@ -51,19 +79,27 @@ const getPageLabel = (pathname: string, boardId: number) => {
 };
 
 export default function BoardToolsLayout() {
-  const { boardId: boardIdParam } = useParams<{ boardId: string }>();
+  const { boardId: boardIdParam } = useParams<{
+    boardId: string;
+  }>();
+
   const location = useLocation();
+
   const queryClient = useQueryClient();
 
   const [connectionState, setConnectionState] = useState<CardConnectionState>("connecting");
 
   const boardId = Number(boardIdParam);
+
   const isValidBoardId = Number.isInteger(boardId) && boardId > 0;
 
   const { data: board } = useQuery({
     queryKey: ["boards", boardId],
+
     queryFn: () => getBoardDetail(boardId),
+
     enabled: isValidBoardId,
+
     staleTime: 30_000,
   });
 
@@ -74,29 +110,61 @@ export default function BoardToolsLayout() {
 
     const disconnect = connectCardWebSocket({
       boardId,
+
       onConnectionStateChange: setConnectionState,
+
       onEvent: (event) => {
         /*
-         * 일반 칸반 카드 목록 갱신
+         * 칸반 카드 목록
          */
         void queryClient.invalidateQueries({
           queryKey: ["board", boardId, "cards"],
         });
 
         /*
-         * 테스트 케이스 전용 목록도 같은 Card 데이터를
-         * 사용하므로 카드 변경 이벤트를 받으면 함께 갱신합니다.
-         *
-         * TEST_CASE가 아닌 카드 이벤트가 와도
-         * 서버 조회 조건에서 걸러지므로 문제 없습니다.
+         * 프로젝트 대시보드
+         */
+        void queryClient.invalidateQueries({
+          queryKey: ["board", boardId, "dashboard"],
+        });
+
+        /*
+         * 일정 / 간트
+         */
+        void queryClient.invalidateQueries({
+          queryKey: ["board", boardId, "schedule"],
+        });
+
+        /*
+         * 테스트 케이스
          */
         void queryClient.invalidateQueries({
           queryKey: ["board", boardId, "test-cases"],
         });
 
         /*
-         * 현재 카드 상세 패널이 열려 있다면
-         * 그 카드의 상세 데이터도 최신화합니다.
+         * 보안 점검
+         */
+        void queryClient.invalidateQueries({
+          queryKey: ["board", boardId, "security-reviews"],
+        });
+
+        /*
+         * 작업 검색
+         */
+        void queryClient.invalidateQueries({
+          queryKey: ["boards", boardId, "card-search"],
+        });
+
+        /*
+         * 활동 기록
+         */
+        void queryClient.invalidateQueries({
+          queryKey: ["boards", boardId, "activities"],
+        });
+
+        /*
+         * 카드 상세
          */
         if (event.type === "DELETED") {
           queryClient.removeQueries({
@@ -110,6 +178,7 @@ export default function BoardToolsLayout() {
           queryKey: ["cards", event.cardId],
         });
       },
+
       onError: (error) => {
         console.error("[Card WebSocket]", error);
       },
@@ -160,11 +229,19 @@ export default function BoardToolsLayout() {
           <span className="shrink-0 font-bold text-[var(--flow-text)]">{pageLabel}</span>
         </div>
 
-        <div className="flex items-center gap-2 rounded-full border border-[var(--flow-border)] bg-[var(--flow-gray-50)] px-2.5 py-1.5">
+        <div
+          className="flex items-center gap-2 rounded-full border border-[var(--flow-border)] bg-[var(--flow-gray-50)] px-2.5 py-1.5"
+          aria-live="polite"
+          title={getConnectionLabel(connectionState)}
+        >
           <span
-            className={`h-2 w-2 rounded-full ${getConnectionDotClassName(connectionState)} ${
-              connectionState === "connecting" ? "animate-pulse" : ""
-            }`}
+            className={[
+              "h-2 w-2 rounded-full",
+
+              getConnectionDotClassName(connectionState),
+
+              connectionState === "connecting" ? "animate-pulse" : "",
+            ].join(" ")}
           />
 
           <span className="text-[10px] font-semibold whitespace-nowrap text-[var(--flow-text-muted)]">

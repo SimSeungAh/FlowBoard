@@ -13,9 +13,7 @@ export interface BoardColumnReorderRequest {
   columnIds: number[];
 }
 
-export const getBoardColumns = async (
-  boardId: number,
-): Promise<BoardColumnResponse[]> => {
+export const getBoardColumns = async (boardId: number): Promise<BoardColumnResponse[]> => {
   const response = await api.get(`/boards/${boardId}/columns`);
 
   return response.data.data;
@@ -35,10 +33,21 @@ export const updateBoardColumn = async (
   columnId: number,
   data: BoardColumnUpdateRequest,
 ): Promise<BoardColumnResponse> => {
-  const response = await api.patch(
-    `/boards/${boardId}/columns/${columnId}`,
-    data,
-  );
+  const response = await api.patch(`/boards/${boardId}/columns/${columnId}`, data);
+
+  return response.data.data;
+};
+
+export const updateBoardColumnCompletion = async (
+  boardId: number,
+  columnId: number,
+  completionColumn: boolean,
+): Promise<BoardColumnResponse> => {
+  const response = await api.patch(`/boards/${boardId}/columns/${columnId}/completion`, null, {
+    params: {
+      completionColumn,
+    },
+  });
 
   return response.data.data;
 };
@@ -47,17 +56,11 @@ export const reorderBoardColumns = async (
   boardId: number,
   data: BoardColumnReorderRequest,
 ): Promise<BoardColumnResponse[]> => {
-  const response = await api.patch(
-    `/boards/${boardId}/columns/reorder`,
-    data,
-  );
+  const response = await api.patch(`/boards/${boardId}/columns/reorder`, data);
 
   return response.data.data;
 };
 
-export const deleteBoardColumn = async (
-  boardId: number,
-  columnId: number,
-): Promise<void> => {
+export const deleteBoardColumn = async (boardId: number, columnId: number): Promise<void> => {
   await api.delete(`/boards/${boardId}/columns/${columnId}`);
 };
