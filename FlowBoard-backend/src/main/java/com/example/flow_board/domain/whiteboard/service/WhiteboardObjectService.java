@@ -10,6 +10,8 @@ import com.example.flow_board.domain.whiteboard.entity.Whiteboard;
 import com.example.flow_board.domain.whiteboard.entity.WhiteboardObject;
 import com.example.flow_board.domain.whiteboard.repository.WhiteboardObjectRepository;
 import com.example.flow_board.domain.whiteboard.repository.WhiteboardRepository;
+import com.example.flow_board.domain.whiteboard.websocket.WhiteboardEventPublisher;
+import com.example.flow_board.domain.whiteboard.websocket.WhiteboardWebSocketEvent;
 import com.example.flow_board.global.exception.CustomException;
 import com.example.flow_board.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -24,52 +26,27 @@ import java.util.List;
 public class WhiteboardObjectService {
 
   private final BoardRepository boardRepository;
-
   private final BoardPermissionService boardPermissionService;
-
   private final WhiteboardRepository whiteboardRepository;
-
   private final WhiteboardObjectRepository whiteboardObjectRepository;
+  private final WhiteboardEventPublisher whiteboardEventPublisher;
 
-  /**
-   * 현재 화이트보드의 객체 목록 조회
-   */
   public List<WhiteboardObjectResponse> getObjects(
       User user,
       Long boardId,
       Long whiteboardId
   ) {
-    Board board =
-        getBoardById(
-            boardId
-        );
-
-    boardPermissionService
-        .validateReadPermission(
-            board,
-            user
-        );
-
-    Whiteboard whiteboard =
-        getWhiteboardInBoard(
-            board,
-            whiteboardId
-        );
+    Board board = getBoardById(boardId);
+    boardPermissionService.validateReadPermission(board, user);
+    Whiteboard whiteboard = getWhiteboardInBoard(board, whiteboardId);
 
     return whiteboardObjectRepository
-        .findOrderedByWhiteboard(
-            whiteboard
-        )
+        .findOrderedByWhiteboard(whiteboard)
         .stream()
-        .map(
-            WhiteboardObjectResponse::from
-        )
+        .map(WhiteboardObjectResponse::from)
         .toList();
   }
 
-  /**
-   * 객체 생성
-   */
   @Transactional
   public WhiteboardObjectResponse createObject(
       User user,
@@ -77,85 +54,51 @@ public class WhiteboardObjectService {
       Long whiteboardId,
       WhiteboardObjectRequests.Create request
   ) {
-    Board board =
-        getBoardById(
-            boardId
-        );
+    Board board = getBoardById(boardId);
+    boardPermissionService.validateWritePermission(board, user);
+    Whiteboard whiteboard = getWhiteboardInBoard(board, whiteboardId);
+    validateWhiteboardEditable(whiteboard);
 
-    boardPermissionService
-        .validateWritePermission(
-            board,
-            user
-        );
-
-    Whiteboard whiteboard =
-        getWhiteboardInBoard(
-            board,
-            whiteboardId
-        );
-
-    boolean duplicated =
-        whiteboardObjectRepository
-            .existsByWhiteboardAndClientObjectId(
-                whiteboard,
-                request.clientObjectId()
-            );
+    boolean duplicated = whiteboardObjectRepository
+        .existsByWhiteboardAndClientObjectId(whiteboard, request.clientObjectId());
 
     if (duplicated) {
-      throw new CustomException(
-          ErrorCode.INVALID_INPUT
-      );
+      throw new CustomException(ErrorCode.INVALID_INPUT);
     }
 
-    int zIndex =
-        request.zIndex() == null
-            ? getNextZIndex(
-            whiteboard
-        )
-            : request.zIndex();
+    int zIndex = request.zIndex() == null
+        ? getNextZIndex(whiteboard)
+        : request.zIndex();
 
-    WhiteboardObject object =
-        new WhiteboardObject(
-            whiteboard,
-            user,
-            request.clientObjectId().trim(),
-            request.type(),
-            request.x(),
-            request.y(),
-            request.width(),
-            request.height(),
-            request.rotation(),
-            normalizeContent(
-                request.content()
-            ),
-            normalizeOptionalText(
-                request.fillColor()
-            ),
-            normalizeOptionalText(
-                request.strokeColor()
-            ),
-            request.strokeWidth(),
-            request.fontSize(),
-            zIndex,
-            normalizeOptionalText(
-                request.propertiesJson()
-            )
-        );
-
-    WhiteboardObject saved =
-        whiteboardObjectRepository
-            .save(
-                object
-            );
-
-    return WhiteboardObjectResponse.from(
-        saved
+    WhiteboardObject object = new WhiteboardObject(
+        whiteboard,
+        user,
+        request.clientObjectId().trim(),
+        request.type(),
+        request.x(),
+        request.y(),
+        request.width(),
+        request.height(),
+        request.rotation(),
+        normalizeContent(request.content()),
+        normalizeOptionalText(request.fillColor()),
+        normalizeOptionalText(request.strokeColor()),
+        request.strokeWidth(),
+        request.fontSize(),
+        zIndex,
+        normalizeOptionalText(request.propertiesJson())
     );
+
+    WhiteboardObject saved = whiteboardObjectRepository.save(object);
+    WhiteboardObjectResponse response = WhiteboardObjectResponse.from(saved);
+
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.objectCreated(board.getId(), whiteboard.getId(), response)
+    );
+
+    return response;
   }
 
-  /**
-   * 객체 전체 상태 수정
-   */
   @Transactional
   public WhiteboardObjectResponse updateObject(
       User user,
@@ -164,28 +107,13 @@ public class WhiteboardObjectService {
       Long objectId,
       WhiteboardObjectRequests.Update request
   ) {
-    Board board =
-        getBoardById(
-            boardId
-        );
+    Board board = getBoardById(boardId);
+    boardPermissionService.validateWritePermission(board, user);
+    Whiteboard whiteboard = getWhiteboardInBoard(board, whiteboardId);
+    validateWhiteboardEditable(whiteboard);
 
-    boardPermissionService
-        .validateWritePermission(
-            board,
-            user
-        );
-
-    Whiteboard whiteboard =
-        getWhiteboardInBoard(
-            board,
-            whiteboardId
-        );
-
-    WhiteboardObject object =
-        getObjectInWhiteboard(
-            whiteboard,
-            objectId
-        );
+    WhiteboardObject object = getObjectInWhiteboard(whiteboard, objectId);
+    validateObjectEditable(object);
 
     object.update(
         request.x(),
@@ -193,31 +121,22 @@ public class WhiteboardObjectService {
         request.width(),
         request.height(),
         request.rotation(),
-        normalizeContent(
-            request.content()
-        ),
-        normalizeOptionalText(
-            request.fillColor()
-        ),
-        normalizeOptionalText(
-            request.strokeColor()
-        ),
+        normalizeContent(request.content()),
+        normalizeOptionalText(request.fillColor()),
+        normalizeOptionalText(request.strokeColor()),
         request.strokeWidth(),
         request.fontSize(),
         request.zIndex(),
-        normalizeOptionalText(
-            request.propertiesJson()
-        )
+        normalizeOptionalText(request.propertiesJson())
     );
 
-    return WhiteboardObjectResponse.from(
-        object
+    WhiteboardObjectResponse response = WhiteboardObjectResponse.from(object);
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.objectUpdated(board.getId(), whiteboard.getId(), response)
     );
+    return response;
   }
 
-  /**
-   * 객체 레이어 수정
-   */
   @Transactional
   public WhiteboardObjectResponse updateLayer(
       User user,
@@ -226,41 +145,48 @@ public class WhiteboardObjectService {
       Long objectId,
       WhiteboardObjectRequests.Layer request
   ) {
-    Board board =
-        getBoardById(
-            boardId
-        );
+    Board board = getBoardById(boardId);
+    boardPermissionService.validateWritePermission(board, user);
+    Whiteboard whiteboard = getWhiteboardInBoard(board, whiteboardId);
+    validateWhiteboardEditable(whiteboard);
 
-    boardPermissionService
-        .validateWritePermission(
-            board,
-            user
-        );
+    WhiteboardObject object = getObjectInWhiteboard(whiteboard, objectId);
+    validateObjectEditable(object);
+    object.updateZIndex(request.zIndex());
 
-    Whiteboard whiteboard =
-        getWhiteboardInBoard(
-            board,
-            whiteboardId
-        );
-
-    WhiteboardObject object =
-        getObjectInWhiteboard(
-            whiteboard,
-            objectId
-        );
-
-    object.updateZIndex(
-        request.zIndex()
+    WhiteboardObjectResponse response = WhiteboardObjectResponse.from(object);
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.objectUpdated(board.getId(), whiteboard.getId(), response)
     );
-
-    return WhiteboardObjectResponse.from(
-        object
-    );
+    return response;
   }
 
   /**
-   * 객체 삭제
+   * 잠긴 객체는 내용/위치/크기/삭제가 차단되지만 잠금 자체는 변경할 수 있습니다.
    */
+  @Transactional
+  public WhiteboardObjectResponse updateLock(
+      User user,
+      Long boardId,
+      Long whiteboardId,
+      Long objectId,
+      boolean locked
+  ) {
+    Board board = getBoardById(boardId);
+    boardPermissionService.validateWritePermission(board, user);
+    Whiteboard whiteboard = getWhiteboardInBoard(board, whiteboardId);
+    validateWhiteboardEditable(whiteboard);
+
+    WhiteboardObject object = getObjectInWhiteboard(whiteboard, objectId);
+    object.updateLocked(locked);
+
+    WhiteboardObjectResponse response = WhiteboardObjectResponse.from(object);
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.objectUpdated(board.getId(), whiteboard.getId(), response)
+    );
+    return response;
+  }
+
   @Transactional
   public void deleteObject(
       User user,
@@ -268,131 +194,64 @@ public class WhiteboardObjectService {
       Long whiteboardId,
       Long objectId
   ) {
-    Board board =
-        getBoardById(
-            boardId
-        );
+    Board board = getBoardById(boardId);
+    boardPermissionService.validateWritePermission(board, user);
+    Whiteboard whiteboard = getWhiteboardInBoard(board, whiteboardId);
+    validateWhiteboardEditable(whiteboard);
 
-    boardPermissionService
-        .validateWritePermission(
-            board,
-            user
-        );
+    WhiteboardObject object = getObjectInWhiteboard(whiteboard, objectId);
+    validateObjectEditable(object);
+    whiteboardObjectRepository.delete(object);
 
-    Whiteboard whiteboard =
-        getWhiteboardInBoard(
-            board,
-            whiteboardId
-        );
-
-    WhiteboardObject object =
-        getObjectInWhiteboard(
-            whiteboard,
-            objectId
-        );
-
-    whiteboardObjectRepository
-        .delete(
-            object
-        );
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.objectDeleted(board.getId(), whiteboard.getId(), objectId)
+    );
   }
 
-  /**
-   * 새 객체가 사용할 다음 zIndex 계산.
-   *
-   * 기존에는
-   *
-   * findFirstByWhiteboardOrderByZIndexDescIdDesc()
-   *
-   * 파생 쿼리를 사용했지만,
-   * Spring Data JPA 4가 zIndex를 ZIndex로
-   * 잘못 해석할 수 있어 MAX JPQL 방식으로 변경합니다.
-   */
-  private int getNextZIndex(
-      Whiteboard whiteboard
-  ) {
-    Integer maxZIndex =
-        whiteboardObjectRepository
-            .findMaxZIndexByWhiteboard(
-                whiteboard
-            );
-
-    return maxZIndex == null
-        ? 0
-        : maxZIndex + 1;
+  private int getNextZIndex(Whiteboard whiteboard) {
+    Integer maxZIndex = whiteboardObjectRepository.findMaxZIndexByWhiteboard(whiteboard);
+    return maxZIndex == null ? 0 : maxZIndex + 1;
   }
 
-  private WhiteboardObject getObjectInWhiteboard(
-      Whiteboard whiteboard,
-      Long objectId
-  ) {
-    return whiteboardObjectRepository
-        .findByIdAndWhiteboard(
-            objectId,
-            whiteboard
-        )
-        .orElseThrow(
-            () ->
-                new CustomException(
-                    ErrorCode.INVALID_INPUT
-                )
-        );
-  }
-
-  private Whiteboard getWhiteboardInBoard(
-      Board board,
-      Long whiteboardId
-  ) {
-    return whiteboardRepository
-        .findByIdAndBoard(
-            whiteboardId,
-            board
-        )
-        .orElseThrow(
-            () ->
-                new CustomException(
-                    ErrorCode.WHITEBOARD_NOT_FOUND
-                )
-        );
-  }
-
-  private Board getBoardById(
-      Long boardId
-  ) {
-    return boardRepository
-        .findById(
-            boardId
-        )
-        .orElseThrow(
-            () ->
-                new CustomException(
-                    ErrorCode.BOARD_NOT_FOUND
-                )
-        );
-  }
-
-  private String normalizeContent(
-      String value
-  ) {
-    if (value == null) {
-      return null;
+  private void validateWhiteboardEditable(Whiteboard whiteboard) {
+    if (whiteboard.isLocked()) {
+      throw new CustomException(ErrorCode.WHITEBOARD_LOCKED);
     }
+  }
 
+  private void validateObjectEditable(WhiteboardObject object) {
+    if (object.isLocked()) {
+      throw new CustomException(ErrorCode.WHITEBOARD_OBJECT_LOCKED);
+    }
+  }
+
+  private WhiteboardObject getObjectInWhiteboard(Whiteboard whiteboard, Long objectId) {
+    return whiteboardObjectRepository
+        .findByIdAndWhiteboard(objectId, whiteboard)
+        .orElseThrow(() -> new CustomException(ErrorCode.INVALID_INPUT));
+  }
+
+  private Whiteboard getWhiteboardInBoard(Board board, Long whiteboardId) {
+    return whiteboardRepository
+        .findByIdAndBoard(whiteboardId, board)
+        .orElseThrow(() -> new CustomException(ErrorCode.WHITEBOARD_NOT_FOUND));
+  }
+
+  private Board getBoardById(Long boardId) {
+    return boardRepository
+        .findById(boardId)
+        .orElseThrow(() -> new CustomException(ErrorCode.BOARD_NOT_FOUND));
+  }
+
+  private String normalizeContent(String value) {
     return value;
   }
 
-  private String normalizeOptionalText(
-      String value
-  ) {
+  private String normalizeOptionalText(String value) {
     if (value == null) {
       return null;
     }
-
-    String normalized =
-        value.trim();
-
-    return normalized.isEmpty()
-        ? null
-        : normalized;
+    String normalized = value.trim();
+    return normalized.isEmpty() ? null : normalized;
   }
 }

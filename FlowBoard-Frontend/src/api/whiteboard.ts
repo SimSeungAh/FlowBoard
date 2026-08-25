@@ -1,6 +1,7 @@
 import { api } from "@/api/axios";
 
 export type WhiteboardTool = "PEN" | "ERASER";
+export type WhiteboardGridType = "NONE" | "GRID" | "DOT";
 
 export interface WhiteboardPoint {
   x: number;
@@ -16,6 +17,10 @@ export interface WhiteboardWorkspaceResponse {
   defaultWhiteboard: boolean;
   backgroundColor: string;
   gridEnabled: boolean;
+  gridType: WhiteboardGridType;
+  gridSize: number;
+  gridOpacity: number;
+  locked: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -32,7 +37,10 @@ export interface WhiteboardWorkspaceUpdateRequest {
 
 export interface WhiteboardWorkspaceAppearanceRequest {
   backgroundColor: string;
-  gridEnabled: boolean;
+  gridEnabled?: boolean;
+  gridType: WhiteboardGridType;
+  gridSize: number;
+  gridOpacity: number;
 }
 
 export interface WhiteboardWorkspaceReorderRequest {
@@ -67,6 +75,7 @@ export interface WhiteboardObjectResponse {
   strokeWidth: number | null;
   fontSize: number | null;
   zIndex: number;
+  locked: boolean;
   propertiesJson: string | null;
   createdAt: string;
   updatedAt: string;
@@ -107,6 +116,7 @@ export interface WhiteboardObjectUpdateRequest {
 export interface WhiteboardObjectLayerRequest {
   zIndex: number;
 }
+
 export interface WhiteboardStrokeResponse {
   id: number;
   boardId: number;
@@ -121,15 +131,8 @@ export interface WhiteboardStrokeResponse {
   updatedAt: string;
 }
 
-/*
- * ------------------------------------------------------------------
- * 다중 화이트보드 작업 공간 API
- * ------------------------------------------------------------------
- */
-
 export const getWhiteboards = async (boardId: number): Promise<WhiteboardWorkspaceResponse[]> => {
   const response = await api.get(`/boards/${boardId}/whiteboards`);
-
   return response.data.data;
 };
 
@@ -137,7 +140,6 @@ export const getDefaultWhiteboard = async (
   boardId: number,
 ): Promise<WhiteboardWorkspaceResponse> => {
   const response = await api.get(`/boards/${boardId}/whiteboards/default`);
-
   return response.data.data;
 };
 
@@ -146,7 +148,6 @@ export const getWhiteboard = async (
   whiteboardId: number,
 ): Promise<WhiteboardWorkspaceResponse> => {
   const response = await api.get(`/boards/${boardId}/whiteboards/${whiteboardId}`);
-
   return response.data.data;
 };
 
@@ -155,7 +156,6 @@ export const createWhiteboard = async (
   data: WhiteboardWorkspaceCreateRequest,
 ): Promise<WhiteboardWorkspaceResponse> => {
   const response = await api.post(`/boards/${boardId}/whiteboards`, data);
-
   return response.data.data;
 };
 
@@ -165,7 +165,6 @@ export const updateWhiteboard = async (
   data: WhiteboardWorkspaceUpdateRequest,
 ): Promise<WhiteboardWorkspaceResponse> => {
   const response = await api.patch(`/boards/${boardId}/whiteboards/${whiteboardId}`, data);
-
   return response.data.data;
 };
 
@@ -178,7 +177,17 @@ export const updateWhiteboardAppearance = async (
     `/boards/${boardId}/whiteboards/${whiteboardId}/appearance`,
     data,
   );
+  return response.data.data;
+};
 
+export const updateWhiteboardLock = async (
+  boardId: number,
+  whiteboardId: number,
+  locked: boolean,
+): Promise<WhiteboardWorkspaceResponse> => {
+  const response = await api.patch(`/boards/${boardId}/whiteboards/${whiteboardId}/lock`, null, {
+    params: { locked },
+  });
   return response.data.data;
 };
 
@@ -187,7 +196,6 @@ export const setDefaultWhiteboard = async (
   whiteboardId: number,
 ): Promise<WhiteboardWorkspaceResponse> => {
   const response = await api.patch(`/boards/${boardId}/whiteboards/${whiteboardId}/default`);
-
   return response.data.data;
 };
 
@@ -196,7 +204,6 @@ export const reorderWhiteboards = async (
   data: WhiteboardWorkspaceReorderRequest,
 ): Promise<WhiteboardWorkspaceResponse[]> => {
   const response = await api.patch(`/boards/${boardId}/whiteboards/reorder`, data);
-
   return response.data.data;
 };
 
@@ -204,18 +211,11 @@ export const deleteWhiteboard = async (boardId: number, whiteboardId: number): P
   await api.delete(`/boards/${boardId}/whiteboards/${whiteboardId}`);
 };
 
-/*
- * ------------------------------------------------------------------
- * 다중 화이트보드별 Stroke API
- * ------------------------------------------------------------------
- */
-
 export const getWhiteboardWorkspaceStrokes = async (
   boardId: number,
   whiteboardId: number,
 ): Promise<WhiteboardStrokeResponse[]> => {
   const response = await api.get(`/boards/${boardId}/whiteboards/${whiteboardId}/strokes`);
-
   return response.data.data;
 };
 
@@ -225,7 +225,6 @@ export const createWhiteboardWorkspaceStroke = async (
   data: WhiteboardStrokeCreateRequest,
 ): Promise<WhiteboardStrokeResponse> => {
   const response = await api.post(`/boards/${boardId}/whiteboards/${whiteboardId}/strokes`, data);
-
   return response.data.data;
 };
 
@@ -244,18 +243,11 @@ export const clearWhiteboardWorkspace = async (
   await api.delete(`/boards/${boardId}/whiteboards/${whiteboardId}/strokes`);
 };
 
-/*
- * ------------------------------------------------------------------
- * 화이트보드 객체 API
- * ------------------------------------------------------------------
- */
-
 export const getWhiteboardObjects = async (
   boardId: number,
   whiteboardId: number,
 ): Promise<WhiteboardObjectResponse[]> => {
   const response = await api.get(`/boards/${boardId}/whiteboards/${whiteboardId}/objects`);
-
   return response.data.data;
 };
 
@@ -265,7 +257,6 @@ export const createWhiteboardObject = async (
   data: WhiteboardObjectCreateRequest,
 ): Promise<WhiteboardObjectResponse> => {
   const response = await api.post(`/boards/${boardId}/whiteboards/${whiteboardId}/objects`, data);
-
   return response.data.data;
 };
 
@@ -279,7 +270,6 @@ export const updateWhiteboardObject = async (
     `/boards/${boardId}/whiteboards/${whiteboardId}/objects/${objectId}`,
     data,
   );
-
   return response.data.data;
 };
 
@@ -293,7 +283,20 @@ export const updateWhiteboardObjectLayer = async (
     `/boards/${boardId}/whiteboards/${whiteboardId}/objects/${objectId}/layer`,
     data,
   );
+  return response.data.data;
+};
 
+export const updateWhiteboardObjectLock = async (
+  boardId: number,
+  whiteboardId: number,
+  objectId: number,
+  locked: boolean,
+): Promise<WhiteboardObjectResponse> => {
+  const response = await api.patch(
+    `/boards/${boardId}/whiteboards/${whiteboardId}/objects/${objectId}/lock`,
+    null,
+    { params: { locked } },
+  );
   return response.data.data;
 };
 
@@ -305,19 +308,11 @@ export const deleteWhiteboardObject = async (
   await api.delete(`/boards/${boardId}/whiteboards/${whiteboardId}/objects/${objectId}`);
 };
 
-/*
- * ------------------------------------------------------------------
- * 기존 단일 화이트보드 호환 API
- * ------------------------------------------------------------------
- *
- * 기존 화면이나 과거 코드가 남아 있어도 깨지지 않도록 유지합니다.
- */
-
+/* 기존 단일 화이트보드 호환 API */
 export const getWhiteboardStrokes = async (
   boardId: number,
 ): Promise<WhiteboardStrokeResponse[]> => {
   const response = await api.get(`/boards/${boardId}/whiteboard/strokes`);
-
   return response.data.data;
 };
 
@@ -326,7 +321,6 @@ export const createWhiteboardStroke = async (
   data: WhiteboardStrokeCreateRequest,
 ): Promise<WhiteboardStrokeResponse> => {
   const response = await api.post(`/boards/${boardId}/whiteboard/strokes`, data);
-
   return response.data.data;
 };
 

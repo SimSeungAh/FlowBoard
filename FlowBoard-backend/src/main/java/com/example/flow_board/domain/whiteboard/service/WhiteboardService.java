@@ -91,6 +91,8 @@ public class WhiteboardService {
             board
         );
 
+    validateWhiteboardEditable(whiteboard);
+
     migrateLegacyStrokes(
         board,
         whiteboard
@@ -157,6 +159,8 @@ public class WhiteboardService {
         getOrCreateDefaultWhiteboard(
             board
         );
+
+    validateWhiteboardEditable(defaultWhiteboard);
 
     migrateLegacyStrokes(
         board,
@@ -225,6 +229,8 @@ public class WhiteboardService {
         getOrCreateDefaultWhiteboard(
             board
         );
+
+    validateWhiteboardEditable(whiteboard);
 
     migrateLegacyStrokes(
         board,
@@ -311,6 +317,8 @@ public class WhiteboardService {
             whiteboardId
         );
 
+    validateWhiteboardEditable(whiteboard);
+
     return createStrokeInternal(
         board,
         whiteboard,
@@ -392,6 +400,8 @@ public class WhiteboardService {
             whiteboardId
         );
 
+    validateWhiteboardEditable(whiteboard);
+
     WhiteboardStroke stroke =
         whiteboardStrokeRepository
             .findByIdAndWhiteboard(
@@ -451,6 +461,8 @@ public class WhiteboardService {
             board,
             whiteboardId
         );
+
+    validateWhiteboardEditable(whiteboard);
 
     whiteboardStrokeRepository
         .deleteByWhiteboard(
@@ -624,6 +636,12 @@ public class WhiteboardService {
    * 기존 보드에 Whiteboard workspace가 없다면
    * 기본 화이트보드를 자동 생성합니다.
    */
+  private void validateWhiteboardEditable(Whiteboard whiteboard) {
+    if (whiteboard.isLocked()) {
+      throw new CustomException(ErrorCode.WHITEBOARD_LOCKED);
+    }
+  }
+
   private Whiteboard getOrCreateDefaultWhiteboard(
       Board board
   ) {

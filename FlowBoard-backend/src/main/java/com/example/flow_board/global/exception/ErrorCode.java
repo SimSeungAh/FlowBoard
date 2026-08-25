@@ -270,6 +270,18 @@ public enum ErrorCode {
       "화이트보드 순서 정보가 올바르지 않습니다."
   ),
 
+  WHITEBOARD_LOCKED(
+      HttpStatus.CONFLICT,
+      "WHITEBOARD_008",
+      "잠긴 화이트보드는 수정할 수 없습니다."
+  ),
+
+  WHITEBOARD_OBJECT_LOCKED(
+      HttpStatus.CONFLICT,
+      "WHITEBOARD_009",
+      "잠긴 화이트보드 객체는 수정할 수 없습니다."
+  ),
+
   /*
    * TOKEN
    */

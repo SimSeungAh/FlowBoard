@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -250,6 +251,34 @@ public class WhiteboardWorkspaceController {
 
     return ApiResponse.success(
         "화이트보드 표시 설정 변경 성공",
+        response
+    );
+  }
+
+  /**
+   * 화이트보드 잠금 / 잠금 해제
+   */
+  @PatchMapping("/{whiteboardId}/lock")
+  @Operation(
+      summary = "화이트보드 잠금 변경",
+      description = "잠금 상태에서는 OWNER/MEMBER도 캔버스 데이터를 수정할 수 없습니다."
+  )
+  public ApiResponse<WhiteboardResponse> updateLock(
+      @AuthenticationPrincipal CustomUserDetails userDetails,
+      @PathVariable Long boardId,
+      @PathVariable Long whiteboardId,
+      @RequestParam boolean locked
+  ) {
+    WhiteboardResponse response =
+        whiteboardWorkspaceService.updateLock(
+            userDetails.getUser(),
+            boardId,
+            whiteboardId,
+            locked
+        );
+
+    return ApiResponse.success(
+        locked ? "화이트보드 잠금 성공" : "화이트보드 잠금 해제 성공",
         response
     );
   }

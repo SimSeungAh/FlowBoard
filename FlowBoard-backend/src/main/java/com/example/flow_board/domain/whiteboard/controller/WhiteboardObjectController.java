@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -165,6 +166,32 @@ public class WhiteboardObjectController {
 
     return ApiResponse.success(
         "화이트보드 객체 레이어 변경 성공",
+        response
+    );
+  }
+
+  @PatchMapping("/{objectId}/lock")
+  @Operation(
+      summary = "화이트보드 객체 잠금 변경",
+      description = "선택한 객체의 이동, 리사이즈, 내용 수정, 삭제 가능 여부를 변경합니다."
+  )
+  public ApiResponse<WhiteboardObjectResponse> updateLock(
+      @AuthenticationPrincipal CustomUserDetails userDetails,
+      @PathVariable Long boardId,
+      @PathVariable Long whiteboardId,
+      @PathVariable Long objectId,
+      @RequestParam boolean locked
+  ) {
+    WhiteboardObjectResponse response = whiteboardObjectService.updateLock(
+        userDetails.getUser(),
+        boardId,
+        whiteboardId,
+        objectId,
+        locked
+    );
+
+    return ApiResponse.success(
+        locked ? "화이트보드 객체 잠금 성공" : "화이트보드 객체 잠금 해제 성공",
         response
     );
   }

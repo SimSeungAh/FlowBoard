@@ -12,6 +12,7 @@ import { useParams } from "react-router";
 import { toast } from "sonner";
 
 import { getBoardDetail } from "@/api/board";
+import { sendBoardPresenceHeartbeat } from "@/api/presence";
 import {
   clearWhiteboardWorkspace,
   createWhiteboard,
@@ -27,8 +28,12 @@ import {
   setDefaultWhiteboard,
   updateWhiteboard,
   updateWhiteboardAppearance,
+  updateWhiteboardLock,
   updateWhiteboardObject,
+  updateWhiteboardObjectLock,
+  type WhiteboardGridType,
   type WhiteboardObjectResponse,
+  type WhiteboardObjectType,
   type WhiteboardPoint,
   type WhiteboardStrokeCreateRequest,
   type WhiteboardStrokeResponse,
@@ -44,6 +49,7 @@ import Modal from "@/components/ui/Modal";
 import {
   connectWhiteboardWebSocket,
   type WhiteboardConnectionState,
+  type WhiteboardWebSocketConnection,
 } from "@/services/whiteboardWebSocket";
 
 const CANVAS_WIDTH = 1200;
@@ -51,16 +57,47 @@ const CANVAS_HEIGHT = 700;
 
 const DEFAULT_PEN_COLOR = "#111827";
 
-const PEN_LINE_WIDTH = 4;
-const ERASER_LINE_WIDTH = 28;
+const DEFAULT_PEN_LINE_WIDTH = 4;
+const DEFAULT_ERASER_LINE_WIDTH = 28;
 
 const STICKY_WIDTH = 220;
 const STICKY_HEIGHT = 150;
 const DEFAULT_STICKY_COLOR = "#FEF3C7";
 const DEFAULT_STICKY_BORDER_COLOR = "#F59E0B";
 
+const TEXT_WIDTH = 280;
+const TEXT_HEIGHT = 84;
+const DEFAULT_TEXT_COLOR = "#0F172A";
+const DEFAULT_TEXT_FONT_SIZE = 24;
+const DEFAULT_STICKY_FONT_SIZE = 14;
+
+const SHAPE_WIDTH = 180;
+const SHAPE_HEIGHT = 110;
+const ARROW_WIDTH = 220;
+const ARROW_HEIGHT = 70;
+const DEFAULT_SHAPE_FILL = "#DBEAFE";
+const DEFAULT_SHAPE_STROKE = "#2563EB";
+const DEFAULT_SHAPE_STROKE_WIDTH = 2;
+
+const LIVE_OBJECT_SEND_INTERVAL_MS = 33;
+const LIVE_CURSOR_SEND_INTERVAL_MS = 50;
+const REMOTE_CURSOR_TTL_MS = 4500;
+
 const STROKE_CHUNK_POINT_LIMIT = 800;
 const MIN_POINT_DISTANCE = 2;
+
+/*
+ * 펜/부분 지우개 LIVE 좌표 전송은 약 30fps로 제한합니다.
+ * 실제 내 Canvas 렌더링은 pointermove마다 즉시 처리합니다.
+ */
+const LIVE_STROKE_SEND_INTERVAL_MS = 33;
+
+/*
+ * LIVE_END 직후 REST 저장 이벤트가 도착하기 전에 임시 선을 바로 지우면
+ * 상대 화면에서 잠깐 선이 사라졌다 다시 나타나는 깜빡임이 생길 수 있습니다.
+ * 확정 STROKE_CREATED가 도착할 시간을 조금 주고 임시 선을 제거합니다.
+ */
+const LIVE_STROKE_END_GRACE_MS = 1200;
 
 /*
  * 선 지우기 모드에서
@@ -70,7 +107,15 @@ const STROKE_HIT_TOLERANCE = 10;
 
 type EraserMode = "PIXEL" | "STROKE";
 
-type WhiteboardInteractionTool = WhiteboardTool | "SELECT" | "HAND" | "STICKY";
+type WhiteboardInteractionTool =
+  | WhiteboardTool
+  | "SELECT"
+  | "HAND"
+  | "STICKY"
+  | "TEXT"
+  | "RECTANGLE"
+  | "ELLIPSE"
+  | "ARROW";
 
 interface DrawableStroke {
   tool: WhiteboardTool;
@@ -82,6 +127,9 @@ interface DrawableStroke {
 interface ActiveStroke extends DrawableStroke {
   gestureId: string;
   hasSavedChunk: boolean;
+  liveStrokeId: string;
+  lastLiveSentAt: number;
+  lastLiveSentPoint: WhiteboardPoint;
 }
 
 interface UndoGesture {
@@ -109,6 +157,25 @@ interface ObjectDragSession {
   startX: number;
   startY: number;
 }
+
+interface ObjectResizeSession {
+  pointerId: number;
+  objectId: number;
+  startClientX: number;
+  startClientY: number;
+  startWidth: number;
+  startHeight: number;
+}
+
+interface RemoteCursor {
+  sourceClientId: string;
+  userId: number;
+  nickname: string;
+  x: number;
+  y: number;
+  updatedAt: number;
+}
+
 interface CreateStrokeMutationVariables {
   request: WhiteboardStrokeCreateRequest;
   gestureId: string;
@@ -385,6 +452,50 @@ const appendStrokeIfMissing = (
   return [...current, incomingStroke];
 };
 
+const getRemoteLiveStrokeKey = (sourceClientId: string, liveStrokeId: string) =>
+  `${sourceClientId}:${liveStrokeId}`;
+
+const getCanvasPatternStyle = (whiteboard: WhiteboardWorkspaceResponse | null) => {
+  const gridType = whiteboard?.gridType ?? (whiteboard?.gridEnabled ? "GRID" : "NONE");
+  const gridSize = whiteboard?.gridSize ?? 24;
+  const gridOpacity = whiteboard?.gridOpacity ?? 0.12;
+  const alpha = Math.min(0.5, Math.max(0.03, gridOpacity));
+  const lineColor = `rgba(100,116,139,${alpha})`;
+
+  if (gridType === "DOT") {
+    return {
+      backgroundImage: `radial-gradient(circle, ${lineColor} 1.3px, transparent 1.4px)`,
+      backgroundSize: `${gridSize}px ${gridSize}px`,
+    };
+  }
+
+  if (gridType === "GRID") {
+    return {
+      backgroundImage: `linear-gradient(${lineColor} 1px, transparent 1px), linear-gradient(90deg, ${lineColor} 1px, transparent 1px)`,
+      backgroundSize: `${gridSize}px ${gridSize}px`,
+    };
+  }
+
+  return {
+    backgroundImage: "none",
+    backgroundSize: "auto",
+  };
+};
+
+const REMOTE_CURSOR_COLORS = [
+  "#2563EB",
+  "#7C3AED",
+  "#DB2777",
+  "#EA580C",
+  "#059669",
+  "#0891B2",
+  "#4F46E5",
+  "#65A30D",
+];
+
+const getCursorColor = (userId: number) =>
+  REMOTE_CURSOR_COLORS[Math.abs(userId) % REMOTE_CURSOR_COLORS.length] ?? "#2563EB";
+
 const isTextEditingTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -428,7 +539,42 @@ export default function WhiteboardPage() {
 
   const objectDragSessionRef = useRef<ObjectDragSession | null>(null);
 
-  const composingStickyIdsRef = useRef<Set<number>>(new Set());
+  const objectResizeSessionRef = useRef<ObjectResizeSession | null>(null);
+
+  const composingObjectIdsRef = useRef<Set<number>>(new Set());
+
+  /*
+   * 현재 선택된 화이트보드의 STOMP 연결입니다.
+   *
+   * REST 저장과 별개로 스티키 텍스트/이동을 즉시 전파할 때 사용합니다.
+   */
+  const whiteboardConnectionRef = useRef<WhiteboardWebSocketConnection | null>(null);
+
+  /*
+   * 같은 원격 클라이언트에서 늦게 도착한 LIVE 이벤트가
+   * 더 최신 화면을 덮어쓰지 않도록 마지막 sequence를 기억합니다.
+   */
+  const remoteLiveSequenceRef = useRef<Map<string, number>>(new Map());
+
+  /*
+   * pointermove는 매우 자주 발생하므로 네트워크 전송만 약 30fps로 제한합니다.
+   * 내 화면의 이동은 매 pointermove마다 즉시 반영됩니다.
+   */
+  const lastLiveMoveSentAtRef = useRef<Map<number, number>>(new Map());
+
+  const lastLiveResizeSentAtRef = useRef<Map<number, number>>(new Map());
+
+  const lastCursorSentAtRef = useRef(0);
+
+  /*
+   * 다른 사용자가 현재 그리고 있는 펜/부분 지우개 Stroke입니다.
+   * DB 저장 전의 임시 화면 상태이므로 React state에서만 관리합니다.
+   */
+  const [remoteLiveStrokes, setRemoteLiveStrokes] = useState<Record<string, DrawableStroke>>({});
+
+  const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor>>({});
+
+  const remoteLiveStrokeRemovalTimersRef = useRef<Map<string, number>>(new Map());
 
   const [undoGestureCount, setUndoGestureCount] = useState(0);
 
@@ -448,7 +594,7 @@ export default function WhiteboardPage() {
 
   const [selectedObjectId, setSelectedObjectId] = useState<number | null>(null);
 
-  const [stickyDrafts, setStickyDrafts] = useState<Record<number, string>>({});
+  const [objectDrafts, setObjectDrafts] = useState<Record<number, string>>({});
 
   const [deletingObjectId, setDeletingObjectId] = useState<number | null>(null);
 
@@ -459,6 +605,24 @@ export default function WhiteboardPage() {
   const [eraserMode, setEraserMode] = useState<EraserMode>("PIXEL");
 
   const [penColor, setPenColor] = useState(DEFAULT_PEN_COLOR);
+
+  const [penLineWidth, setPenLineWidth] = useState(DEFAULT_PEN_LINE_WIDTH);
+
+  const [eraserLineWidth, setEraserLineWidth] = useState(DEFAULT_ERASER_LINE_WIDTH);
+
+  const [stickyColor, setStickyColor] = useState(DEFAULT_STICKY_COLOR);
+
+  const [stickyFontSize, setStickyFontSize] = useState(DEFAULT_STICKY_FONT_SIZE);
+
+  const [textColor, setTextColor] = useState(DEFAULT_TEXT_COLOR);
+
+  const [textFontSize, setTextFontSize] = useState(DEFAULT_TEXT_FONT_SIZE);
+
+  const [shapeFillColor, setShapeFillColor] = useState(DEFAULT_SHAPE_FILL);
+
+  const [shapeStrokeColor, setShapeStrokeColor] = useState(DEFAULT_SHAPE_STROKE);
+
+  const [shapeStrokeWidth, setShapeStrokeWidth] = useState(DEFAULT_SHAPE_STROKE_WIDTH);
 
   const [connectionState, setConnectionState] = useState<WhiteboardConnectionState>("connecting");
 
@@ -479,6 +643,12 @@ export default function WhiteboardPage() {
   const [workspaceBackgroundColor, setWorkspaceBackgroundColor] = useState("#FFFFFF");
 
   const [workspaceGridEnabled, setWorkspaceGridEnabled] = useState(true);
+
+  const [workspaceGridType, setWorkspaceGridType] = useState<WhiteboardGridType>("GRID");
+
+  const [workspaceGridSize, setWorkspaceGridSize] = useState(24);
+
+  const [workspaceGridOpacity, setWorkspaceGridOpacity] = useState(0.12);
 
   const boardQueryKey = ["boards", boardId] as const;
 
@@ -614,6 +784,37 @@ export default function WhiteboardPage() {
     setSelectedWhiteboardId(defaultWhiteboard?.id ?? null);
   }, [selectedWhiteboardId, whiteboards]);
 
+  useEffect(() => {
+    if (!isValidBoardId || selectedWhiteboardId === null) {
+      return;
+    }
+
+    let disposed = false;
+
+    const heartbeat = async () => {
+      try {
+        await sendBoardPresenceHeartbeat(boardId, {
+          section: "WHITEBOARD",
+          whiteboardId: selectedWhiteboardId,
+        });
+
+        if (!disposed) {
+          void queryClient.invalidateQueries({ queryKey: ["board", boardId, "presence"] });
+        }
+      } catch {
+        // Presence는 보조 기능이므로 Redis 장애가 화이트보드 편집을 막지 않습니다.
+      }
+    };
+
+    void heartbeat();
+    const timerId = window.setInterval(() => void heartbeat(), 25_000);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(timerId);
+    };
+  }, [boardId, isValidBoardId, queryClient, selectedWhiteboardId]);
+
   const {
     data: strokes = [],
     isLoading: isStrokesLoading,
@@ -645,6 +846,20 @@ export default function WhiteboardPage() {
     [objects],
   );
 
+  const textObjects = useMemo(
+    () => objects.filter((object) => object.type === "TEXT"),
+    [objects],
+  );
+
+  const shapeObjects = useMemo(
+    () =>
+      objects.filter(
+        (object) =>
+          object.type === "RECTANGLE" || object.type === "ELLIPSE" || object.type === "ARROW",
+      ),
+    [objects],
+  );
+
   const selectedStroke = useMemo(
     () => strokes.find((stroke) => stroke.id === selectedStrokeId) ?? null,
     [selectedStrokeId, strokes],
@@ -667,7 +882,9 @@ export default function WhiteboardPage() {
     }
   }, [selectedObject, selectedObjectId]);
 
-  const canEdit = board?.myRole === "OWNER" || board?.myRole === "MEMBER";
+  const canManageWorkspace = board?.myRole === "OWNER" || board?.myRole === "MEMBER";
+
+  const canEdit = Boolean(canManageWorkspace && !selectedWhiteboard?.locked);
 
   const isViewer = board?.myRole === "VIEWER";
 
@@ -726,42 +943,80 @@ export default function WhiteboardPage() {
   });
 
   const createObjectMutation = useMutation({
-    mutationFn: ({ x, y }: { x: number; y: number }) => {
+    mutationFn: ({
+      x,
+      y,
+      type,
+    }: {
+      x: number;
+      y: number;
+      type: WhiteboardObjectType;
+    }) => {
       if (selectedWhiteboardId === null) {
         return Promise.reject(new Error("선택된 화이트보드가 없습니다."));
       }
 
+      const isSticky = type === "STICKY_NOTE";
+      const isText = type === "TEXT";
+      const isArrow = type === "ARROW";
+      const isShape = type === "RECTANGLE" || type === "ELLIPSE" || isArrow;
+
       return createWhiteboardObject(boardId, selectedWhiteboardId, {
         clientObjectId: crypto.randomUUID(),
-        type: "STICKY_NOTE",
+        type,
         x,
         y,
-        width: STICKY_WIDTH,
-        height: STICKY_HEIGHT,
+        width: isText ? TEXT_WIDTH : isSticky ? STICKY_WIDTH : isArrow ? ARROW_WIDTH : SHAPE_WIDTH,
+        height: isText
+          ? TEXT_HEIGHT
+          : isSticky
+            ? STICKY_HEIGHT
+            : isArrow
+              ? ARROW_HEIGHT
+              : SHAPE_HEIGHT,
         rotation: 0,
-        content: "",
-        fillColor: DEFAULT_STICKY_COLOR,
-        strokeColor: DEFAULT_STICKY_BORDER_COLOR,
-        strokeWidth: 1,
-        fontSize: 14,
-        propertiesJson: null,
+        content: isText || isSticky ? "" : null,
+        fillColor: isSticky ? stickyColor : isText || isArrow ? null : shapeFillColor,
+        strokeColor: isSticky
+          ? DEFAULT_STICKY_BORDER_COLOR
+          : isText
+            ? textColor
+            : isShape
+              ? shapeStrokeColor
+              : null,
+        strokeWidth: isSticky ? 1 : isText ? null : isShape ? shapeStrokeWidth : null,
+        fontSize: isText ? textFontSize : isSticky ? stickyFontSize : null,
+        propertiesJson: isArrow ? JSON.stringify({ arrowHead: "end" }) : null,
       });
     },
 
     onSuccess: (createdObject) => {
       queryClient.setQueryData<WhiteboardObjectResponse[]>(
         whiteboardObjectsQueryKey,
-        (current = []) => [...current, createdObject],
+        (current = []) => {
+          const exists = current.some((object) => object.id === createdObject.id);
+          return exists
+            ? current.map((object) => (object.id === createdObject.id ? createdObject : object))
+            : [...current, createdObject];
+        },
       );
 
       setSelectedStrokeId(null);
       setSelectedObjectId(createdObject.id);
       setTool("SELECT");
-      toast.success("스티키 노트를 추가했습니다.");
+
+      const label: Record<WhiteboardObjectType, string> = {
+        STICKY_NOTE: "스티키 노트",
+        TEXT: "텍스트",
+        RECTANGLE: "사각형",
+        ELLIPSE: "원",
+        ARROW: "화살표",
+      };
+      toast.success(`${label[createdObject.type]}를 추가했습니다.`);
     },
 
     onError: () => {
-      toast.error("스티키 노트를 추가하지 못했습니다.");
+      toast.error("화이트보드 항목을 추가하지 못했습니다.");
     },
   });
 
@@ -796,7 +1051,7 @@ export default function WhiteboardPage() {
     },
 
     onError: async () => {
-      toast.error("스티키 노트를 저장하지 못했습니다.");
+      toast.error("화이트보드 항목을 저장하지 못했습니다.");
       await queryClient.invalidateQueries({ queryKey: whiteboardObjectsQueryKey });
     },
   });
@@ -856,13 +1111,17 @@ export default function WhiteboardPage() {
       title,
       description,
       backgroundColor,
-      gridEnabled,
+      gridType,
+      gridSize,
+      gridOpacity,
     }: {
       whiteboardId: number;
       title: string;
       description: string | null;
       backgroundColor: string;
-      gridEnabled: boolean;
+      gridType: WhiteboardGridType;
+      gridSize: number;
+      gridOpacity: number;
     }) => {
       await updateWhiteboard(boardId, whiteboardId, {
         title,
@@ -871,7 +1130,10 @@ export default function WhiteboardPage() {
 
       return updateWhiteboardAppearance(boardId, whiteboardId, {
         backgroundColor,
-        gridEnabled,
+        gridEnabled: gridType !== "NONE",
+        gridType,
+        gridSize,
+        gridOpacity,
       });
     },
 
@@ -886,6 +1148,53 @@ export default function WhiteboardPage() {
 
     onError: () => {
       toast.error("화이트보드 설정을 저장하지 못했습니다.");
+    },
+  });
+
+  const updateWhiteboardLockMutation = useMutation({
+    mutationFn: ({ whiteboardId, locked }: { whiteboardId: number; locked: boolean }) =>
+      updateWhiteboardLock(boardId, whiteboardId, locked),
+
+    onSuccess: (updatedWhiteboard) => {
+      queryClient.setQueryData<WhiteboardWorkspaceResponse[]>(whiteboardsQueryKey, (current = []) =>
+        current.map((whiteboard) =>
+          whiteboard.id === updatedWhiteboard.id ? updatedWhiteboard : whiteboard,
+        ),
+      );
+
+      if (updatedWhiteboard.locked) {
+        cancelActiveDrawing();
+        objectDragSessionRef.current = null;
+        objectResizeSessionRef.current = null;
+        setTool("HAND");
+      }
+
+      toast.success(updatedWhiteboard.locked ? "화이트보드를 잠갔습니다." : "화이트보드 잠금을 해제했습니다.");
+    },
+
+    onError: () => {
+      toast.error("화이트보드 잠금 상태를 변경하지 못했습니다.");
+    },
+  });
+
+  const updateObjectLockMutation = useMutation({
+    mutationFn: ({ objectId, locked }: { objectId: number; locked: boolean }) => {
+      if (selectedWhiteboardId === null) {
+        return Promise.reject(new Error("선택된 화이트보드가 없습니다."));
+      }
+
+      return updateWhiteboardObjectLock(boardId, selectedWhiteboardId, objectId, locked);
+    },
+
+    onSuccess: (updatedObject) => {
+      queryClient.setQueryData<WhiteboardObjectResponse[]>(whiteboardObjectsQueryKey, (current = []) =>
+        current.map((object) => (object.id === updatedObject.id ? updatedObject : object)),
+      );
+      toast.success(updatedObject.locked ? "객체를 잠갔습니다." : "객체 잠금을 해제했습니다.");
+    },
+
+    onError: () => {
+      toast.error("객체 잠금 상태를 변경하지 못했습니다.");
     },
   });
 
@@ -1007,6 +1316,12 @@ export default function WhiteboardPage() {
       canvas.releasePointerCapture(panPointerId);
     }
 
+    const activeStroke = activeStrokeRef.current;
+
+    if (activeStroke) {
+      whiteboardConnectionRef.current?.sendLiveStrokeEnd(activeStroke.liveStrokeId);
+    }
+
     activeStrokeRef.current = null;
     activePointerIdRef.current = null;
     panSessionRef.current = null;
@@ -1105,7 +1420,12 @@ export default function WhiteboardPage() {
   ]);
 
   const handleDeleteSelectedObject = useCallback(async () => {
-    if (!canEdit || selectedObjectId === null || deleteObjectMutation.isPending) {
+    if (
+      !canEdit ||
+      selectedObjectId === null ||
+      deleteObjectMutation.isPending ||
+      selectedObject?.locked
+    ) {
       return;
     }
 
@@ -1116,7 +1436,7 @@ export default function WhiteboardPage() {
     } finally {
       setDeletingObjectId(null);
     }
-  }, [canEdit, deleteObjectMutation, selectedObjectId]);
+  }, [canEdit, deleteObjectMutation, selectedObject, selectedObjectId]);
 
   const updateObjectInCache = useCallback(
     (objectId: number, updater: (object: WhiteboardObjectResponse) => WhiteboardObjectResponse) => {
@@ -1129,30 +1449,47 @@ export default function WhiteboardPage() {
     [queryClient, whiteboardObjectsQueryKey],
   );
 
-  const handleStickyContentChange = useCallback((objectId: number, content: string) => {
-    /*
-     * 한글 IME는 한 글자를 입력하는 동안 composition 상태를 유지합니다.
-     * 이때 React Query 캐시를 매 키 입력마다 갱신하면 외부 store 업데이트로
-     * textarea의 value가 다시 주입되어 조합 중인 글자가 중복되거나 깨질 수 있습니다.
-     *
-     * 입력 중에는 로컬 draft만 변경하고, 포커스를 잃을 때 한 번만
-     * React Query 캐시와 서버에 반영합니다.
-     */
-    setStickyDrafts((current) => ({
-      ...current,
-      [objectId]: content,
-    }));
-  }, []);
-
-  const handleStickyContentBlur = useCallback(
+  const handleObjectContentChange = useCallback(
     (objectId: number, content: string) => {
-      composingStickyIdsRef.current.delete(objectId);
+      /*
+       * textarea 자체는 local draft만 변경합니다.
+       * 그래서 React Query 캐시가 입력 도중 value를 재주입하지 않아
+       * 기존 한글 IME 중복 입력 문제를 그대로 방지할 수 있습니다.
+       */
+      setObjectDrafts((current) => ({
+        ...current,
+        [objectId]: content,
+      }));
+
+      const currentObject =
+        queryClient
+          .getQueryData<WhiteboardObjectResponse[]>(whiteboardObjectsQueryKey)
+          ?.find((object) => object.id === objectId) ?? null;
+
+      if (!canEdit || currentObject?.locked || composingObjectIdsRef.current.has(objectId)) {
+        return;
+      }
+
+      /*
+       * 조합 중이 아닌 완성된 문자열은 DB 저장을 기다리지 않고
+       * WebSocket으로 상대 사용자에게 즉시 전파합니다.
+       *
+       * 실제 영구 저장은 blur 때 기존 REST PATCH로 한 번 수행합니다.
+       */
+      whiteboardConnectionRef.current?.sendLiveEdit(objectId, content);
+    },
+    [canEdit, queryClient, whiteboardObjectsQueryKey],
+  );
+
+  const handleObjectContentBlur = useCallback(
+    (objectId: number, content: string) => {
+      composingObjectIdsRef.current.delete(objectId);
 
       const currentObjects =
         queryClient.getQueryData<WhiteboardObjectResponse[]>(whiteboardObjectsQueryKey) ?? [];
       const object = currentObjects.find((item) => item.id === objectId);
 
-      setStickyDrafts((current) => {
+      setObjectDrafts((current) => {
         if (!(objectId in current)) {
           return current;
         }
@@ -1163,9 +1500,15 @@ export default function WhiteboardPage() {
         return next;
       });
 
-      if (!object || !canEdit) {
+      if (!object || !canEdit || object.locked) {
         return;
       }
+
+      /*
+       * composition이 끝나자마자 blur가 발생하는 경우까지 포함해
+       * 상대 화면에 최종 문자열을 한 번 더 보장합니다.
+       */
+      whiteboardConnectionRef.current?.sendLiveEdit(objectId, content);
 
       const updatedObject: WhiteboardObjectResponse = {
         ...object,
@@ -1182,9 +1525,9 @@ export default function WhiteboardPage() {
     [canEdit, queryClient, updateObjectInCache, updateObjectMutation, whiteboardObjectsQueryKey],
   );
 
-  const handleStickyDragStart = useCallback(
+  const handleObjectDragStart = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>, object: WhiteboardObjectResponse) => {
-      if (!canEdit || tool !== "SELECT") {
+      if (!canEdit || tool !== "SELECT" || object.locked) {
         return;
       }
 
@@ -1207,7 +1550,7 @@ export default function WhiteboardPage() {
     [canEdit, tool],
   );
 
-  const handleStickyDragMove = useCallback(
+  const handleObjectDragMove = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       const session = objectDragSessionRef.current;
 
@@ -1233,11 +1576,23 @@ export default function WhiteboardPage() {
         x: nextX,
         y: nextY,
       }));
+
+      /*
+       * 상대 화면은 드래그 종료를 기다리지 않고 따라오게 합니다.
+       * pointermove 자체는 매 프레임 발생하므로 전송만 약 30fps로 제한합니다.
+       */
+      const now = performance.now();
+      const lastSentAt = lastLiveMoveSentAtRef.current.get(object.id) ?? 0;
+
+      if (now - lastSentAt >= 33) {
+        lastLiveMoveSentAtRef.current.set(object.id, now);
+        whiteboardConnectionRef.current?.sendLiveMove(object.id, nextX, nextY);
+      }
     },
     [queryClient, updateObjectInCache, whiteboardObjectsQueryKey, zoom],
   );
 
-  const finishStickyDrag = useCallback(
+  const finishObjectDrag = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       const session = objectDragSessionRef.current;
 
@@ -1256,10 +1611,138 @@ export default function WhiteboardPage() {
       const object = currentObjects.find((item) => item.id === session.objectId);
 
       if (object) {
+        /*
+         * throttle 사이에 손을 놓았어도 상대 화면이 최종 좌표를
+         * 즉시 받도록 마지막 위치를 한 번 더 전송합니다.
+         */
+        whiteboardConnectionRef.current?.sendLiveMove(object.id, object.x, object.y);
+        lastLiveMoveSentAtRef.current.delete(object.id);
+
+        /*
+         * 실시간 전파와 별도로 최종 위치는 REST PATCH로 영구 저장합니다.
+         */
         updateObjectMutation.mutate(object);
       }
     },
     [queryClient, updateObjectMutation, whiteboardObjectsQueryKey],
+  );
+
+  const getObjectMinimumSize = useCallback((object: WhiteboardObjectResponse) => {
+    if (object.type === "STICKY_NOTE") {
+      return { width: 140, height: 90 };
+    }
+
+    if (object.type === "TEXT") {
+      return { width: 80, height: 40 };
+    }
+
+    if (object.type === "ARROW") {
+      return { width: 80, height: 36 };
+    }
+
+    return { width: 50, height: 50 };
+  }, []);
+
+  const handleObjectResizeStart = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>, object: WhiteboardObjectResponse) => {
+      if (!canEdit || tool !== "SELECT" || object.locked) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setSelectedStrokeId(null);
+      setSelectedObjectId(object.id);
+
+      objectResizeSessionRef.current = {
+        pointerId: event.pointerId,
+        objectId: object.id,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startWidth: object.width,
+        startHeight: object.height,
+      };
+    },
+    [canEdit, tool],
+  );
+
+  const handleObjectResizeMove = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const session = objectResizeSessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) {
+        return;
+      }
+
+      const currentObjects =
+        queryClient.getQueryData<WhiteboardObjectResponse[]>(whiteboardObjectsQueryKey) ?? [];
+      const object = currentObjects.find((item) => item.id === session.objectId);
+      if (!object || object.locked) {
+        return;
+      }
+
+      const minimum = getObjectMinimumSize(object);
+      const nextWidth = Math.min(
+        CANVAS_WIDTH - object.x,
+        Math.max(minimum.width, session.startWidth + (event.clientX - session.startClientX) / zoom),
+      );
+      const nextHeight = Math.min(
+        CANVAS_HEIGHT - object.y,
+        Math.max(minimum.height, session.startHeight + (event.clientY - session.startClientY) / zoom),
+      );
+
+      updateObjectInCache(object.id, (current) => ({
+        ...current,
+        width: nextWidth,
+        height: nextHeight,
+      }));
+
+      const now = performance.now();
+      const lastSentAt = lastLiveResizeSentAtRef.current.get(object.id) ?? 0;
+      if (now - lastSentAt >= LIVE_OBJECT_SEND_INTERVAL_MS) {
+        lastLiveResizeSentAtRef.current.set(object.id, now);
+        whiteboardConnectionRef.current?.sendLiveResize(object.id, nextWidth, nextHeight);
+      }
+    },
+    [getObjectMinimumSize, queryClient, updateObjectInCache, whiteboardObjectsQueryKey, zoom],
+  );
+
+  const finishObjectResize = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const session = objectResizeSessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) {
+        return;
+      }
+
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+
+      objectResizeSessionRef.current = null;
+      const currentObjects =
+        queryClient.getQueryData<WhiteboardObjectResponse[]>(whiteboardObjectsQueryKey) ?? [];
+      const object = currentObjects.find((item) => item.id === session.objectId);
+
+      if (object && !object.locked) {
+        whiteboardConnectionRef.current?.sendLiveResize(object.id, object.width, object.height);
+        lastLiveResizeSentAtRef.current.delete(object.id);
+        updateObjectMutation.mutate(object);
+      }
+    },
+    [queryClient, updateObjectMutation, whiteboardObjectsQueryKey],
+  );
+
+  const applySelectedObjectStyle = useCallback(
+    (patch: Partial<Pick<WhiteboardObjectResponse, "fillColor" | "strokeColor" | "strokeWidth" | "fontSize">>) => {
+      if (!canEdit || !selectedObject || selectedObject.locked) {
+        return;
+      }
+
+      const updated = { ...selectedObject, ...patch };
+      updateObjectInCache(selectedObject.id, () => updated);
+      updateObjectMutation.mutate(updated);
+    },
+    [canEdit, selectedObject, updateObjectInCache, updateObjectMutation],
   );
 
   const handleUndo = useCallback(async () => {
@@ -1410,17 +1893,176 @@ export default function WhiteboardPage() {
 
     setConnectionState("connecting");
 
-    const currentQueryKey = ["whiteboard", boardId, selectedWhiteboardId, "strokes"] as const;
+    const currentStrokeQueryKey = [
+      "whiteboard",
+      boardId,
+      selectedWhiteboardId,
+      "strokes",
+    ] as const;
 
-    const disconnect = connectWhiteboardWebSocket({
+    const currentObjectQueryKey = [
+      "whiteboard",
+      boardId,
+      selectedWhiteboardId,
+      "objects",
+    ] as const;
+
+    remoteLiveSequenceRef.current.clear();
+    lastLiveMoveSentAtRef.current.clear();
+
+    for (const timerId of remoteLiveStrokeRemovalTimersRef.current.values()) {
+      window.clearTimeout(timerId);
+    }
+
+    remoteLiveStrokeRemovalTimersRef.current.clear();
+    setRemoteLiveStrokes({});
+
+    const connection = connectWhiteboardWebSocket({
       boardId,
       whiteboardId: selectedWhiteboardId,
 
       onConnectionStateChange: setConnectionState,
 
       onEvent: (event) => {
+        if (event.type === "WORKSPACE_UPDATED" && event.workspace) {
+          const updatedWorkspace = event.workspace;
+          queryClient.setQueryData<WhiteboardWorkspaceResponse[]>(whiteboardsQueryKey, (current = []) =>
+            current.map((whiteboard) =>
+              whiteboard.id === updatedWorkspace.id ? updatedWorkspace : whiteboard,
+            ),
+          );
+
+          if (updatedWorkspace.locked) {
+            const canvas = canvasRef.current;
+            const pointerId = activePointerIdRef.current;
+            if (canvas && pointerId !== null && canvas.hasPointerCapture(pointerId)) {
+              canvas.releasePointerCapture(pointerId);
+            }
+            activeStrokeRef.current = null;
+            activePointerIdRef.current = null;
+            objectDragSessionRef.current = null;
+            objectResizeSessionRef.current = null;
+          }
+          return;
+        }
+
+        if (event.type === "CURSOR_MOVED" && event.cursor) {
+          const cursor = event.cursor;
+          setRemoteCursors((current) => ({
+            ...current,
+            [cursor.sourceClientId]: {
+              ...cursor,
+              updatedAt: Date.now(),
+            },
+          }));
+          return;
+        }
+
+        if (
+          (event.type === "STROKE_LIVE_START" ||
+            event.type === "STROKE_LIVE_APPEND" ||
+            event.type === "STROKE_LIVE_END") &&
+          event.liveStroke
+        ) {
+          const liveStroke = event.liveStroke;
+          const remoteKey = getRemoteLiveStrokeKey(
+            liveStroke.sourceClientId,
+            liveStroke.liveStrokeId,
+          );
+          const sequenceKey = `${liveStroke.sourceClientId}:STROKE:${liveStroke.liveStrokeId}`;
+          const lastSequence = remoteLiveSequenceRef.current.get(sequenceKey) ?? -1;
+
+          if (liveStroke.sequence <= lastSequence) {
+            return;
+          }
+
+          remoteLiveSequenceRef.current.set(sequenceKey, liveStroke.sequence);
+
+          if (event.type === "STROKE_LIVE_START") {
+            const oldTimer = remoteLiveStrokeRemovalTimersRef.current.get(remoteKey);
+
+            if (oldTimer !== undefined) {
+              window.clearTimeout(oldTimer);
+              remoteLiveStrokeRemovalTimersRef.current.delete(remoteKey);
+            }
+
+            if (
+              liveStroke.tool === null ||
+              liveStroke.color === null ||
+              liveStroke.lineWidth === null ||
+              liveStroke.points.length === 0
+            ) {
+              return;
+            }
+
+            setRemoteLiveStrokes((current) => ({
+              ...current,
+              [remoteKey]: {
+                tool: liveStroke.tool as WhiteboardTool,
+                color: liveStroke.color as string,
+                lineWidth: liveStroke.lineWidth as number,
+                points: liveStroke.points,
+              },
+            }));
+
+            return;
+          }
+
+          if (event.type === "STROKE_LIVE_APPEND") {
+            if (liveStroke.points.length === 0) {
+              return;
+            }
+
+            setRemoteLiveStrokes((current) => {
+              const existing = current[remoteKey];
+
+              if (!existing) {
+                return current;
+              }
+
+              return {
+                ...current,
+                [remoteKey]: {
+                  ...existing,
+                  points: [...existing.points, ...liveStroke.points],
+                },
+              };
+            });
+
+            return;
+          }
+
+          if (event.type === "STROKE_LIVE_END") {
+            const oldTimer = remoteLiveStrokeRemovalTimersRef.current.get(remoteKey);
+
+            if (oldTimer !== undefined) {
+              window.clearTimeout(oldTimer);
+            }
+
+            const timerId = window.setTimeout(() => {
+              setRemoteLiveStrokes((current) => {
+                if (!(remoteKey in current)) {
+                  return current;
+                }
+
+                const next = { ...current };
+                delete next[remoteKey];
+                return next;
+              });
+
+              remoteLiveStrokeRemovalTimersRef.current.delete(remoteKey);
+              remoteLiveSequenceRef.current.delete(sequenceKey);
+            }, LIVE_STROKE_END_GRACE_MS);
+
+            remoteLiveStrokeRemovalTimersRef.current.set(remoteKey, timerId);
+            return;
+          }
+        }
+
         if (event.type === "STROKE_CREATED" && event.stroke) {
-          queryClient.setQueryData<WhiteboardStrokeResponse[]>(currentQueryKey, (current = []) =>
+          queryClient.setQueryData<WhiteboardStrokeResponse[]>(
+            currentStrokeQueryKey,
+            (current = []) =>
             appendStrokeIfMissing(current, event.stroke as WhiteboardStrokeResponse),
           );
 
@@ -1430,8 +2072,9 @@ export default function WhiteboardPage() {
         if (event.type === "STROKE_DELETED" && event.strokeId !== null) {
           const deletedStrokeId = event.strokeId;
 
-          queryClient.setQueryData<WhiteboardStrokeResponse[]>(currentQueryKey, (current = []) =>
-            current.filter((stroke) => stroke.id !== deletedStrokeId),
+          queryClient.setQueryData<WhiteboardStrokeResponse[]>(
+            currentStrokeQueryKey,
+            (current = []) => current.filter((stroke) => stroke.id !== deletedStrokeId),
           );
 
           removeStrokeFromUndoHistory(deletedStrokeId);
@@ -1450,8 +2093,167 @@ export default function WhiteboardPage() {
           activeStrokeRef.current = null;
           activePointerIdRef.current = null;
 
-          queryClient.setQueryData<WhiteboardStrokeResponse[]>(currentQueryKey, []);
+          for (const timerId of remoteLiveStrokeRemovalTimersRef.current.values()) {
+            window.clearTimeout(timerId);
+          }
+
+          remoteLiveStrokeRemovalTimersRef.current.clear();
+          setRemoteLiveStrokes({});
+
+          queryClient.setQueryData<WhiteboardStrokeResponse[]>(currentStrokeQueryKey, []);
           clearUndoHistory();
+          return;
+        }
+
+        if (event.type === "OBJECT_CREATED" && event.object) {
+          const createdObject = event.object;
+
+          queryClient.setQueryData<WhiteboardObjectResponse[]>(
+            currentObjectQueryKey,
+            (current = []) => {
+              const exists = current.some((object) => object.id === createdObject.id);
+
+              if (exists) {
+                return current.map((object) =>
+                  object.id === createdObject.id ? createdObject : object,
+                );
+              }
+
+              return [...current, createdObject].sort(
+                (left, right) => left.zIndex - right.zIndex || left.id - right.id,
+              );
+            },
+          );
+
+          return;
+        }
+
+        if (event.type === "OBJECT_UPDATED" && event.object) {
+          const updatedObject = event.object;
+
+          queryClient.setQueryData<WhiteboardObjectResponse[]>(
+            currentObjectQueryKey,
+            (current = []) => {
+              const exists = current.some((object) => object.id === updatedObject.id);
+
+              if (!exists) {
+                return [...current, updatedObject].sort(
+                  (left, right) => left.zIndex - right.zIndex || left.id - right.id,
+                );
+              }
+
+              return current
+                .map((object) => (object.id === updatedObject.id ? updatedObject : object))
+                .sort((left, right) => left.zIndex - right.zIndex || left.id - right.id);
+            },
+          );
+
+          return;
+        }
+
+        if (
+          (event.type === "OBJECT_LIVE_EDIT" ||
+            event.type === "OBJECT_LIVE_MOVE" ||
+            event.type === "OBJECT_LIVE_RESIZE") &&
+          event.liveObject
+        ) {
+          const liveObject = event.liveObject;
+          const sequenceKey = `${liveObject.sourceClientId}:${event.type}:${liveObject.objectId}`;
+          const lastSequence = remoteLiveSequenceRef.current.get(sequenceKey) ?? -1;
+
+          /*
+           * 같은 송신자의 오래된 패킷이 뒤늦게 도착하면 무시합니다.
+           */
+          if (liveObject.sequence <= lastSequence) {
+            return;
+          }
+
+          remoteLiveSequenceRef.current.set(sequenceKey, liveObject.sequence);
+
+          if (event.type === "OBJECT_LIVE_EDIT" && liveObject.content !== null) {
+            queryClient.setQueryData<WhiteboardObjectResponse[]>(
+              currentObjectQueryKey,
+              (current = []) =>
+                current.map((object) =>
+                  object.id === liveObject.objectId
+                    ? {
+                        ...object,
+                        content: liveObject.content as string,
+                      }
+                    : object,
+                ),
+            );
+
+            return;
+          }
+
+          if (
+            event.type === "OBJECT_LIVE_MOVE" &&
+            liveObject.x !== null &&
+            liveObject.y !== null
+          ) {
+            queryClient.setQueryData<WhiteboardObjectResponse[]>(
+              currentObjectQueryKey,
+              (current = []) =>
+                current.map((object) =>
+                  object.id === liveObject.objectId
+                    ? {
+                        ...object,
+                        x: liveObject.x as number,
+                        y: liveObject.y as number,
+                      }
+                    : object,
+                ),
+            );
+
+            return;
+          }
+     
+
+          if (
+            event.type === "OBJECT_LIVE_RESIZE" &&
+            liveObject.width !== null &&
+            liveObject.height !== null
+          ) {
+            queryClient.setQueryData<WhiteboardObjectResponse[]>(
+              currentObjectQueryKey,
+              (current = []) =>
+                current.map((object) =>
+                  object.id === liveObject.objectId
+                    ? {
+                        ...object,
+                        width: liveObject.width as number,
+                        height: liveObject.height as number,
+                      }
+                    : object,
+                ),
+            );
+
+            return;
+          }
+        }
+
+        if (event.type === "OBJECT_DELETED" && event.objectId !== null) {
+          const deletedObjectId = event.objectId;
+
+          queryClient.setQueryData<WhiteboardObjectResponse[]>(
+            currentObjectQueryKey,
+            (current = []) => current.filter((object) => object.id !== deletedObjectId),
+          );
+
+          setSelectedObjectId((current) => (current === deletedObjectId ? null : current));
+
+          setObjectDrafts((current) => {
+            if (!(deletedObjectId in current)) {
+              return current;
+            }
+
+            const next = { ...current };
+            delete next[deletedObjectId];
+            return next;
+          });
+
+          composingObjectIdsRef.current.delete(deletedObjectId);
         }
       },
 
@@ -1460,7 +2262,26 @@ export default function WhiteboardPage() {
       },
     });
 
-    return disconnect;
+    whiteboardConnectionRef.current = connection;
+
+    return () => {
+      if (whiteboardConnectionRef.current === connection) {
+        whiteboardConnectionRef.current = null;
+      }
+
+      remoteLiveSequenceRef.current.clear();
+      lastLiveMoveSentAtRef.current.clear();
+      lastLiveResizeSentAtRef.current.clear();
+      setRemoteCursors({});
+
+      for (const timerId of remoteLiveStrokeRemovalTimersRef.current.values()) {
+        window.clearTimeout(timerId);
+      }
+
+      remoteLiveStrokeRemovalTimersRef.current.clear();
+      setRemoteLiveStrokes({});
+      connection.disconnect();
+    };
   }, [
     boardId,
     clearUndoHistory,
@@ -1469,6 +2290,21 @@ export default function WhiteboardPage() {
     removeStrokeFromUndoHistory,
     selectedWhiteboardId,
   ]);
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      const threshold = Date.now() - REMOTE_CURSOR_TTL_MS;
+      setRemoteCursors((current) => {
+        const entries = Object.entries(current).filter(([, cursor]) => cursor.updatedAt >= threshold);
+        if (entries.length === Object.keys(current).length) {
+          return current;
+        }
+        return Object.fromEntries(entries);
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1489,10 +2325,24 @@ export default function WhiteboardPage() {
       drawStroke(context, stroke);
     }
 
+    for (const liveStroke of Object.values(remoteLiveStrokes)) {
+      drawStroke(context, liveStroke);
+    }
+
+    /*
+     * 원격 LIVE 이벤트 때문에 Canvas 전체가 다시 그려지는 순간에도
+     * 내가 아직 그리고 있는 로컬 Stroke가 사라지지 않도록 복원합니다.
+     */
+    const activeStroke = activeStrokeRef.current;
+
+    if (activeStroke) {
+      drawStroke(context, activeStroke);
+    }
+
     if (selectedStroke) {
       drawSelectionOutline(context, selectedStroke);
     }
-  }, [selectedStroke, strokes]);
+  }, [remoteLiveStrokes, selectedStroke, strokes]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1564,7 +2414,7 @@ export default function WhiteboardPage() {
   const getCurrentStyle = () => ({
     color: tool === "PEN" ? penColor : "#FFFFFF",
 
-    lineWidth: tool === "PEN" ? PEN_LINE_WIDTH : ERASER_LINE_WIDTH,
+    lineWidth: tool === "PEN" ? penLineWidth : eraserLineWidth,
   });
 
   const changeZoom = useCallback(
@@ -1670,7 +2520,32 @@ export default function WhiteboardPage() {
 
       setSelectedStrokeId(null);
       setSelectedObjectId(null);
-      createObjectMutation.mutate({ x, y });
+      createObjectMutation.mutate({ x, y, type: "STICKY_NOTE" });
+      return;
+    }
+
+    if (tool === "TEXT") {
+      const x = Math.min(CANVAS_WIDTH - TEXT_WIDTH, Math.max(0, firstPoint.x - TEXT_WIDTH / 2));
+      const y = Math.min(
+        CANVAS_HEIGHT - TEXT_HEIGHT,
+        Math.max(0, firstPoint.y - TEXT_HEIGHT / 2),
+      );
+
+      setSelectedStrokeId(null);
+      setSelectedObjectId(null);
+      createObjectMutation.mutate({ x, y, type: "TEXT" });
+      return;
+    }
+
+    if (tool === "RECTANGLE" || tool === "ELLIPSE" || tool === "ARROW") {
+      const width = tool === "ARROW" ? ARROW_WIDTH : SHAPE_WIDTH;
+      const height = tool === "ARROW" ? ARROW_HEIGHT : SHAPE_HEIGHT;
+      const x = Math.min(CANVAS_WIDTH - width, Math.max(0, firstPoint.x - width / 2));
+      const y = Math.min(CANVAS_HEIGHT - height, Math.max(0, firstPoint.y - height / 2));
+
+      setSelectedStrokeId(null);
+      setSelectedObjectId(null);
+      createObjectMutation.mutate({ x, y, type: tool });
       return;
     }
 
@@ -1698,8 +2573,12 @@ export default function WhiteboardPage() {
 
     activePointerIdRef.current = event.pointerId;
 
+    const gestureId = crypto.randomUUID();
+    const liveStrokeId = crypto.randomUUID();
+    const now = performance.now();
+
     activeStrokeRef.current = {
-      gestureId: crypto.randomUUID(),
+      gestureId,
 
       tool,
 
@@ -1710,10 +2589,36 @@ export default function WhiteboardPage() {
       points: [firstPoint],
 
       hasSavedChunk: false,
+
+      liveStrokeId,
+
+      lastLiveSentAt: now,
+
+      lastLiveSentPoint: firstPoint,
     };
+
+    whiteboardConnectionRef.current?.sendLiveStrokeStart(
+      liveStrokeId,
+      tool,
+      color,
+      lineWidth,
+      [firstPoint],
+    );
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const cursorCanvas = canvasRef.current;
+    const cursorNow = performance.now();
+
+    if (
+      cursorCanvas &&
+      cursorNow - lastCursorSentAtRef.current >= LIVE_CURSOR_SEND_INTERVAL_MS
+    ) {
+      const cursorPoint = getCanvasPoint(cursorCanvas, event);
+      lastCursorSentAtRef.current = cursorNow;
+      whiteboardConnectionRef.current?.sendCursor(cursorPoint.x, cursorPoint.y);
+    }
+
     const panSession = panSessionRef.current;
 
     if (panSession && panSession.pointerId === event.pointerId) {
@@ -1779,12 +2684,24 @@ export default function WhiteboardPage() {
     );
 
     const nextPoints = [...activeStroke.points, currentPoint];
+    const now = performance.now();
 
-    activeStrokeRef.current = {
+    let nextActiveStroke: ActiveStroke = {
       ...activeStroke,
-
       points: nextPoints,
     };
+
+    if (now - activeStroke.lastLiveSentAt >= LIVE_STROKE_SEND_INTERVAL_MS) {
+      whiteboardConnectionRef.current?.sendLiveStrokeAppend(activeStroke.liveStrokeId, [currentPoint]);
+
+      nextActiveStroke = {
+        ...nextActiveStroke,
+        lastLiveSentAt: now,
+        lastLiveSentPoint: currentPoint,
+      };
+    }
+
+    activeStrokeRef.current = nextActiveStroke;
 
     if (nextPoints.length >= STROKE_CHUNK_POINT_LIMIT) {
       enqueueStrokeSave(
@@ -1812,6 +2729,12 @@ export default function WhiteboardPage() {
         points: [currentPoint],
 
         hasSavedChunk: true,
+
+        liveStrokeId: activeStroke.liveStrokeId,
+
+        lastLiveSentAt: nextActiveStroke.lastLiveSentAt,
+
+        lastLiveSentPoint: nextActiveStroke.lastLiveSentPoint,
       };
     }
   };
@@ -1838,6 +2761,19 @@ export default function WhiteboardPage() {
     const canvas = canvasRef.current;
 
     const activeStroke = activeStrokeRef.current;
+
+    if (activeStroke) {
+      const finalPoint = activeStroke.points[activeStroke.points.length - 1];
+
+      if (
+        finalPoint &&
+        getPointDistance(activeStroke.lastLiveSentPoint, finalPoint) > 0.01
+      ) {
+        whiteboardConnectionRef.current?.sendLiveStrokeAppend(activeStroke.liveStrokeId, [finalPoint]);
+      }
+
+      whiteboardConnectionRef.current?.sendLiveStrokeEnd(activeStroke.liveStrokeId);
+    }
 
     if (canvas?.hasPointerCapture(event.pointerId)) {
       canvas.releasePointerCapture(event.pointerId);
@@ -1914,6 +2850,19 @@ export default function WhiteboardPage() {
 
     const activeStroke = activeStrokeRef.current;
 
+    if (activeStroke) {
+      const finalPoint = activeStroke.points[activeStroke.points.length - 1];
+
+      if (
+        finalPoint &&
+        getPointDistance(activeStroke.lastLiveSentPoint, finalPoint) > 0.01
+      ) {
+        whiteboardConnectionRef.current?.sendLiveStrokeAppend(activeStroke.liveStrokeId, [finalPoint]);
+      }
+
+      whiteboardConnectionRef.current?.sendLiveStrokeEnd(activeStroke.liveStrokeId);
+    }
+
     if (canvas?.hasPointerCapture(event.pointerId)) {
       canvas.releasePointerCapture(event.pointerId);
     }
@@ -1967,7 +2916,11 @@ export default function WhiteboardPage() {
     setWorkspaceTitle(selectedWhiteboard.title);
     setWorkspaceDescription(selectedWhiteboard.description ?? "");
     setWorkspaceBackgroundColor(selectedWhiteboard.backgroundColor || "#FFFFFF");
-    setWorkspaceGridEnabled(selectedWhiteboard.gridEnabled);
+    const nextGridType = selectedWhiteboard.gridType ?? (selectedWhiteboard.gridEnabled ? "GRID" : "NONE");
+    setWorkspaceGridType(nextGridType);
+    setWorkspaceGridEnabled(nextGridType !== "NONE");
+    setWorkspaceGridSize(selectedWhiteboard.gridSize ?? 24);
+    setWorkspaceGridOpacity(selectedWhiteboard.gridOpacity ?? 0.12);
     setSettingsModalOpen(true);
   };
 
@@ -1976,7 +2929,7 @@ export default function WhiteboardPage() {
 
     const title = workspaceTitle.trim();
 
-    if (!title || !canEdit) {
+    if (!title || !canManageWorkspace) {
       return;
     }
 
@@ -1989,7 +2942,7 @@ export default function WhiteboardPage() {
   const handleSaveWorkspaceSettings = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!selectedWhiteboard || !canEdit) {
+    if (!selectedWhiteboard || !canManageWorkspace) {
       return;
     }
 
@@ -2005,12 +2958,14 @@ export default function WhiteboardPage() {
       title,
       description: workspaceDescription.trim() || null,
       backgroundColor: workspaceBackgroundColor,
-      gridEnabled: workspaceGridEnabled,
+      gridType: workspaceGridType,
+      gridSize: workspaceGridSize,
+      gridOpacity: workspaceGridOpacity,
     });
   };
 
   const handleSetDefaultWhiteboard = () => {
-    if (!selectedWhiteboard || !canEdit || selectedWhiteboard.defaultWhiteboard) {
+    if (!selectedWhiteboard || !canManageWorkspace || selectedWhiteboard.defaultWhiteboard) {
       return;
     }
 
@@ -2018,7 +2973,7 @@ export default function WhiteboardPage() {
   };
 
   const handleMoveWhiteboard = (direction: -1 | 1) => {
-    if (!selectedWhiteboard || !canEdit || reorderWhiteboardsMutation.isPending) {
+    if (!selectedWhiteboard || !canManageWorkspace || reorderWhiteboardsMutation.isPending) {
       return;
     }
 
@@ -2043,7 +2998,7 @@ export default function WhiteboardPage() {
   };
 
   const handleDeleteWhiteboard = async () => {
-    if (!selectedWhiteboard || !canEdit || whiteboards.length <= 1) {
+    if (!selectedWhiteboard || !canManageWorkspace || whiteboards.length <= 1) {
       return;
     }
 
@@ -2112,7 +3067,7 @@ export default function WhiteboardPage() {
 
   const canDeleteSelected =
     canEdit &&
-    (selectedStrokeId !== null || selectedObjectId !== null) &&
+    (selectedStrokeId !== null || (selectedObjectId !== null && !selectedObject?.locked)) &&
     deletingStrokeId === null &&
     deletingObjectId === null &&
     !isUndoing &&
@@ -2234,7 +3189,7 @@ export default function WhiteboardPage() {
             required
             maxLength={100}
             value={workspaceTitle}
-            disabled={!canEdit || updateWhiteboardMutation.isPending}
+            disabled={!canManageWorkspace || updateWhiteboardMutation.isPending}
             onChange={(event) => setWorkspaceTitle(event.target.value)}
           />
 
@@ -2245,86 +3200,125 @@ export default function WhiteboardPage() {
             >
               설명
             </label>
-
             <textarea
               id="whiteboard-settings-description"
               rows={3}
               maxLength={500}
               value={workspaceDescription}
-              disabled={!canEdit || updateWhiteboardMutation.isPending}
+              disabled={!canManageWorkspace || updateWhiteboardMutation.isPending}
               onChange={(event) => setWorkspaceDescription(event.target.value)}
-              className="mt-1.5 w-full resize-none rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 py-2.5 text-sm text-[var(--flow-text)] transition-[border-color,box-shadow] outline-none focus:border-[var(--flow-primary-500)] focus:ring-4 focus:ring-[var(--flow-focus-ring)] disabled:cursor-not-allowed disabled:bg-[var(--flow-gray-100)]"
+              className="mt-1.5 w-full resize-none rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 py-2.5 text-sm text-[var(--flow-text)] outline-none focus:border-[var(--flow-primary-500)] focus:ring-4 focus:ring-[var(--flow-focus-ring)] disabled:cursor-not-allowed disabled:bg-[var(--flow-gray-100)]"
             />
           </div>
 
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
-            <label className="rounded-xl border border-[var(--flow-border)] bg-[var(--flow-gray-50)] p-3">
-              <span className="block text-[11px] font-bold text-[var(--flow-text-secondary)]">
-                배경색
+          <div className="rounded-xl border border-[var(--flow-border)] bg-[var(--flow-gray-50)] p-4">
+            <p className="text-[11px] font-bold text-[var(--flow-text-secondary)]">캔버스 배경</p>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <input
+                type="color"
+                value={workspaceBackgroundColor}
+                disabled={!canManageWorkspace || updateWhiteboardMutation.isPending}
+                onChange={(event) => setWorkspaceBackgroundColor(event.target.value)}
+                className="h-10 w-14 cursor-pointer rounded-lg border border-[var(--flow-border-strong)] bg-white p-1 disabled:cursor-not-allowed"
+                aria-label="캔버스 배경색"
+              />
+              <span className="font-mono text-[11px] font-semibold text-[var(--flow-text-muted)]">
+                {workspaceBackgroundColor.toUpperCase()}
               </span>
-
-              <div className="mt-2 flex items-center gap-3">
-                <input
-                  type="color"
-                  value={workspaceBackgroundColor}
-                  disabled={!canEdit || updateWhiteboardMutation.isPending}
-                  onChange={(event) => setWorkspaceBackgroundColor(event.target.value)}
-                  className="h-9 w-12 cursor-pointer rounded-lg border border-[var(--flow-border-strong)] bg-white p-1 disabled:cursor-not-allowed"
-                />
-
-                <span className="font-mono text-[10px] font-semibold text-[var(--flow-text-muted)]">
-                  {workspaceBackgroundColor.toUpperCase()}
-                </span>
-              </div>
-            </label>
-
-            <div className="rounded-xl border border-[var(--flow-border)] bg-[var(--flow-gray-50)] p-3">
-              <span className="block text-[11px] font-bold text-[var(--flow-text-secondary)]">
-                그리드
-              </span>
-
-              <button
-                type="button"
-                role="switch"
-                aria-checked={workspaceGridEnabled}
-                disabled={!canEdit || updateWhiteboardMutation.isPending}
-                onClick={() => setWorkspaceGridEnabled((current) => !current)}
-                className={[
-                  "mt-2 inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-[10px] font-bold transition-colors",
-                  workspaceGridEnabled
-                    ? "border-[var(--flow-primary-300)] bg-[var(--flow-primary-50)] text-[var(--flow-primary-700)]"
-                    : "border-[var(--flow-border-strong)] bg-white text-[var(--flow-text-muted)]",
-                  "disabled:cursor-not-allowed disabled:opacity-50",
-                ].join(" ")}
-              >
-                <span
-                  className={[
-                    "h-2.5 w-2.5 rounded-full",
-                    workspaceGridEnabled ? "bg-[var(--flow-primary)]" : "bg-[var(--flow-gray-300)]",
-                  ].join(" ")}
-                />
-                {workspaceGridEnabled ? "표시" : "숨김"}
-              </button>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-[var(--flow-border)] bg-[var(--flow-gray-50)] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold text-[var(--flow-text-secondary)]">배경 패턴</p>
+                <p className="mt-1 text-[10px] text-[var(--flow-text-muted)]">
+                  빈 화면, 사각 격자, 점 그리드 중에서 선택합니다.
+                </p>
+              </div>
+              <span className="text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                {workspaceGridEnabled ? "패턴 사용" : "빈 화면"}
+              </span>
+            </div>
+
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {(["NONE", "GRID", "DOT"] as WhiteboardGridType[]).map((gridType) => (
+                <button
+                  key={gridType}
+                  type="button"
+                  disabled={!canManageWorkspace || updateWhiteboardMutation.isPending}
+                  onClick={() => {
+                    setWorkspaceGridType(gridType);
+                    setWorkspaceGridEnabled(gridType !== "NONE");
+                  }}
+                  className={[
+                    "h-10 rounded-lg border text-[11px] font-bold transition-colors",
+                    workspaceGridType === gridType
+                      ? "border-[var(--flow-primary-300)] bg-[var(--flow-primary-50)] text-[var(--flow-primary-700)]"
+                      : "border-[var(--flow-border-strong)] bg-white text-[var(--flow-text-muted)] hover:bg-[var(--flow-gray-50)]",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
+                  ].join(" ")}
+                >
+                  {gridType === "NONE" ? "없음" : gridType === "GRID" ? "격자" : "점"}
+                </button>
+              ))}
+            </div>
+
+            {workspaceGridType !== "NONE" && (
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <label className="text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                  <span className="flex justify-between gap-2">
+                    <span>간격</span>
+                    <strong className="text-[var(--flow-text-secondary)]">{workspaceGridSize}px</strong>
+                  </span>
+                  <input
+                    type="range"
+                    min={12}
+                    max={64}
+                    step={4}
+                    value={workspaceGridSize}
+                    disabled={!canManageWorkspace || updateWhiteboardMutation.isPending}
+                    onChange={(event) => setWorkspaceGridSize(Number(event.target.value))}
+                    className="mt-2 w-full accent-[var(--flow-primary)]"
+                  />
+                </label>
+
+                <label className="text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                  <span className="flex justify-between gap-2">
+                    <span>농도</span>
+                    <strong className="text-[var(--flow-text-secondary)]">
+                      {Math.round(workspaceGridOpacity * 100)}%
+                    </strong>
+                  </span>
+                  <input
+                    type="range"
+                    min={0.05}
+                    max={0.4}
+                    step={0.01}
+                    value={workspaceGridOpacity}
+                    disabled={!canManageWorkspace || updateWhiteboardMutation.isPending}
+                    onChange={(event) => setWorkspaceGridOpacity(Number(event.target.value))}
+                    className="mt-2 w-full accent-[var(--flow-primary)]"
+                  />
+                </label>
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl border border-[var(--flow-border)] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] font-bold text-[var(--flow-text-secondary)]">
-                  기본 화이트보드
-                </p>
+                <p className="text-[11px] font-bold text-[var(--flow-text-secondary)]">기본 화이트보드</p>
                 <p className="mt-1 text-[10px] leading-5 text-[var(--flow-text-muted)]">
                   화이트보드 메뉴에 처음 들어왔을 때 기본으로 열리는 작업 공간입니다.
                 </p>
               </div>
-
               <Button
                 type="button"
                 size="sm"
                 variant={selectedWhiteboard?.defaultWhiteboard ? "outline" : "primary"}
                 disabled={
-                  !canEdit ||
+                  !canManageWorkspace ||
                   !selectedWhiteboard ||
                   selectedWhiteboard.defaultWhiteboard ||
                   defaultWhiteboardMutation.isPending
@@ -2339,26 +3333,24 @@ export default function WhiteboardPage() {
 
           <div className="rounded-xl border border-[var(--flow-border)] p-4">
             <p className="text-[11px] font-bold text-[var(--flow-text-secondary)]">탭 순서</p>
-
             <div className="mt-3 flex gap-2">
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 disabled={
-                  !canEdit || selectedWhiteboardIndex <= 0 || reorderWhiteboardsMutation.isPending
+                  !canManageWorkspace || selectedWhiteboardIndex <= 0 || reorderWhiteboardsMutation.isPending
                 }
                 onClick={() => handleMoveWhiteboard(-1)}
               >
                 ← 왼쪽
               </Button>
-
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 disabled={
-                  !canEdit ||
+                  !canManageWorkspace ||
                   selectedWhiteboardIndex < 0 ||
                   selectedWhiteboardIndex >= orderedWhiteboards.length - 1 ||
                   reorderWhiteboardsMutation.isPending
@@ -2374,12 +3366,11 @@ export default function WhiteboardPage() {
             <Button
               type="button"
               variant="danger"
-              disabled={!canEdit || whiteboards.length <= 1 || deleteWhiteboardMutation.isPending}
+              disabled={!canManageWorkspace || whiteboards.length <= 1 || deleteWhiteboardMutation.isPending}
               onClick={() => setDeleteDialogOpen(true)}
             >
               화이트보드 삭제
             </Button>
-
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -2389,11 +3380,10 @@ export default function WhiteboardPage() {
               >
                 취소
               </Button>
-
               <Button
                 type="submit"
                 loading={updateWhiteboardMutation.isPending}
-                disabled={!canEdit || !workspaceTitle.trim()}
+                disabled={!canManageWorkspace || !workspaceTitle.trim()}
               >
                 설정 저장
               </Button>
@@ -2489,7 +3479,7 @@ export default function WhiteboardPage() {
                   ? `저장 중 ${queuedSaveCount}개`
                   : deletingStrokeId !== null
                     ? "선 삭제 중"
-                    : `선 ${strokes.length.toLocaleString()}개 · 스티키 ${stickyNotes.length.toLocaleString()}개`}
+                    : `선 ${strokes.length.toLocaleString()}개 · 스티키 ${stickyNotes.length.toLocaleString()}개 · 텍스트 ${textObjects.length.toLocaleString()}개`}
               </span>
             </div>
           </div>
@@ -2545,7 +3535,7 @@ export default function WhiteboardPage() {
                 </div>
               </div>
 
-              {canEdit && (
+              {canManageWorkspace && (
                 <div className="flex shrink-0 items-center gap-2 border-l border-[var(--flow-border)] pl-3">
                   <Button type="button" size="sm" variant="outline" onClick={openCreateModal}>
                     + 새 화이트보드
@@ -2559,6 +3549,24 @@ export default function WhiteboardPage() {
                     onClick={openSettingsModal}
                   >
                     설정
+                  </Button>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={selectedWhiteboard?.locked ? "primary" : "outline"}
+                    disabled={!selectedWhiteboard || updateWhiteboardLockMutation.isPending}
+                    loading={updateWhiteboardLockMutation.isPending}
+                    onClick={() => {
+                      if (selectedWhiteboard) {
+                        updateWhiteboardLockMutation.mutate({
+                          whiteboardId: selectedWhiteboard.id,
+                          locked: !selectedWhiteboard.locked,
+                        });
+                      }
+                    }}
+                  >
+                    {selectedWhiteboard?.locked ? "🔓 잠금 해제" : "🔒 잠금"}
                   </Button>
                 </div>
               )}
@@ -2574,6 +3582,12 @@ export default function WhiteboardPage() {
                   {selectedWhiteboard?.defaultWhiteboard && (
                     <span className="shrink-0 rounded-full bg-[var(--flow-primary-50)] px-2 py-0.5 text-[8px] font-bold text-[var(--flow-primary-700)]">
                       기본
+                    </span>
+                  )}
+
+                  {selectedWhiteboard?.locked && (
+                    <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[8px] font-bold text-amber-700">
+                      🔒 잠김
                     </span>
                   )}
                 </div>
@@ -2593,7 +3607,7 @@ export default function WhiteboardPage() {
                   배경
                 </span>
 
-                <span>{selectedWhiteboard?.gridEnabled ? "Grid ON" : "Grid OFF"}</span>
+                <span>{selectedWhiteboard?.gridType === "DOT" ? "DOT" : selectedWhiteboard?.gridType === "GRID" ? "GRID" : "PLAIN"}</span>
               </div>
             </div>
           </div>
@@ -2655,6 +3669,46 @@ export default function WhiteboardPage() {
                   스티키
                 </Button>
 
+                <Button
+                  type="button"
+                  variant={tool === "TEXT" ? "primary" : "outline"}
+                  aria-pressed={tool === "TEXT"}
+                  disabled={!canEdit || isBusy}
+                  onClick={() => setTool("TEXT")}
+                >
+                  텍스트
+                </Button>
+
+                <Button
+                  type="button"
+                  variant={tool === "RECTANGLE" ? "primary" : "outline"}
+                  aria-pressed={tool === "RECTANGLE"}
+                  disabled={!canEdit || isBusy}
+                  onClick={() => setTool("RECTANGLE")}
+                >
+                  사각형
+                </Button>
+
+                <Button
+                  type="button"
+                  variant={tool === "ELLIPSE" ? "primary" : "outline"}
+                  aria-pressed={tool === "ELLIPSE"}
+                  disabled={!canEdit || isBusy}
+                  onClick={() => setTool("ELLIPSE")}
+                >
+                  원
+                </Button>
+
+                <Button
+                  type="button"
+                  variant={tool === "ARROW" ? "primary" : "outline"}
+                  aria-pressed={tool === "ARROW"}
+                  disabled={!canEdit || isBusy}
+                  onClick={() => setTool("ARROW")}
+                >
+                  화살표
+                </Button>
+
                 {tool === "SELECT" && (selectedStrokeId !== null || selectedObjectId !== null) && (
                   <Button
                     type="button"
@@ -2673,74 +3727,263 @@ export default function WhiteboardPage() {
 
               <span className="hidden h-7 w-px bg-[var(--flow-border)] min-[1180px]:block" />
 
-              {/* Pen color */}
-              <label className="flex items-center gap-3 text-[12px] font-semibold text-[var(--flow-text-secondary)]">
-                <span className="whitespace-nowrap">펜 색상</span>
+              {/* Tool options */}
+              {tool === "PEN" && (
+                <div className="flex flex-wrap items-center gap-4">
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                    <span>색상</span>
+                    <input
+                      type="color"
+                      value={penColor}
+                      disabled={!canEdit || isBusy}
+                      onChange={(event) => setPenColor(event.target.value)}
+                      className="h-8 w-10 cursor-pointer rounded-lg border border-[var(--flow-border-strong)] bg-white p-1 disabled:cursor-not-allowed"
+                    />
+                  </label>
+                  <label className="flex min-w-[180px] items-center gap-3 text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                    <span className="whitespace-nowrap">굵기 {penLineWidth}px</span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={24}
+                      step={1}
+                      value={penLineWidth}
+                      disabled={!canEdit || isBusy}
+                      onChange={(event) => setPenLineWidth(Number(event.target.value))}
+                      className="w-28 accent-[var(--flow-primary)]"
+                    />
+                  </label>
+                </div>
+              )}
 
-                <span className="relative flex h-10 w-10 overflow-hidden rounded-xl border border-[var(--flow-border-strong)] bg-white shadow-[var(--flow-shadow-xs)]">
-                  <input
-                    type="color"
-                    value={penColor}
-                    disabled={!canEdit || tool !== "PEN" || isBusy}
-                    onChange={(event) => setPenColor(event.target.value)}
-                    aria-label="펜 색상 선택"
-                    className="absolute -inset-2 h-14 w-14 cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-40"
-                  />
-                </span>
-
-                <span
-                  className="h-3 w-3 rounded-full border border-black/5"
-                  style={{ backgroundColor: penColor }}
-                />
-
-                <span className="font-mono text-[11px] font-medium text-[var(--flow-text-muted)]">
-                  {penColor.toUpperCase()}
-                </span>
-              </label>
-
-              {/* Eraser mode */}
               {tool === "ERASER" && (
-                <>
-                  <span className="hidden h-7 w-px bg-[var(--flow-border)] min-[1180px]:block" />
-
-                  <div className="flex items-center gap-3">
-                    <span className="text-[12px] font-semibold whitespace-nowrap text-[var(--flow-text-secondary)]">
-                      지우기 방식
-                    </span>
-
-                    <div className="flex items-center rounded-xl bg-[var(--flow-gray-100)] p-1">
-                      <button
-                        type="button"
-                        disabled={!canEdit || isBusy}
-                        onClick={() => setEraserMode("PIXEL")}
-                        className={[
-                          "h-8 rounded-lg px-3 text-[11px] font-semibold whitespace-nowrap transition-colors",
-                          eraserMode === "PIXEL"
-                            ? "bg-white text-[var(--flow-primary)] shadow-[var(--flow-shadow-xs)]"
-                            : "text-[var(--flow-text-muted)] hover:text-[var(--flow-text)]",
-                          "disabled:cursor-not-allowed disabled:opacity-50",
-                        ].join(" ")}
-                      >
-                        부분 지우기
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={!canEdit || isBusy}
-                        onClick={() => setEraserMode("STROKE")}
-                        className={[
-                          "h-8 rounded-lg px-3 text-[11px] font-semibold whitespace-nowrap transition-colors",
-                          eraserMode === "STROKE"
-                            ? "bg-white text-[var(--flow-primary)] shadow-[var(--flow-shadow-xs)]"
-                            : "text-[var(--flow-text-muted)] hover:text-[var(--flow-text)]",
-                          "disabled:cursor-not-allowed disabled:opacity-50",
-                        ].join(" ")}
-                      >
-                        선 전체 지우기
-                      </button>
-                    </div>
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center rounded-xl bg-[var(--flow-gray-100)] p-1">
+                    <button
+                      type="button"
+                      disabled={!canEdit || isBusy}
+                      onClick={() => setEraserMode("PIXEL")}
+                      className={[
+                        "h-8 rounded-lg px-3 text-[11px] font-semibold transition-colors",
+                        eraserMode === "PIXEL"
+                          ? "bg-white text-[var(--flow-primary)] shadow-[var(--flow-shadow-xs)]"
+                          : "text-[var(--flow-text-muted)]",
+                        "disabled:cursor-not-allowed disabled:opacity-50",
+                      ].join(" ")}
+                    >
+                      부분 지우기
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canEdit || isBusy}
+                      onClick={() => setEraserMode("STROKE")}
+                      className={[
+                        "h-8 rounded-lg px-3 text-[11px] font-semibold transition-colors",
+                        eraserMode === "STROKE"
+                          ? "bg-white text-[var(--flow-primary)] shadow-[var(--flow-shadow-xs)]"
+                          : "text-[var(--flow-text-muted)]",
+                        "disabled:cursor-not-allowed disabled:opacity-50",
+                      ].join(" ")}
+                    >
+                      선 전체 지우기
+                    </button>
                   </div>
-                </>
+                  {eraserMode === "PIXEL" && (
+                    <label className="flex min-w-[190px] items-center gap-3 text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                      <span className="whitespace-nowrap">굵기 {eraserLineWidth}px</span>
+                      <input
+                        type="range"
+                        min={8}
+                        max={80}
+                        step={2}
+                        value={eraserLineWidth}
+                        disabled={!canEdit || isBusy}
+                        onChange={(event) => setEraserLineWidth(Number(event.target.value))}
+                        className="w-28 accent-[var(--flow-primary)]"
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {tool === "STICKY" && (
+                <div className="flex flex-wrap items-center gap-4">
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                    <span>배경</span>
+                    <input
+                      type="color"
+                      value={stickyColor}
+                      disabled={!canEdit || isBusy}
+                      onChange={(event) => setStickyColor(event.target.value)}
+                      className="h-8 w-10 cursor-pointer rounded-lg border border-[var(--flow-border-strong)] bg-white p-1"
+                    />
+                  </label>
+                  <label className="flex min-w-[190px] items-center gap-3 text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                    <span className="whitespace-nowrap">글자 {stickyFontSize}px</span>
+                    <input
+                      type="range"
+                      min={11}
+                      max={32}
+                      value={stickyFontSize}
+                      disabled={!canEdit || isBusy}
+                      onChange={(event) => setStickyFontSize(Number(event.target.value))}
+                      className="w-28 accent-[var(--flow-primary)]"
+                    />
+                  </label>
+                </div>
+              )}
+
+              {tool === "TEXT" && (
+                <div className="flex flex-wrap items-center gap-4">
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                    <span>글자색</span>
+                    <input
+                      type="color"
+                      value={textColor}
+                      disabled={!canEdit || isBusy}
+                      onChange={(event) => setTextColor(event.target.value)}
+                      className="h-8 w-10 cursor-pointer rounded-lg border border-[var(--flow-border-strong)] bg-white p-1"
+                    />
+                  </label>
+                  <label className="flex min-w-[190px] items-center gap-3 text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                    <span className="whitespace-nowrap">크기 {textFontSize}px</span>
+                    <input
+                      type="range"
+                      min={12}
+                      max={72}
+                      value={textFontSize}
+                      disabled={!canEdit || isBusy}
+                      onChange={(event) => setTextFontSize(Number(event.target.value))}
+                      className="w-28 accent-[var(--flow-primary)]"
+                    />
+                  </label>
+                </div>
+              )}
+
+              {(tool === "RECTANGLE" || tool === "ELLIPSE" || tool === "ARROW") && (
+                <div className="flex flex-wrap items-center gap-4">
+                  {tool !== "ARROW" && (
+                    <label className="flex items-center gap-2 text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                      <span>채우기</span>
+                      <input
+                        type="color"
+                        value={shapeFillColor}
+                        disabled={!canEdit || isBusy}
+                        onChange={(event) => setShapeFillColor(event.target.value)}
+                        className="h-8 w-10 cursor-pointer rounded-lg border border-[var(--flow-border-strong)] bg-white p-1"
+                      />
+                    </label>
+                  )}
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                    <span>선</span>
+                    <input
+                      type="color"
+                      value={shapeStrokeColor}
+                      disabled={!canEdit || isBusy}
+                      onChange={(event) => setShapeStrokeColor(event.target.value)}
+                      className="h-8 w-10 cursor-pointer rounded-lg border border-[var(--flow-border-strong)] bg-white p-1"
+                    />
+                  </label>
+                  <label className="flex min-w-[170px] items-center gap-3 text-[11px] font-semibold text-[var(--flow-text-secondary)]">
+                    <span className="whitespace-nowrap">선 {shapeStrokeWidth}px</span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={12}
+                      value={shapeStrokeWidth}
+                      disabled={!canEdit || isBusy}
+                      onChange={(event) => setShapeStrokeWidth(Number(event.target.value))}
+                      className="w-24 accent-[var(--flow-primary)]"
+                    />
+                  </label>
+                </div>
+              )}
+
+              {tool === "SELECT" && selectedObject && (
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--flow-border)] bg-[var(--flow-gray-50)] px-3 py-2">
+                  <span className="text-[10px] font-bold text-[var(--flow-text-secondary)]">
+                    {selectedObject.locked ? "🔒 잠긴 객체" : "선택 객체"}
+                  </span>
+
+                  {(selectedObject.type === "STICKY_NOTE" || selectedObject.type === "TEXT") && (
+                    <>
+                      <label className="flex items-center gap-2 text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                        <span>글자</span>
+                        <input
+                          type="range"
+                          min={selectedObject.type === "TEXT" ? 12 : 11}
+                          max={selectedObject.type === "TEXT" ? 72 : 32}
+                          value={selectedObject.fontSize ?? (selectedObject.type === "TEXT" ? 24 : 14)}
+                          disabled={!canEdit || selectedObject.locked}
+                          onChange={(event) => applySelectedObjectStyle({ fontSize: Number(event.target.value) })}
+                          className="w-24 accent-[var(--flow-primary)]"
+                        />
+                        <span>{selectedObject.fontSize ?? (selectedObject.type === "TEXT" ? 24 : 14)}px</span>
+                      </label>
+                      <input
+                        type="color"
+                        value={
+                          selectedObject.type === "STICKY_NOTE"
+                            ? selectedObject.fillColor ?? DEFAULT_STICKY_COLOR
+                            : selectedObject.strokeColor ?? DEFAULT_TEXT_COLOR
+                        }
+                        disabled={!canEdit || selectedObject.locked}
+                        onChange={(event) =>
+                          applySelectedObjectStyle(
+                            selectedObject.type === "STICKY_NOTE"
+                              ? { fillColor: event.target.value }
+                              : { strokeColor: event.target.value },
+                          )
+                        }
+                        className="h-7 w-9 cursor-pointer rounded-md border border-[var(--flow-border-strong)] bg-white p-1"
+                        aria-label="선택 객체 색상"
+                      />
+                    </>
+                  )}
+
+                  {(selectedObject.type === "RECTANGLE" ||
+                    selectedObject.type === "ELLIPSE" ||
+                    selectedObject.type === "ARROW") && (
+                    <>
+                      {selectedObject.type !== "ARROW" && (
+                        <input
+                          type="color"
+                          value={selectedObject.fillColor ?? DEFAULT_SHAPE_FILL}
+                          disabled={!canEdit || selectedObject.locked}
+                          onChange={(event) => applySelectedObjectStyle({ fillColor: event.target.value })}
+                          className="h-7 w-9 cursor-pointer rounded-md border border-[var(--flow-border-strong)] bg-white p-1"
+                          aria-label="도형 채우기 색상"
+                        />
+                      )}
+                      <input
+                        type="color"
+                        value={selectedObject.strokeColor ?? DEFAULT_SHAPE_STROKE}
+                        disabled={!canEdit || selectedObject.locked}
+                        onChange={(event) => applySelectedObjectStyle({ strokeColor: event.target.value })}
+                        className="h-7 w-9 cursor-pointer rounded-md border border-[var(--flow-border-strong)] bg-white p-1"
+                        aria-label="도형 선 색상"
+                      />
+                    </>
+                  )}
+
+                  {canEdit && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={selectedObject.locked ? "primary" : "outline"}
+                      loading={updateObjectLockMutation.isPending}
+                      disabled={updateObjectLockMutation.isPending}
+                      onClick={() =>
+                        updateObjectLockMutation.mutate({
+                          objectId: selectedObject.id,
+                          locked: !selectedObject.locked,
+                        })
+                      }
+                    >
+                      {selectedObject.locked ? "🔓 객체 잠금 해제" : "🔒 객체 잠금"}
+                    </Button>
+                  )}
+                </div>
               )}
 
               <div className="ml-auto flex flex-wrap items-center justify-end gap-2.5">
@@ -2830,9 +4073,9 @@ export default function WhiteboardPage() {
                       ? "캔버스에서 원하는 위치를 클릭하면 스티키 노트가 생성됩니다."
                       : tool === "ERASER"
                         ? eraserMode === "PIXEL"
-                          ? `지우개를 움직인 부분만 지웁니다. 지우개 굵기 ${ERASER_LINE_WIDTH}px`
+                          ? `지우개를 움직인 부분만 지웁니다. 지우개 굵기 ${eraserLineWidth}px`
                           : "지우고 싶은 선을 클릭하면 해당 선 전체가 삭제됩니다."
-                        : `펜으로 자유롭게 그릴 수 있습니다. 기본 굵기 ${PEN_LINE_WIDTH}px`}
+                        : `펜으로 자유롭게 그릴 수 있습니다. 기본 굵기 ${penLineWidth}px`}
               </p>
 
               <div className="flex flex-wrap items-center gap-4 text-[11px] text-[var(--flow-text-placeholder)]">
@@ -2938,10 +4181,7 @@ export default function WhiteboardPage() {
                         transform: `scale(${zoom})`,
                         transformOrigin: "top left",
                         backgroundColor: selectedWhiteboard?.backgroundColor ?? "#FFFFFF",
-                        backgroundImage: selectedWhiteboard?.gridEnabled
-                          ? "linear-gradient(rgba(148,163,184,0.18) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.18) 1px, transparent 1px)"
-                          : "none",
-                        backgroundSize: "24px 24px",
+                        ...getCanvasPatternStyle(selectedWhiteboard),
                       }}
                     />
 
@@ -2991,39 +4231,41 @@ export default function WhiteboardPage() {
                               type="button"
                               aria-label="스티키 노트 이동"
                               title={
-                                canEdit && tool === "SELECT"
+                                canEdit && tool === "SELECT" && !object.locked
                                   ? "드래그해서 스티키 노트 이동"
-                                  : "선택 도구에서 이동할 수 있습니다."
+                                  : object.locked
+                                    ? "잠긴 객체입니다."
+                                    : "선택 도구에서 이동할 수 있습니다."
                               }
                               className={[
                                 "flex h-8 w-full items-center justify-between border-b px-3 text-left",
                                 "border-black/10 bg-black/[0.035]",
-                                canEdit && tool === "SELECT"
+                                canEdit && tool === "SELECT" && !object.locked
                                   ? "cursor-grab active:cursor-grabbing"
                                   : "cursor-default",
                               ].join(" ")}
-                              onPointerDown={(event) => handleStickyDragStart(event, object)}
-                              onPointerMove={handleStickyDragMove}
-                              onPointerUp={finishStickyDrag}
-                              onPointerCancel={finishStickyDrag}
+                              onPointerDown={(event) => handleObjectDragStart(event, object)}
+                              onPointerMove={handleObjectDragMove}
+                              onPointerUp={finishObjectDrag}
+                              onPointerCancel={finishObjectDrag}
                             >
                               <span className="text-[11px] font-bold text-slate-700">메모</span>
 
                               <span className="text-[10px] font-semibold text-slate-500">
-                                {object.createdByNickname}
+                                {object.locked ? "🔒 " : ""}{object.createdByNickname}
                               </span>
                             </button>
 
                             <textarea
-                              value={stickyDrafts[object.id] ?? object.content ?? ""}
-                              readOnly={!canEdit}
+                              value={objectDrafts[object.id] ?? object.content ?? ""}
+                              readOnly={!canEdit || object.locked}
                               maxLength={10000}
-                              placeholder={canEdit ? "메모를 입력하세요" : "내용 없음"}
+                              placeholder={canEdit && !object.locked ? "메모를 입력하세요" : "내용 없음"}
                               aria-label="스티키 노트 내용"
                               className={[
                                 "w-full resize-none bg-transparent px-3 py-2.5",
                                 "text-[13px] leading-6 text-slate-800 outline-none placeholder:text-slate-500/70",
-                                !canEdit ? "cursor-default" : "",
+                                !canEdit || object.locked ? "cursor-default" : "",
                               ].join(" ")}
                               style={{
                                 height: "calc(100% - 32px)",
@@ -3033,7 +4275,7 @@ export default function WhiteboardPage() {
                                 setSelectedStrokeId(null);
                                 setSelectedObjectId(object.id);
 
-                                setStickyDrafts((current) => {
+                                setObjectDrafts((current) => {
                                   if (object.id in current) {
                                     return current;
                                   }
@@ -3046,19 +4288,271 @@ export default function WhiteboardPage() {
                               }}
                               onPointerDown={(event) => event.stopPropagation()}
                               onCompositionStart={() => {
-                                composingStickyIdsRef.current.add(object.id);
+                                composingObjectIdsRef.current.add(object.id);
                               }}
                               onCompositionEnd={(event) => {
-                                composingStickyIdsRef.current.delete(object.id);
-                                handleStickyContentChange(object.id, event.currentTarget.value);
+                                composingObjectIdsRef.current.delete(object.id);
+                                handleObjectContentChange(object.id, event.currentTarget.value);
                               }}
                               onChange={(event) =>
-                                handleStickyContentChange(object.id, event.target.value)
+                                handleObjectContentChange(object.id, event.target.value)
                               }
                               onBlur={(event) =>
-                                handleStickyContentBlur(object.id, event.currentTarget.value)
+                                handleObjectContentBlur(object.id, event.currentTarget.value)
                               }
                             />
+
+                            {selected && tool === "SELECT" && canEdit && !object.locked && (
+                              <button
+                                type="button"
+                                aria-label="스티키 노트 크기 조절"
+                                title="드래그해서 크기 조절"
+                                className="absolute right-1 bottom-1 z-30 flex h-5 w-5 cursor-nwse-resize items-center justify-center rounded border border-slate-400/40 bg-white/90 text-[10px] font-bold text-slate-600 shadow-sm"
+                                onPointerDown={(event) => handleObjectResizeStart(event, object)}
+                                onPointerMove={handleObjectResizeMove}
+                                onPointerUp={finishObjectResize}
+                                onPointerCancel={finishObjectResize}
+                              >
+                                ◢
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {textObjects.map((object) => {
+                        const selected = object.id === selectedObjectId;
+
+                        return (
+                          <div
+                            key={object.id}
+                            className={[
+                              "pointer-events-auto absolute overflow-visible rounded-md",
+                              selected && tool === "SELECT"
+                                ? "ring-2 ring-[var(--flow-primary)] ring-offset-2"
+                                : "",
+                            ].join(" ")}
+                            style={{
+                              left: object.x,
+                              top: object.y,
+                              width: object.width,
+                              height: object.height,
+                              zIndex: object.zIndex + 10,
+                              transform: `rotate(${object.rotation}deg)`,
+                            }}
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+
+                              if (tool === "SELECT") {
+                                setSelectedStrokeId(null);
+                                setSelectedObjectId(object.id);
+                              }
+                            }}
+                          >
+                            {selected && tool === "SELECT" && canEdit && !object.locked && (
+                              <button
+                                type="button"
+                                aria-label="텍스트 이동"
+                                title="드래그해서 텍스트 이동"
+                                className="absolute -top-7 left-1/2 z-20 flex h-6 -translate-x-1/2 cursor-grab items-center rounded-md border border-[var(--flow-border)] bg-white px-2 text-[11px] font-bold text-[var(--flow-text-muted)] shadow-sm active:cursor-grabbing"
+                                onPointerDown={(event) => handleObjectDragStart(event, object)}
+                                onPointerMove={handleObjectDragMove}
+                                onPointerUp={finishObjectDrag}
+                                onPointerCancel={finishObjectDrag}
+                              >
+                                이동
+                              </button>
+                            )}
+
+                            <textarea
+                              value={objectDrafts[object.id] ?? object.content ?? ""}
+                              readOnly={!canEdit || object.locked}
+                              maxLength={10000}
+                              placeholder={canEdit && !object.locked ? "텍스트를 입력하세요" : "내용 없음"}
+                              aria-label="화이트보드 텍스트 내용"
+                              className={[
+                                "h-full w-full resize-none overflow-hidden bg-transparent p-1 leading-tight outline-none",
+                                "placeholder:text-slate-400/70",
+                                !canEdit || object.locked ? "cursor-default" : "",
+                              ].join(" ")}
+                              style={{
+                                color: object.strokeColor ?? DEFAULT_TEXT_COLOR,
+                                fontSize: object.fontSize ?? 24,
+                                fontWeight: 600,
+                              }}
+                              onFocus={() => {
+                                setSelectedStrokeId(null);
+                                setSelectedObjectId(object.id);
+
+                                setObjectDrafts((current) => {
+                                  if (object.id in current) {
+                                    return current;
+                                  }
+
+                                  return {
+                                    ...current,
+                                    [object.id]: object.content ?? "",
+                                  };
+                                });
+                              }}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onCompositionStart={() => {
+                                composingObjectIdsRef.current.add(object.id);
+                              }}
+                              onCompositionEnd={(event) => {
+                                composingObjectIdsRef.current.delete(object.id);
+                                handleObjectContentChange(object.id, event.currentTarget.value);
+                              }}
+                              onChange={(event) =>
+                                handleObjectContentChange(object.id, event.target.value)
+                              }
+                              onBlur={(event) =>
+                                handleObjectContentBlur(object.id, event.currentTarget.value)
+                              }
+                            />
+
+                            {object.locked && (
+                              <span className="pointer-events-none absolute -top-6 right-0 rounded-md bg-amber-50 px-2 py-1 text-[9px] font-bold text-amber-700">
+                                🔒 잠김
+                              </span>
+                            )}
+
+                            {selected && tool === "SELECT" && canEdit && !object.locked && (
+                              <button
+                                type="button"
+                                aria-label="텍스트 박스 크기 조절"
+                                title="드래그해서 텍스트 박스 크기 조절"
+                                className="absolute -right-1 -bottom-1 z-30 flex h-5 w-5 cursor-nwse-resize items-center justify-center rounded border border-[var(--flow-border-strong)] bg-white text-[10px] font-bold text-[var(--flow-text-muted)] shadow-sm"
+                                onPointerDown={(event) => handleObjectResizeStart(event, object)}
+                                onPointerMove={handleObjectResizeMove}
+                                onPointerUp={finishObjectResize}
+                                onPointerCancel={finishObjectResize}
+                              >
+                                ◢
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+
+
+                      {shapeObjects.map((object) => {
+                        const selected = object.id === selectedObjectId;
+                        const strokeColor = object.strokeColor ?? DEFAULT_SHAPE_STROKE;
+                        const strokeWidth = object.strokeWidth ?? DEFAULT_SHAPE_STROKE_WIDTH;
+
+                        return (
+                          <div
+                            key={object.id}
+                            className={[
+                              "pointer-events-auto absolute overflow-visible",
+                              selected && tool === "SELECT"
+                                ? "ring-2 ring-[var(--flow-primary)] ring-offset-2"
+                                : "",
+                            ].join(" ")}
+                            style={{
+                              left: object.x,
+                              top: object.y,
+                              width: object.width,
+                              height: object.height,
+                              zIndex: object.zIndex + 10,
+                              transform: `rotate(${object.rotation}deg)`,
+                            }}
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+                              if (tool === "SELECT") {
+                                setSelectedStrokeId(null);
+                                setSelectedObjectId(object.id);
+                              }
+                            }}
+                          >
+                            {object.type === "ARROW" ? (
+                              <svg
+                                viewBox={`0 0 ${Math.max(1, object.width)} ${Math.max(1, object.height)}`}
+                                className="h-full w-full overflow-visible"
+                                aria-label="화살표"
+                              >
+                                <line
+                                  x1="4"
+                                  y1={object.height / 2}
+                                  x2={Math.max(8, object.width - 18)}
+                                  y2={object.height / 2}
+                                  stroke={strokeColor}
+                                  strokeWidth={strokeWidth}
+                                  strokeLinecap="round"
+                                />
+                                <polygon
+                                  points={`${Math.max(8, object.width - 20)},${Math.max(4, object.height / 2 - 10)} ${Math.max(8, object.width - 2)},${object.height / 2} ${Math.max(8, object.width - 20)},${Math.min(object.height - 4, object.height / 2 + 10)}`}
+                                  fill={strokeColor}
+                                />
+                              </svg>
+                            ) : (
+                              <div
+                                className="h-full w-full"
+                                style={{
+                                  borderRadius: object.type === "ELLIPSE" ? "9999px" : "12px",
+                                  backgroundColor: object.fillColor ?? DEFAULT_SHAPE_FILL,
+                                  border: `${strokeWidth}px solid ${strokeColor}`,
+                                }}
+                              />
+                            )}
+
+                            {object.locked && (
+                              <span className="pointer-events-none absolute -top-6 right-0 rounded-md bg-amber-50 px-2 py-1 text-[9px] font-bold text-amber-700">
+                                🔒 잠김
+                              </span>
+                            )}
+
+                            {selected && tool === "SELECT" && canEdit && !object.locked && (
+                              <>
+                                <button
+                                  type="button"
+                                  aria-label="도형 이동"
+                                  title="드래그해서 이동"
+                                  className="absolute -top-7 left-1/2 z-30 flex h-6 -translate-x-1/2 cursor-grab items-center rounded-md border border-[var(--flow-border)] bg-white px-2 text-[10px] font-bold text-[var(--flow-text-muted)] shadow-sm active:cursor-grabbing"
+                                  onPointerDown={(event) => handleObjectDragStart(event, object)}
+                                  onPointerMove={handleObjectDragMove}
+                                  onPointerUp={finishObjectDrag}
+                                  onPointerCancel={finishObjectDrag}
+                                >
+                                  이동
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="도형 크기 조절"
+                                  title="드래그해서 크기 조절"
+                                  className="absolute -right-1 -bottom-1 z-30 flex h-5 w-5 cursor-nwse-resize items-center justify-center rounded border border-[var(--flow-border-strong)] bg-white text-[10px] font-bold text-[var(--flow-text-muted)] shadow-sm"
+                                  onPointerDown={(event) => handleObjectResizeStart(event, object)}
+                                  onPointerMove={handleObjectResizeMove}
+                                  onPointerUp={finishObjectResize}
+                                  onPointerCancel={finishObjectResize}
+                                >
+                                  ◢
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {Object.values(remoteCursors).map((cursor) => {
+                        const color = getCursorColor(cursor.userId);
+                        return (
+                          <div
+                            key={cursor.sourceClientId}
+                            className="pointer-events-none absolute z-[999]"
+                            style={{ left: cursor.x, top: cursor.y }}
+                          >
+                            <div
+                              className="h-0 w-0 border-t-[6px] border-r-[10px] border-b-[6px] border-t-transparent border-b-transparent"
+                              style={{ borderRightColor: color, transform: "rotate(-35deg)" }}
+                            />
+                            <span
+                              className="ml-3 inline-flex -translate-y-1 rounded-md px-2 py-1 text-[9px] font-bold whitespace-nowrap text-white shadow-sm"
+                              style={{ backgroundColor: color }}
+                            >
+                              {cursor.nickname}
+                            </span>
                           </div>
                         );
                       })}
@@ -3069,15 +4563,17 @@ export default function WhiteboardPage() {
 
               <footer className="flex min-h-[58px] shrink-0 items-center justify-between gap-6 border-t border-[var(--flow-border)] bg-white px-5 py-3.5">
                 <p className="min-w-0 text-[11px] leading-5 text-[var(--flow-text-muted)]">
-                  {strokes.length === 0 && stickyNotes.length === 0
+                  {strokes.length === 0 && stickyNotes.length === 0 && textObjects.length === 0
                     ? canEdit
-                      ? "아직 저장된 내용이 없습니다. 펜으로 그리거나 스티키 노트를 추가해보세요."
+                      ? "아직 저장된 내용이 없습니다. 펜으로 그리거나 스티키·텍스트를 추가해보세요."
                       : "아직 저장된 내용이 없습니다."
                     : tool === "STICKY"
                       ? "캔버스를 클릭하면 새 스티키 노트를 추가할 수 있습니다."
-                      : tool === "ERASER" && eraserMode === "STROKE"
+                      : tool === "TEXT"
+                        ? "캔버스를 클릭하면 새 텍스트를 추가할 수 있습니다."
+                        : tool === "ERASER" && eraserMode === "STROKE"
                         ? "지우고 싶은 선을 클릭하면 선 전체가 삭제됩니다."
-                        : "펜 드로잉은 실시간으로 반영되며 스티키 노트는 서버에 저장됩니다."}
+                        : "펜·스티키·텍스트 변경은 실시간으로 반영되며 최종 상태는 서버에 저장됩니다."}
                 </p>
 
                 <div className="flex shrink-0 items-center gap-4">

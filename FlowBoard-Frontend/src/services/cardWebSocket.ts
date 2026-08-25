@@ -296,11 +296,17 @@ export const connectCardWebSocket = ({
 
     socket.onclose = () => {
       socket = null;
-
       messageBuffer = "";
 
-      changeConnectionState("disconnected");
+      /*
+       * 화면 전환/React effect cleanup으로 닫은 이전 연결이
+       * 새 연결의 상태 표시를 끊김으로 덮어쓰지 않게 합니다.
+       */
+      if (manuallyClosed) {
+        return;
+      }
 
+      changeConnectionState("disconnected");
       scheduleReconnect();
     };
   };
@@ -309,24 +315,34 @@ export const connectCardWebSocket = ({
 
   return () => {
     manuallyClosed = true;
-
     clearReconnectTimer();
 
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(
-        createStompFrame("UNSUBSCRIBE", {
-          id: subscriptionId,
-        }),
-      );
+    const currentSocket = socket;
+    socket = null;
 
-      socket.send(createStompFrame("DISCONNECT"));
+    if (currentSocket) {
+      currentSocket.onopen = null;
+      currentSocket.onmessage = null;
+      currentSocket.onerror = null;
+      currentSocket.onclose = null;
 
-      socket.close();
+      if (currentSocket.readyState === WebSocket.OPEN) {
+        currentSocket.send(
+          createStompFrame("UNSUBSCRIBE", {
+            id: subscriptionId,
+          }),
+        );
+        currentSocket.send(createStompFrame("DISCONNECT"));
+      }
+
+      if (
+        currentSocket.readyState === WebSocket.OPEN ||
+        currentSocket.readyState === WebSocket.CONNECTING
+      ) {
+        currentSocket.close();
+      }
     }
 
-    socket = null;
     messageBuffer = "";
-
-    changeConnectionState("disconnected");
   };
 };

@@ -11,6 +11,7 @@ import { cn } from "@/utils/cn";
 type IconType =
   | "boards"
   | "dashboard"
+  | "requirements"
   | "kanban"
   | "schedule"
   | "search"
@@ -80,6 +81,18 @@ function SidebarIcon({ type }: { type: IconType }) {
           <rect x="4" y="12" width="7" height="8" rx="1.5" />
 
           <rect x="13" y="16" width="7" height="4" rx="1.5" />
+        </>
+      );
+
+      break;
+
+    case "requirements":
+      content = (
+        <>
+          <path d="M6 4h12a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />
+          <path d="M8 8h8" />
+          <path d="M8 12h8" />
+          <path d="M8 16h5" />
         </>
       );
 
@@ -261,6 +274,14 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
             icon: "dashboard" as const,
 
             end: true,
+          },
+
+          {
+            label: "요구사항",
+
+            path: `/boards/${boardId}/requirements`,
+
+            icon: "requirements" as const,
           },
 
           {

@@ -9,9 +9,12 @@ import com.example.flow_board.domain.user.entity.User;
 import com.example.flow_board.domain.whiteboard.dto.request.WhiteboardRequests;
 import com.example.flow_board.domain.whiteboard.dto.response.WhiteboardResponse;
 import com.example.flow_board.domain.whiteboard.entity.Whiteboard;
+import com.example.flow_board.domain.whiteboard.entity.WhiteboardGridType;
 import com.example.flow_board.domain.whiteboard.repository.WhiteboardObjectRepository;
 import com.example.flow_board.domain.whiteboard.repository.WhiteboardRepository;
 import com.example.flow_board.domain.whiteboard.repository.WhiteboardStrokeRepository;
+import com.example.flow_board.domain.whiteboard.websocket.WhiteboardEventPublisher;
+import com.example.flow_board.domain.whiteboard.websocket.WhiteboardWebSocketEvent;
 import com.example.flow_board.global.exception.CustomException;
 import com.example.flow_board.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +42,7 @@ public class WhiteboardWorkspaceService {
   private final WhiteboardStrokeRepository whiteboardStrokeRepository;
   private final WhiteboardObjectRepository whiteboardObjectRepository;
   private final ActivityLogService activityLogService;
+  private final WhiteboardEventPublisher whiteboardEventPublisher;
 
   /**
    * 현재 보드의 화이트보드 목록을 조회합니다.
@@ -265,9 +269,13 @@ public class WhiteboardWorkspaceService {
         whiteboardId
     );
 
+    WhiteboardGridType gridType = resolveGridType(whiteboard, request);
+
     whiteboard.updateAppearance(
         normalizeBackgroundColor(request.backgroundColor()),
-        request.gridEnabled()
+        gridType,
+        request.gridSize() == null ? whiteboard.getGridSize() : request.gridSize(),
+        request.gridOpacity() == null ? whiteboard.getGridOpacity() : request.gridOpacity()
     );
 
     activityLogService.recordActivity(
@@ -282,7 +290,58 @@ public class WhiteboardWorkspaceService {
             + "' 화이트보드 표시 설정을 변경했습니다."
     );
 
-    return WhiteboardResponse.from(whiteboard);
+    WhiteboardResponse response = WhiteboardResponse.from(whiteboard);
+
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.workspaceUpdated(
+            board.getId(),
+            whiteboard.getId(),
+            response
+        )
+    );
+
+    return response;
+  }
+
+  /**
+   * 화이트보드 잠금 / 잠금 해제.
+   * 잠금 상태에서도 조회, 확대/축소, Pan은 가능하지만 데이터 수정은 차단합니다.
+   */
+  @Transactional
+  public WhiteboardResponse updateLock(
+      User user,
+      Long boardId,
+      Long whiteboardId,
+      boolean locked
+  ) {
+    Board board = getBoardById(boardId);
+
+    boardPermissionService.validateWritePermission(board, user);
+
+    Whiteboard whiteboard = getWhiteboardInBoard(board, whiteboardId);
+    whiteboard.updateLocked(locked);
+
+    activityLogService.recordActivity(
+        board,
+        user,
+        ActivityType.WHITEBOARD_UPDATED,
+        whiteboard.getId(),
+        whiteboard.getTitle(),
+        user.getNickname() + "님이 '" + whiteboard.getTitle() + "' 화이트보드를 "
+            + (locked ? "잠갔습니다." : "잠금 해제했습니다.")
+    );
+
+    WhiteboardResponse response = WhiteboardResponse.from(whiteboard);
+
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.workspaceUpdated(
+            board.getId(),
+            whiteboard.getId(),
+            response
+        )
+    );
+
+    return response;
   }
 
   /**
@@ -632,6 +691,27 @@ public class WhiteboardWorkspaceService {
     return normalized.isEmpty()
         ? null
         : normalized;
+  }
+
+  private WhiteboardGridType resolveGridType(
+      Whiteboard whiteboard,
+      WhiteboardRequests.Appearance request
+  ) {
+    if (request.gridType() != null) {
+      return request.gridType();
+    }
+
+    if (request.gridEnabled() != null) {
+      if (!request.gridEnabled()) {
+        return WhiteboardGridType.NONE;
+      }
+
+      return whiteboard.getGridType() == WhiteboardGridType.NONE
+          ? WhiteboardGridType.GRID
+          : whiteboard.getGridType();
+    }
+
+    return whiteboard.getGridType();
   }
 
   private String normalizeBackgroundColor(

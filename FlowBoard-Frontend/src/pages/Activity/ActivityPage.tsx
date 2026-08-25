@@ -241,6 +241,30 @@ const activityDisplayMap: Record<
     variant: "danger",
   },
 
+  WHITEBOARD_CREATED: {
+    label: "화이트보드 생성",
+    category: "화이트보드",
+    variant: "success",
+  },
+
+  WHITEBOARD_UPDATED: {
+    label: "화이트보드 수정",
+    category: "화이트보드",
+    variant: "default",
+  },
+
+  WHITEBOARD_DELETED: {
+    label: "화이트보드 삭제",
+    category: "화이트보드",
+    variant: "danger",
+  },
+
+  WHITEBOARD_DEFAULT_CHANGED: {
+    label: "기본 화이트보드 변경",
+    category: "화이트보드",
+    variant: "warning",
+  },
+
   WHITEBOARD_STROKE_CREATED: {
     label: "드로잉 추가",
     category: "화이트보드",
@@ -253,6 +277,18 @@ const activityDisplayMap: Record<
     variant: "danger",
   },
 };
+
+const fallbackActivityDisplay: ActivityDisplayInfo = {
+  label: "활동",
+  category: "기타",
+  variant: "default",
+};
+
+const getActivityDisplay = (
+  type: ActivityType,
+): ActivityDisplayInfo =>
+  activityDisplayMap[type] ??
+  fallbackActivityDisplay;
 
 const formatActivityDateTime = (
   value: string,
@@ -1042,10 +1078,9 @@ export default function ActivityPage() {
                   index,
                 ) => {
                   const display =
-                    activityDisplayMap[
-                      activity
-                        .type
-                    ];
+                    getActivityDisplay(
+                      activity.type,
+                    );
 
                   const relativeTime =
                     formatRelativeTime(

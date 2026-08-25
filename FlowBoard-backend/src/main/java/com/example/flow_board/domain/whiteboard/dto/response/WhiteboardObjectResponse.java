@@ -23,14 +23,13 @@ public record WhiteboardObjectResponse(
     Integer strokeWidth,
     Integer fontSize,
     Integer zIndex,
+    boolean locked,
     String propertiesJson,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
 
-  public static WhiteboardObjectResponse from(
-      WhiteboardObject object
-  ) {
+  public static WhiteboardObjectResponse from(WhiteboardObject object) {
     return new WhiteboardObjectResponse(
         object.getId(),
         object.getWhiteboard().getId(),
@@ -49,6 +48,7 @@ public record WhiteboardObjectResponse(
         object.getStrokeWidth(),
         object.getFontSize(),
         object.getZIndex(),
+        object.isLocked(),
         object.getPropertiesJson(),
         object.getCreatedAt(),
         object.getUpdatedAt()

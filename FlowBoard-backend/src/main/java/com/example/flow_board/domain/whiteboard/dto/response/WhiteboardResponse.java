@@ -1,36 +1,28 @@
 package com.example.flow_board.domain.whiteboard.dto.response;
 
 import com.example.flow_board.domain.whiteboard.entity.Whiteboard;
+import com.example.flow_board.domain.whiteboard.entity.WhiteboardGridType;
 
 import java.time.LocalDateTime;
 
 public record WhiteboardResponse(
-
     Long id,
-
     Long boardId,
-
     String title,
-
     String description,
-
     Integer position,
-
     boolean defaultWhiteboard,
-
     String backgroundColor,
-
     boolean gridEnabled,
-
+    WhiteboardGridType gridType,
+    Integer gridSize,
+    Double gridOpacity,
+    boolean locked,
     LocalDateTime createdAt,
-
     LocalDateTime updatedAt
-
 ) {
 
-  public static WhiteboardResponse from(
-      Whiteboard whiteboard
-  ) {
+  public static WhiteboardResponse from(Whiteboard whiteboard) {
     return new WhiteboardResponse(
         whiteboard.getId(),
         whiteboard.getBoard().getId(),
@@ -40,6 +32,10 @@ public record WhiteboardResponse(
         whiteboard.isDefaultWhiteboard(),
         whiteboard.getBackgroundColor(),
         whiteboard.isGridEnabled(),
+        whiteboard.getGridType(),
+        whiteboard.getGridSize(),
+        whiteboard.getGridOpacity(),
+        whiteboard.isLocked(),
         whiteboard.getCreatedAt(),
         whiteboard.getUpdatedAt()
     );
