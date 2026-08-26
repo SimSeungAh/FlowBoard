@@ -20,6 +20,8 @@ export interface WhiteboardWorkspaceResponse {
   gridType: WhiteboardGridType;
   gridSize: number;
   gridOpacity: number;
+  canvasWidth: number;
+  canvasHeight: number;
   locked: boolean;
   createdAt: string;
   updatedAt: string;
@@ -43,6 +45,11 @@ export interface WhiteboardWorkspaceAppearanceRequest {
   gridOpacity: number;
 }
 
+export interface WhiteboardWorkspaceCanvasSizeRequest {
+  width: number;
+  height: number;
+}
+
 export interface WhiteboardWorkspaceReorderRequest {
   whiteboardIds: number[];
 }
@@ -55,7 +62,13 @@ export interface WhiteboardStrokeCreateRequest {
   points: WhiteboardPoint[];
 }
 
-export type WhiteboardObjectType = "STICKY_NOTE" | "TEXT" | "RECTANGLE" | "ELLIPSE" | "ARROW";
+export type WhiteboardObjectType =
+  | "STICKY_NOTE"
+  | "TEXT"
+  | "RECTANGLE"
+  | "ELLIPSE"
+  | "ARROW"
+  | "IMAGE";
 
 export interface WhiteboardObjectResponse {
   id: number;
@@ -75,6 +88,8 @@ export interface WhiteboardObjectResponse {
   strokeWidth: number | null;
   fontSize: number | null;
   zIndex: number;
+  layerName: string | null;
+  visible: boolean;
   locked: boolean;
   propertiesJson: string | null;
   createdAt: string;
@@ -115,6 +130,15 @@ export interface WhiteboardObjectUpdateRequest {
 
 export interface WhiteboardObjectLayerRequest {
   zIndex: number;
+}
+
+export interface WhiteboardObjectLayerMetadataRequest {
+  layerName?: string | null;
+  visible: boolean;
+}
+
+export interface WhiteboardObjectLayerReorderRequest {
+  objectIds: number[];
 }
 
 export interface WhiteboardStrokeResponse {
@@ -175,6 +199,18 @@ export const updateWhiteboardAppearance = async (
 ): Promise<WhiteboardWorkspaceResponse> => {
   const response = await api.patch(
     `/boards/${boardId}/whiteboards/${whiteboardId}/appearance`,
+    data,
+  );
+  return response.data.data;
+};
+
+export const updateWhiteboardCanvasSize = async (
+  boardId: number,
+  whiteboardId: number,
+  data: WhiteboardWorkspaceCanvasSizeRequest,
+): Promise<WhiteboardWorkspaceResponse> => {
+  const response = await api.patch(
+    `/boards/${boardId}/whiteboards/${whiteboardId}/canvas-size`,
     data,
   );
   return response.data.data;
@@ -286,6 +322,31 @@ export const updateWhiteboardObjectLayer = async (
   return response.data.data;
 };
 
+export const updateWhiteboardObjectLayerMetadata = async (
+  boardId: number,
+  whiteboardId: number,
+  objectId: number,
+  data: WhiteboardObjectLayerMetadataRequest,
+): Promise<WhiteboardObjectResponse> => {
+  const response = await api.patch(
+    `/boards/${boardId}/whiteboards/${whiteboardId}/objects/${objectId}/layer-meta`,
+    data,
+  );
+  return response.data.data;
+};
+
+export const reorderWhiteboardObjectLayers = async (
+  boardId: number,
+  whiteboardId: number,
+  data: WhiteboardObjectLayerReorderRequest,
+): Promise<WhiteboardObjectResponse[]> => {
+  const response = await api.patch(
+    `/boards/${boardId}/whiteboards/${whiteboardId}/objects/layers/reorder`,
+    data,
+  );
+  return response.data.data;
+};
+
 export const updateWhiteboardObjectLock = async (
   boardId: number,
   whiteboardId: number,
@@ -298,6 +359,36 @@ export const updateWhiteboardObjectLock = async (
     { params: { locked } },
   );
   return response.data.data;
+};
+
+
+export const uploadWhiteboardImage = async (
+  boardId: number,
+  whiteboardId: number,
+  file: File,
+): Promise<WhiteboardObjectResponse> => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await api.post(
+    `/boards/${boardId}/whiteboards/${whiteboardId}/images`,
+    formData,
+  );
+
+  return response.data.data;
+};
+
+export const getWhiteboardImageBlob = async (
+  boardId: number,
+  whiteboardId: number,
+  objectId: number,
+): Promise<Blob> => {
+  const response = await api.get(
+    `/boards/${boardId}/whiteboards/${whiteboardId}/images/${objectId}/content`,
+    { responseType: "blob" },
+  );
+
+  return response.data;
 };
 
 export const deleteWhiteboardObject = async (

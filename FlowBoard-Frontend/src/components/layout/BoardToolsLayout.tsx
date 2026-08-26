@@ -44,6 +44,7 @@ const getPageLabel = (pathname: string, boardId: number) => {
   if (pathname.endsWith("/search")) return "작업 검색";
   if (pathname.endsWith("/test-cases")) return "테스트 케이스";
   if (pathname.endsWith("/security-reviews")) return "보안 점검";
+  if (pathname.endsWith("/release-checks")) return "릴리즈 체크";
   if (pathname.endsWith("/whiteboard")) return "화이트보드";
   if (pathname.endsWith("/activities")) return "활동 기록";
   if (pathname.endsWith("/members")) return "팀원 및 권한";
@@ -58,6 +59,7 @@ const getPresenceSection = (pathname: string, boardId: number): BoardPresenceSec
   if (pathname.endsWith("/search")) return "SEARCH";
   if (pathname.endsWith("/test-cases")) return "TEST_CASE";
   if (pathname.endsWith("/security-reviews")) return "SECURITY_REVIEW";
+  if (pathname.endsWith("/release-checks")) return "RELEASE_CHECK";
   if (pathname.endsWith("/whiteboard")) return "WHITEBOARD";
   if (pathname.endsWith("/activities")) return "ACTIVITY";
   if (pathname.endsWith("/members")) return "MEMBERS";
@@ -72,6 +74,7 @@ const PRESENCE_LABEL: Record<BoardPresenceSection, string> = {
   SEARCH: "작업 검색",
   TEST_CASE: "테스트 케이스",
   SECURITY_REVIEW: "보안 점검",
+  RELEASE_CHECK: "릴리즈 체크",
   WHITEBOARD: "화이트보드",
   ACTIVITY: "활동 기록",
   MEMBERS: "팀원 및 권한",
@@ -164,6 +167,7 @@ export default function BoardToolsLayout() {
         void queryClient.invalidateQueries({ queryKey: ["board", boardId, "requirements"] });
         void queryClient.invalidateQueries({ queryKey: ["board", boardId, "test-cases"] });
         void queryClient.invalidateQueries({ queryKey: ["board", boardId, "security-reviews"] });
+        void queryClient.invalidateQueries({ queryKey: ["board", boardId, "release-checks"] });
         void queryClient.invalidateQueries({ queryKey: ["boards", boardId, "card-search"] });
         void queryClient.invalidateQueries({ queryKey: ["boards", boardId, "activities"] });
 
@@ -171,6 +175,9 @@ export default function BoardToolsLayout() {
           queryClient.removeQueries({ queryKey: ["cards", event.cardId] });
           return;
         }
+        void queryClient.invalidateQueries({ queryKey: ["cards", event.cardId, "requirement"] });
+        void queryClient.invalidateQueries({ queryKey: ["cards", event.cardId, "design-review"] });
+        void queryClient.invalidateQueries({ queryKey: ["cards", event.cardId, "release-check"] });
         void queryClient.invalidateQueries({ queryKey: ["cards", event.cardId] });
       },
       onError: (error) => console.error("[Card WebSocket]", error),

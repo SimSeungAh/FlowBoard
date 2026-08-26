@@ -17,6 +17,7 @@ type IconType =
   | "search"
   | "testcase"
   | "security"
+  | "release"
   | "whiteboard"
   | "activity"
   | "members"
@@ -162,6 +163,18 @@ function SidebarIcon({ type }: { type: IconType }) {
           <path d="M12 3.5 19 6v5.2c0 4.2-2.7 7.5-7 9.3-4.3-1.8-7-5.1-7-9.3V6l7-2.5Z" />
 
           <path d="m9.3 12 1.7 1.7 3.8-4" />
+        </>
+      );
+
+      break;
+
+    case "release":
+      content = (
+        <>
+          <path d="M5 5h14v14H5z" />
+          <path d="m8 12 2.5 2.5L16 9" />
+          <path d="M9 3v2" />
+          <path d="M15 3v2" />
         </>
       );
 
@@ -325,6 +338,14 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
           },
 
           {
+            label: "릴리즈 체크",
+
+            path: `/boards/${boardId}/release-checks`,
+
+            icon: "release" as const,
+          },
+
+          {
             label: "화이트보드",
 
             path: `/boards/${boardId}/whiteboard`,
@@ -378,7 +399,7 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
 
         <div className="my-5 h-px bg-[var(--flow-border)]" />
 
-        <section className="min-h-0 flex-1">
+        <section className="min-h-0 flex-1 overflow-y-auto pr-1">
           <div className="mb-2 flex items-center justify-between px-3">
             <p className="text-[11px] font-bold tracking-[0.06em] text-[var(--flow-text-placeholder)]">
               프로젝트
@@ -453,7 +474,7 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
           )}
         </section>
 
-        <div className="mt-5 border-t border-[var(--flow-border)] pt-4">
+        <div className="mt-4 shrink-0 border-t border-[var(--flow-border)] bg-white pt-4">
           <div className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[var(--flow-primary-50)] text-[var(--flow-primary)]">
               <svg

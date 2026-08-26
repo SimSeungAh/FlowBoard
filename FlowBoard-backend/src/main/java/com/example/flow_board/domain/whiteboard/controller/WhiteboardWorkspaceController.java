@@ -256,6 +256,34 @@ public class WhiteboardWorkspaceController {
   }
 
   /**
+   * 캔버스 크기 변경
+   */
+  @PatchMapping("/{whiteboardId}/canvas-size")
+  @Operation(
+      summary = "화이트보드 캔버스 크기 변경",
+      description = "화이트보드별 작업 영역 너비와 높이를 변경합니다."
+  )
+  public ApiResponse<WhiteboardResponse> updateCanvasSize(
+      @AuthenticationPrincipal CustomUserDetails userDetails,
+      @PathVariable Long boardId,
+      @PathVariable Long whiteboardId,
+      @Valid @RequestBody WhiteboardRequests.CanvasSize request
+  ) {
+    WhiteboardResponse response =
+        whiteboardWorkspaceService.updateCanvasSize(
+            userDetails.getUser(),
+            boardId,
+            whiteboardId,
+            request
+        );
+
+    return ApiResponse.success(
+        "화이트보드 캔버스 크기 변경 성공",
+        response
+    );
+  }
+
+  /**
    * 화이트보드 잠금 / 잠금 해제
    */
   @PatchMapping("/{whiteboardId}/lock")

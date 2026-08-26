@@ -4,10 +4,13 @@ import com.example.flow_board.domain.whiteboard.entity.WhiteboardObjectType;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
+
+import java.util.List;
 
 public final class WhiteboardObjectRequests {
 
@@ -215,4 +218,27 @@ public final class WhiteboardObjectRequests {
 
   ) {
   }
+
+  /**
+   * Photoshop/Figma 스타일 레이어 패널에서 사용하는 표시 이름/가시성 설정입니다.
+   */
+  public record LayerMetadata(
+      @Size(max = 120, message = "레이어 이름은 120자 이하로 입력해주세요.")
+      String layerName,
+
+      @NotNull(message = "레이어 표시 여부는 필수입니다.")
+      Boolean visible
+  ) {
+  }
+
+  /**
+   * 레이어 전체 순서를 한 번에 정규화합니다.
+   * objectIds는 맨 뒤(낮은 zIndex)부터 맨 앞(높은 zIndex) 순서입니다.
+   */
+  public record LayerReorder(
+      @NotEmpty(message = "레이어 순서는 비어 있을 수 없습니다.")
+      List<@NotNull(message = "객체 ID는 필수입니다.") Long> objectIds
+  ) {
+  }
+
 }

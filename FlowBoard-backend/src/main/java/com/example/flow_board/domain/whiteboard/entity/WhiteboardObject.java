@@ -91,6 +91,12 @@ public class WhiteboardObject extends BaseEntity {
   @Column(name = "z_index", nullable = false)
   private Integer zIndex;
 
+  @Column(name = "layer_name", length = 120)
+  private String layerName;
+
+  @Column(name = "is_visible", nullable = false, columnDefinition = "boolean default true")
+  private boolean visible = true;
+
   @Column(name = "is_locked", nullable = false, columnDefinition = "boolean default false")
   private boolean locked = false;
 
@@ -131,6 +137,8 @@ public class WhiteboardObject extends BaseEntity {
     this.strokeWidth = strokeWidth;
     this.fontSize = fontSize;
     this.zIndex = zIndex;
+    this.layerName = null;
+    this.visible = true;
     this.locked = false;
     this.propertiesJson = propertiesJson;
   }
@@ -165,6 +173,11 @@ public class WhiteboardObject extends BaseEntity {
 
   public void updateZIndex(Integer zIndex) {
     this.zIndex = zIndex;
+  }
+
+  public void updateLayerMetadata(String layerName, boolean visible) {
+    this.layerName = layerName;
+    this.visible = visible;
   }
 
   public void updateLocked(boolean locked) {

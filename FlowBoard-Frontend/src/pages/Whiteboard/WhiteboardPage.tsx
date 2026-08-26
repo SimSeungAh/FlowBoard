@@ -4,6 +4,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent as ReactChangeEvent,
+  type DragEvent as ReactDragEvent,
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -22,15 +24,20 @@ import {
   deleteWhiteboardObject,
   deleteWhiteboardWorkspaceStroke,
   getWhiteboards,
+  getWhiteboardImageBlob,
   getWhiteboardObjects,
   getWhiteboardWorkspaceStrokes,
   reorderWhiteboards,
+  reorderWhiteboardObjectLayers,
   setDefaultWhiteboard,
   updateWhiteboard,
   updateWhiteboardAppearance,
+  updateWhiteboardCanvasSize,
   updateWhiteboardLock,
   updateWhiteboardObject,
+  updateWhiteboardObjectLayerMetadata,
   updateWhiteboardObjectLock,
+  uploadWhiteboardImage,
   type WhiteboardGridType,
   type WhiteboardObjectResponse,
   type WhiteboardObjectType,
@@ -52,8 +59,12 @@ import {
   type WhiteboardWebSocketConnection,
 } from "@/services/whiteboardWebSocket";
 
-const CANVAS_WIDTH = 1200;
-const CANVAS_HEIGHT = 700;
+const DEFAULT_CANVAS_WIDTH = 1200;
+const DEFAULT_CANVAS_HEIGHT = 700;
+const MIN_CANVAS_WIDTH = 800;
+const MIN_CANVAS_HEIGHT = 500;
+const MAX_CANVAS_WIDTH = 6000;
+const MAX_CANVAS_HEIGHT = 4000;
 
 const DEFAULT_PEN_COLOR = "#111827";
 
@@ -78,6 +89,9 @@ const ARROW_HEIGHT = 70;
 const DEFAULT_SHAPE_FILL = "#DBEAFE";
 const DEFAULT_SHAPE_STROKE = "#2563EB";
 const DEFAULT_SHAPE_STROKE_WIDTH = 2;
+
+const MAX_IMAGE_FILE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif"]);
 
 const LIVE_OBJECT_SEND_INTERVAL_MS = 33;
 const LIVE_CURSOR_SEND_INTERVAL_MS = 50;
@@ -161,6 +175,14 @@ interface ObjectDragSession {
 interface ObjectResizeSession {
   pointerId: number;
   objectId: number;
+  startClientX: number;
+  startClientY: number;
+  startWidth: number;
+  startHeight: number;
+}
+
+interface CanvasResizeSession {
+  pointerId: number;
   startClientX: number;
   startClientY: number;
   startWidth: number;
@@ -496,6 +518,43 @@ const REMOTE_CURSOR_COLORS = [
 const getCursorColor = (userId: number) =>
   REMOTE_CURSOR_COLORS[Math.abs(userId) % REMOTE_CURSOR_COLORS.length] ?? "#2563EB";
 
+const getDefaultLayerName = (object: WhiteboardObjectResponse) => {
+  const typeLabel: Record<WhiteboardObjectType, string> = {
+    STICKY_NOTE: "스티키",
+    TEXT: "텍스트",
+    RECTANGLE: "사각형",
+    ELLIPSE: "원",
+    ARROW: "화살표",
+    IMAGE: "이미지",
+  };
+
+  const content = object.content?.trim();
+
+  if (content) {
+    const singleLine = content.replace(/\s+/g, " ");
+    return singleLine.length > 22 ? `${singleLine.slice(0, 22)}…` : singleLine;
+  }
+
+  return `${typeLabel[object.type]} #${object.id}`;
+};
+
+const getLayerTypeIcon = (type: WhiteboardObjectType) => {
+  switch (type) {
+    case "STICKY_NOTE":
+      return "▤";
+    case "TEXT":
+      return "T";
+    case "RECTANGLE":
+      return "▭";
+    case "ELLIPSE":
+      return "○";
+    case "ARROW":
+      return "→";
+    case "IMAGE":
+      return "▧";
+  }
+};
+
 const isTextEditingTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -507,6 +566,77 @@ const isTextEditingTarget = (target: EventTarget | null) => {
 
   return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
 };
+
+function WhiteboardImageContent({
+  boardId,
+  whiteboardId,
+  objectId,
+  alt,
+}: {
+  boardId: number;
+  whiteboardId: number;
+  objectId: number;
+  alt: string;
+}) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    let objectUrl: string | null = null;
+
+    setImageUrl(null);
+    setFailed(false);
+
+    void getWhiteboardImageBlob(boardId, whiteboardId, objectId)
+      .then((blob) => {
+        if (disposed) {
+          return;
+        }
+
+        objectUrl = URL.createObjectURL(blob);
+        setImageUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!disposed) {
+          setFailed(true);
+        }
+      });
+
+    return () => {
+      disposed = true;
+
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [boardId, objectId, whiteboardId]);
+
+  if (failed) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-slate-100 px-4 text-center text-[11px] font-semibold text-slate-500">
+        이미지를 불러오지 못했습니다.
+      </div>
+    );
+  }
+
+  if (!imageUrl) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-slate-100 text-[11px] font-semibold text-slate-400">
+        이미지 불러오는 중…
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={imageUrl}
+      alt={alt}
+      draggable={false}
+      className="pointer-events-none h-full w-full select-none object-contain"
+    />
+  );
+}
 
 export default function WhiteboardPage() {
   const { boardId: boardIdParam } = useParams<{
@@ -520,6 +650,8 @@ export default function WhiteboardPage() {
   const queryClient = useQueryClient();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -540,6 +672,8 @@ export default function WhiteboardPage() {
   const objectDragSessionRef = useRef<ObjectDragSession | null>(null);
 
   const objectResizeSessionRef = useRef<ObjectResizeSession | null>(null);
+
+  const canvasResizeSessionRef = useRef<CanvasResizeSession | null>(null);
 
   const composingObjectIdsRef = useRef<Set<number>>(new Set());
 
@@ -593,6 +727,16 @@ export default function WhiteboardPage() {
   const [selectedStrokeId, setSelectedStrokeId] = useState<number | null>(null);
 
   const [selectedObjectId, setSelectedObjectId] = useState<number | null>(null);
+
+  const [layersOpen, setLayersOpen] = useState(true);
+
+  const [draggedLayerId, setDraggedLayerId] = useState<number | null>(null);
+
+  const [layerRenameId, setLayerRenameId] = useState<number | null>(null);
+
+  const [layerRenameDraft, setLayerRenameDraft] = useState("");
+
+  const [canvasSizeDraft, setCanvasSizeDraft] = useState<{ width: number; height: number } | null>(null);
 
   const [objectDrafts, setObjectDrafts] = useState<Record<number, string>>({});
 
@@ -649,6 +793,10 @@ export default function WhiteboardPage() {
   const [workspaceGridSize, setWorkspaceGridSize] = useState(24);
 
   const [workspaceGridOpacity, setWorkspaceGridOpacity] = useState(0.12);
+
+  const [workspaceCanvasWidth, setWorkspaceCanvasWidth] = useState(DEFAULT_CANVAS_WIDTH);
+
+  const [workspaceCanvasHeight, setWorkspaceCanvasHeight] = useState(DEFAULT_CANVAS_HEIGHT);
 
   const boardQueryKey = ["boards", boardId] as const;
 
@@ -764,6 +912,12 @@ export default function WhiteboardPage() {
     [selectedWhiteboardId, whiteboards],
   );
 
+  const canvasWidth =
+    canvasSizeDraft?.width ?? selectedWhiteboard?.canvasWidth ?? DEFAULT_CANVAS_WIDTH;
+
+  const canvasHeight =
+    canvasSizeDraft?.height ?? selectedWhiteboard?.canvasHeight ?? DEFAULT_CANVAS_HEIGHT;
+
   useEffect(() => {
     if (whiteboards.length === 0) {
       setSelectedWhiteboardId(null);
@@ -842,12 +996,12 @@ export default function WhiteboardPage() {
   });
 
   const stickyNotes = useMemo(
-    () => objects.filter((object) => object.type === "STICKY_NOTE"),
+    () => objects.filter((object) => object.type === "STICKY_NOTE" && object.visible !== false),
     [objects],
   );
 
   const textObjects = useMemo(
-    () => objects.filter((object) => object.type === "TEXT"),
+    () => objects.filter((object) => object.type === "TEXT" && object.visible !== false),
     [objects],
   );
 
@@ -855,8 +1009,19 @@ export default function WhiteboardPage() {
     () =>
       objects.filter(
         (object) =>
-          object.type === "RECTANGLE" || object.type === "ELLIPSE" || object.type === "ARROW",
+          object.visible !== false &&
+          (object.type === "RECTANGLE" || object.type === "ELLIPSE" || object.type === "ARROW"),
       ),
+    [objects],
+  );
+
+  const imageObjects = useMemo(
+    () => objects.filter((object) => object.type === "IMAGE" && object.visible !== false),
+    [objects],
+  );
+
+  const orderedLayers = useMemo(
+    () => [...objects].sort((left, right) => right.zIndex - left.zIndex || right.id - left.id),
     [objects],
   );
 
@@ -1011,6 +1176,7 @@ export default function WhiteboardPage() {
         RECTANGLE: "사각형",
         ELLIPSE: "원",
         ARROW: "화살표",
+        IMAGE: "이미지",
       };
       toast.success(`${label[createdObject.type]}를 추가했습니다.`);
     },
@@ -1019,6 +1185,61 @@ export default function WhiteboardPage() {
       toast.error("화이트보드 항목을 추가하지 못했습니다.");
     },
   });
+
+  const uploadImageMutation = useMutation({
+    mutationFn: (file: File) => {
+      if (selectedWhiteboardId === null) {
+        return Promise.reject(new Error("선택된 화이트보드가 없습니다."));
+      }
+
+      return uploadWhiteboardImage(boardId, selectedWhiteboardId, file);
+    },
+
+    onSuccess: (createdObject) => {
+      queryClient.setQueryData<WhiteboardObjectResponse[]>(
+        whiteboardObjectsQueryKey,
+        (current = []) => {
+          const exists = current.some((object) => object.id === createdObject.id);
+          return exists
+            ? current.map((object) => (object.id === createdObject.id ? createdObject : object))
+            : [...current, createdObject];
+        },
+      );
+
+      setSelectedStrokeId(null);
+      setSelectedObjectId(createdObject.id);
+      setTool("SELECT");
+      toast.success("이미지를 화이트보드에 추가했습니다.");
+    },
+
+    onError: () => {
+      toast.error("이미지를 추가하지 못했습니다. PNG/JPG/GIF, 10MB 이하인지 확인해주세요.");
+    },
+  });
+
+  const handleImageFileChange = useCallback(
+    (event: ReactChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0] ?? null;
+      event.target.value = "";
+
+      if (!file) {
+        return;
+      }
+
+      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        toast.error("PNG, JPG, GIF 이미지만 추가할 수 있습니다.");
+        return;
+      }
+
+      if (file.size <= 0 || file.size > MAX_IMAGE_FILE_BYTES) {
+        toast.error("이미지는 10MB 이하만 추가할 수 있습니다.");
+        return;
+      }
+
+      uploadImageMutation.mutate(file);
+    },
+    [uploadImageMutation],
+  );
 
   const updateObjectMutation = useMutation({
     mutationFn: (object: WhiteboardObjectResponse) => {
@@ -1114,6 +1335,8 @@ export default function WhiteboardPage() {
       gridType,
       gridSize,
       gridOpacity,
+      canvasWidth: nextCanvasWidth,
+      canvasHeight: nextCanvasHeight,
     }: {
       whiteboardId: number;
       title: string;
@@ -1122,18 +1345,25 @@ export default function WhiteboardPage() {
       gridType: WhiteboardGridType;
       gridSize: number;
       gridOpacity: number;
+      canvasWidth: number;
+      canvasHeight: number;
     }) => {
       await updateWhiteboard(boardId, whiteboardId, {
         title,
         description,
       });
 
-      return updateWhiteboardAppearance(boardId, whiteboardId, {
+      await updateWhiteboardAppearance(boardId, whiteboardId, {
         backgroundColor,
         gridEnabled: gridType !== "NONE",
         gridType,
         gridSize,
         gridOpacity,
+      });
+
+      return updateWhiteboardCanvasSize(boardId, whiteboardId, {
+        width: nextCanvasWidth,
+        height: nextCanvasHeight,
       });
     },
 
@@ -1148,6 +1378,87 @@ export default function WhiteboardPage() {
 
     onError: () => {
       toast.error("화이트보드 설정을 저장하지 못했습니다.");
+    },
+  });
+
+  const updateCanvasSizeMutation = useMutation({
+    mutationFn: ({ width, height }: { width: number; height: number }) => {
+      if (selectedWhiteboardId === null) {
+        return Promise.reject(new Error("선택된 화이트보드가 없습니다."));
+      }
+
+      return updateWhiteboardCanvasSize(boardId, selectedWhiteboardId, { width, height });
+    },
+
+    onSuccess: (updatedWhiteboard) => {
+      queryClient.setQueryData<WhiteboardWorkspaceResponse[]>(whiteboardsQueryKey, (current = []) =>
+        current.map((whiteboard) =>
+          whiteboard.id === updatedWhiteboard.id ? updatedWhiteboard : whiteboard,
+        ),
+      );
+      setCanvasSizeDraft(null);
+      toast.success(`캔버스 크기를 ${updatedWhiteboard.canvasWidth} × ${updatedWhiteboard.canvasHeight}(으)로 변경했습니다.`);
+    },
+
+    onError: () => {
+      setCanvasSizeDraft(null);
+      toast.error("캔버스 크기를 변경하지 못했습니다.");
+    },
+  });
+
+  const updateLayerMetadataMutation = useMutation({
+    mutationFn: ({
+      objectId,
+      layerName,
+      visible,
+    }: {
+      objectId: number;
+      layerName: string | null;
+      visible: boolean;
+    }) => {
+      if (selectedWhiteboardId === null) {
+        return Promise.reject(new Error("선택된 화이트보드가 없습니다."));
+      }
+
+      return updateWhiteboardObjectLayerMetadata(
+        boardId,
+        selectedWhiteboardId,
+        objectId,
+        { layerName, visible },
+      );
+    },
+
+    onSuccess: (updatedObject) => {
+      queryClient.setQueryData<WhiteboardObjectResponse[]>(whiteboardObjectsQueryKey, (current = []) =>
+        current.map((object) => (object.id === updatedObject.id ? updatedObject : object)),
+      );
+    },
+
+    onError: async () => {
+      toast.error("레이어 설정을 변경하지 못했습니다.");
+      await queryClient.invalidateQueries({ queryKey: whiteboardObjectsQueryKey });
+    },
+  });
+
+  const reorderLayersMutation = useMutation({
+    mutationFn: (objectIds: number[]) => {
+      if (selectedWhiteboardId === null) {
+        return Promise.reject(new Error("선택된 화이트보드가 없습니다."));
+      }
+
+      return reorderWhiteboardObjectLayers(boardId, selectedWhiteboardId, { objectIds });
+    },
+
+    onSuccess: (reorderedObjects) => {
+      queryClient.setQueryData<WhiteboardObjectResponse[]>(
+        whiteboardObjectsQueryKey,
+        reorderedObjects,
+      );
+    },
+
+    onError: async () => {
+      toast.error("레이어 순서를 변경하지 못했습니다.");
+      await queryClient.invalidateQueries({ queryKey: whiteboardObjectsQueryKey });
     },
   });
 
@@ -1568,8 +1879,8 @@ export default function WhiteboardPage() {
 
       const deltaX = (event.clientX - session.startClientX) / zoom;
       const deltaY = (event.clientY - session.startClientY) / zoom;
-      const nextX = Math.min(CANVAS_WIDTH - object.width, Math.max(0, session.startX + deltaX));
-      const nextY = Math.min(CANVAS_HEIGHT - object.height, Math.max(0, session.startY + deltaY));
+      const nextX = Math.min(canvasWidth - object.width, Math.max(0, session.startX + deltaX));
+      const nextY = Math.min(canvasHeight - object.height, Math.max(0, session.startY + deltaY));
 
       updateObjectInCache(object.id, (current) => ({
         ...current,
@@ -1589,7 +1900,7 @@ export default function WhiteboardPage() {
         whiteboardConnectionRef.current?.sendLiveMove(object.id, nextX, nextY);
       }
     },
-    [queryClient, updateObjectInCache, whiteboardObjectsQueryKey, zoom],
+    [canvasHeight, canvasWidth, queryClient, updateObjectInCache, whiteboardObjectsQueryKey, zoom],
   );
 
   const finishObjectDrag = useCallback(
@@ -1640,6 +1951,10 @@ export default function WhiteboardPage() {
       return { width: 80, height: 36 };
     }
 
+    if (object.type === "IMAGE") {
+      return { width: 80, height: 60 };
+    }
+
     return { width: 50, height: 50 };
   }, []);
 
@@ -1682,14 +1997,40 @@ export default function WhiteboardPage() {
       }
 
       const minimum = getObjectMinimumSize(object);
-      const nextWidth = Math.min(
-        CANVAS_WIDTH - object.x,
-        Math.max(minimum.width, session.startWidth + (event.clientX - session.startClientX) / zoom),
-      );
-      const nextHeight = Math.min(
-        CANVAS_HEIGHT - object.y,
-        Math.max(minimum.height, session.startHeight + (event.clientY - session.startClientY) / zoom),
-      );
+      const deltaX = (event.clientX - session.startClientX) / zoom;
+      const deltaY = (event.clientY - session.startClientY) / zoom;
+
+      let nextWidth: number;
+      let nextHeight: number;
+
+      if (object.type === "IMAGE") {
+        const aspectRatio = Math.max(0.01, session.startWidth / session.startHeight);
+        const widthScale = 1 + deltaX / Math.max(1, session.startWidth);
+        const heightScale = 1 + deltaY / Math.max(1, session.startHeight);
+        let scale = Math.abs(deltaX) >= Math.abs(deltaY) ? widthScale : heightScale;
+
+        const minimumScale = Math.max(
+          minimum.width / session.startWidth,
+          minimum.height / session.startHeight,
+        );
+        const maximumScale = Math.min(
+          (canvasWidth - object.x) / session.startWidth,
+          (canvasHeight - object.y) / session.startHeight,
+        );
+
+        scale = Math.min(maximumScale, Math.max(minimumScale, scale));
+        nextWidth = session.startWidth * scale;
+        nextHeight = nextWidth / aspectRatio;
+      } else {
+        nextWidth = Math.min(
+          canvasWidth - object.x,
+          Math.max(minimum.width, session.startWidth + deltaX),
+        );
+        nextHeight = Math.min(
+          canvasHeight - object.y,
+          Math.max(minimum.height, session.startHeight + deltaY),
+        );
+      }
 
       updateObjectInCache(object.id, (current) => ({
         ...current,
@@ -1704,7 +2045,7 @@ export default function WhiteboardPage() {
         whiteboardConnectionRef.current?.sendLiveResize(object.id, nextWidth, nextHeight);
       }
     },
-    [getObjectMinimumSize, queryClient, updateObjectInCache, whiteboardObjectsQueryKey, zoom],
+    [canvasHeight, canvasWidth, getObjectMinimumSize, queryClient, updateObjectInCache, whiteboardObjectsQueryKey, zoom],
   );
 
   const finishObjectResize = useCallback(
@@ -1743,6 +2084,126 @@ export default function WhiteboardPage() {
       updateObjectMutation.mutate(updated);
     },
     [canEdit, selectedObject, updateObjectInCache, updateObjectMutation],
+  );
+
+  const handleCanvasResizeStart = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!canEdit || updateCanvasSizeMutation.isPending) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+
+      canvasResizeSessionRef.current = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startWidth: canvasWidth,
+        startHeight: canvasHeight,
+      };
+    },
+    [canEdit, canvasHeight, canvasWidth, updateCanvasSizeMutation.isPending],
+  );
+
+  const handleCanvasResizeMove = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const session = canvasResizeSessionRef.current;
+
+      if (!session || session.pointerId !== event.pointerId) {
+        return;
+      }
+
+      const nextWidth = Math.min(
+        MAX_CANVAS_WIDTH,
+        Math.max(
+          MIN_CANVAS_WIDTH,
+          Math.round(session.startWidth + (event.clientX - session.startClientX) / zoom),
+        ),
+      );
+      const nextHeight = Math.min(
+        MAX_CANVAS_HEIGHT,
+        Math.max(
+          MIN_CANVAS_HEIGHT,
+          Math.round(session.startHeight + (event.clientY - session.startClientY) / zoom),
+        ),
+      );
+
+      setCanvasSizeDraft({ width: nextWidth, height: nextHeight });
+    },
+    [zoom],
+  );
+
+  const finishCanvasResize = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const session = canvasResizeSessionRef.current;
+
+      if (!session || session.pointerId !== event.pointerId) {
+        return;
+      }
+
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+
+      canvasResizeSessionRef.current = null;
+
+      const size = canvasSizeDraft ?? { width: canvasWidth, height: canvasHeight };
+      updateCanvasSizeMutation.mutate(size);
+    },
+    [canvasHeight, canvasSizeDraft, canvasWidth, updateCanvasSizeMutation],
+  );
+
+  const commitLayerRename = useCallback(
+    (object: WhiteboardObjectResponse) => {
+      if (!canEdit) {
+        return;
+      }
+
+      const normalized = layerRenameDraft.trim();
+      updateLayerMetadataMutation.mutate({
+        objectId: object.id,
+        layerName: normalized || null,
+        visible: object.visible !== false,
+      });
+      setLayerRenameId(null);
+      setLayerRenameDraft("");
+    },
+    [canEdit, layerRenameDraft, updateLayerMetadataMutation],
+  );
+
+  const handleLayerDrop = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>, targetId: number) => {
+      event.preventDefault();
+
+      if (!canEdit || draggedLayerId === null || draggedLayerId === targetId) {
+        setDraggedLayerId(null);
+        return;
+      }
+
+      const topFirst = [...orderedLayers];
+      const sourceIndex = topFirst.findIndex((object) => object.id === draggedLayerId);
+      const targetIndex = topFirst.findIndex((object) => object.id === targetId);
+
+      if (sourceIndex < 0 || targetIndex < 0) {
+        setDraggedLayerId(null);
+        return;
+      }
+
+      const [moved] = topFirst.splice(sourceIndex, 1);
+      if (!moved) {
+        setDraggedLayerId(null);
+        return;
+      }
+
+      topFirst.splice(targetIndex, 0, moved);
+      setDraggedLayerId(null);
+
+      // 서버 API는 낮은 zIndex(맨 뒤) → 높은 zIndex(맨 앞) 순서를 받습니다.
+      reorderLayersMutation.mutate(topFirst.map((object) => object.id).reverse());
+    },
+    [canEdit, draggedLayerId, orderedLayers, reorderLayersMutation],
   );
 
   const handleUndo = useCallback(async () => {
@@ -2342,7 +2803,7 @@ export default function WhiteboardPage() {
     if (selectedStroke) {
       drawSelectionOutline(context, selectedStroke);
     }
-  }, [remoteLiveStrokes, selectedStroke, strokes]);
+  }, [canvasHeight, canvasWidth, remoteLiveStrokes, selectedStroke, strokes]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2450,8 +2911,8 @@ export default function WhiteboardPage() {
 
     const horizontalPadding = 48;
     const verticalPadding = 48;
-    const widthScale = (viewport.clientWidth - horizontalPadding) / CANVAS_WIDTH;
-    const heightScale = (viewport.clientHeight - verticalPadding) / CANVAS_HEIGHT;
+    const widthScale = (viewport.clientWidth - horizontalPadding) / canvasWidth;
+    const heightScale = (viewport.clientHeight - verticalPadding) / canvasHeight;
 
     changeZoom(Math.min(1, widthScale, heightScale));
 
@@ -2459,7 +2920,7 @@ export default function WhiteboardPage() {
       viewport.scrollLeft = 0;
       viewport.scrollTop = 0;
     });
-  }, [changeZoom]);
+  }, [canvasHeight, canvasWidth, changeZoom]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (
@@ -2512,9 +2973,9 @@ export default function WhiteboardPage() {
     }
 
     if (tool === "STICKY") {
-      const x = Math.min(CANVAS_WIDTH - STICKY_WIDTH, Math.max(0, firstPoint.x - STICKY_WIDTH / 2));
+      const x = Math.min(canvasWidth - STICKY_WIDTH, Math.max(0, firstPoint.x - STICKY_WIDTH / 2));
       const y = Math.min(
-        CANVAS_HEIGHT - STICKY_HEIGHT,
+        canvasHeight - STICKY_HEIGHT,
         Math.max(0, firstPoint.y - STICKY_HEIGHT / 2),
       );
 
@@ -2525,9 +2986,9 @@ export default function WhiteboardPage() {
     }
 
     if (tool === "TEXT") {
-      const x = Math.min(CANVAS_WIDTH - TEXT_WIDTH, Math.max(0, firstPoint.x - TEXT_WIDTH / 2));
+      const x = Math.min(canvasWidth - TEXT_WIDTH, Math.max(0, firstPoint.x - TEXT_WIDTH / 2));
       const y = Math.min(
-        CANVAS_HEIGHT - TEXT_HEIGHT,
+        canvasHeight - TEXT_HEIGHT,
         Math.max(0, firstPoint.y - TEXT_HEIGHT / 2),
       );
 
@@ -2540,8 +3001,8 @@ export default function WhiteboardPage() {
     if (tool === "RECTANGLE" || tool === "ELLIPSE" || tool === "ARROW") {
       const width = tool === "ARROW" ? ARROW_WIDTH : SHAPE_WIDTH;
       const height = tool === "ARROW" ? ARROW_HEIGHT : SHAPE_HEIGHT;
-      const x = Math.min(CANVAS_WIDTH - width, Math.max(0, firstPoint.x - width / 2));
-      const y = Math.min(CANVAS_HEIGHT - height, Math.max(0, firstPoint.y - height / 2));
+      const x = Math.min(canvasWidth - width, Math.max(0, firstPoint.x - width / 2));
+      const y = Math.min(canvasHeight - height, Math.max(0, firstPoint.y - height / 2));
 
       setSelectedStrokeId(null);
       setSelectedObjectId(null);
@@ -2921,6 +3382,8 @@ export default function WhiteboardPage() {
     setWorkspaceGridEnabled(nextGridType !== "NONE");
     setWorkspaceGridSize(selectedWhiteboard.gridSize ?? 24);
     setWorkspaceGridOpacity(selectedWhiteboard.gridOpacity ?? 0.12);
+    setWorkspaceCanvasWidth(selectedWhiteboard.canvasWidth ?? DEFAULT_CANVAS_WIDTH);
+    setWorkspaceCanvasHeight(selectedWhiteboard.canvasHeight ?? DEFAULT_CANVAS_HEIGHT);
     setSettingsModalOpen(true);
   };
 
@@ -2961,6 +3424,8 @@ export default function WhiteboardPage() {
       gridType: workspaceGridType,
       gridSize: workspaceGridSize,
       gridOpacity: workspaceGridOpacity,
+      canvasWidth: workspaceCanvasWidth,
+      canvasHeight: workspaceCanvasHeight,
     });
   };
 
@@ -3078,7 +3543,8 @@ export default function WhiteboardPage() {
     isRedoing ||
     deletingStrokeId !== null ||
     deletingObjectId !== null ||
-    createObjectMutation.isPending;
+    createObjectMutation.isPending ||
+    uploadImageMutation.isPending;
 
   const orderedWhiteboards = [...whiteboards].sort((a, b) => a.position - b.position);
 
@@ -3225,6 +3691,76 @@ export default function WhiteboardPage() {
               <span className="font-mono text-[11px] font-semibold text-[var(--flow-text-muted)]">
                 {workspaceBackgroundColor.toUpperCase()}
               </span>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[var(--flow-border)] bg-[var(--flow-gray-50)] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold text-[var(--flow-text-secondary)]">캔버스 크기</p>
+                <p className="mt-1 text-[10px] text-[var(--flow-text-muted)]">
+                  화이트보드별 작업 영역 크기를 저장합니다. 캔버스 오른쪽 아래 손잡이로도 조절할 수 있습니다.
+                </p>
+              </div>
+              <span className="text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                {workspaceCanvasWidth} × {workspaceCanvasHeight}
+              </span>
+            </div>
+
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {[
+                { label: "기본", width: 1200, height: 700 },
+                { label: "FHD", width: 1920, height: 1080 },
+                { label: "QHD", width: 2560, height: 1440 },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  disabled={!canManageWorkspace || updateWhiteboardMutation.isPending}
+                  onClick={() => {
+                    setWorkspaceCanvasWidth(preset.width);
+                    setWorkspaceCanvasHeight(preset.height);
+                  }}
+                  className="h-10 rounded-lg border border-[var(--flow-border-strong)] bg-white text-[11px] font-bold text-[var(--flow-text-muted)] transition-colors hover:bg-[var(--flow-primary-50)] hover:text-[var(--flow-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <label className="text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                너비(px)
+                <input
+                  type="number"
+                  min={MIN_CANVAS_WIDTH}
+                  max={MAX_CANVAS_WIDTH}
+                  value={workspaceCanvasWidth}
+                  disabled={!canManageWorkspace || updateWhiteboardMutation.isPending}
+                  onChange={(event) =>
+                    setWorkspaceCanvasWidth(
+                      Math.min(MAX_CANVAS_WIDTH, Math.max(MIN_CANVAS_WIDTH, Number(event.target.value) || MIN_CANVAS_WIDTH)),
+                    )
+                  }
+                  className="mt-1.5 h-10 w-full rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 text-[12px] font-semibold text-[var(--flow-text)] outline-none focus:border-[var(--flow-primary-500)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
+                />
+              </label>
+              <label className="text-[10px] font-semibold text-[var(--flow-text-muted)]">
+                높이(px)
+                <input
+                  type="number"
+                  min={MIN_CANVAS_HEIGHT}
+                  max={MAX_CANVAS_HEIGHT}
+                  value={workspaceCanvasHeight}
+                  disabled={!canManageWorkspace || updateWhiteboardMutation.isPending}
+                  onChange={(event) =>
+                    setWorkspaceCanvasHeight(
+                      Math.min(MAX_CANVAS_HEIGHT, Math.max(MIN_CANVAS_HEIGHT, Number(event.target.value) || MIN_CANVAS_HEIGHT)),
+                    )
+                  }
+                  className="mt-1.5 h-10 w-full rounded-lg border border-[var(--flow-border-strong)] bg-white px-3 text-[12px] font-semibold text-[var(--flow-text)] outline-none focus:border-[var(--flow-primary-500)] focus:ring-4 focus:ring-[var(--flow-focus-ring)]"
+                />
+              </label>
             </div>
           </div>
 
@@ -3709,6 +4245,24 @@ export default function WhiteboardPage() {
                   화살표
                 </Button>
 
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif"
+                  className="hidden"
+                  onChange={handleImageFileChange}
+                />
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canEdit || isBusy || uploadImageMutation.isPending}
+                  loading={uploadImageMutation.isPending}
+                  onClick={() => imageInputRef.current?.click()}
+                >
+                  이미지
+                </Button>
+
                 {tool === "SELECT" && (selectedStrokeId !== null || selectedObjectId !== null) && (
                   <Button
                     type="button"
@@ -4147,22 +4701,23 @@ export default function WhiteboardPage() {
             </Card>
           ) : (
             <div className="flex h-full min-h-[560px] flex-col overflow-hidden rounded-[var(--flow-radius-xl)] bg-white shadow-[var(--flow-shadow-sm)]">
-              <div
-                ref={viewportRef}
-                className="min-h-0 flex-1 overflow-auto bg-[var(--flow-gray-100)] p-5"
-              >
+              <div className="flex min-h-0 flex-1 overflow-hidden">
+                <div
+                  ref={viewportRef}
+                  className="min-h-0 flex-1 overflow-auto bg-[var(--flow-gray-100)] p-5"
+                >
                 <div className="flex min-h-full min-w-full items-start justify-center">
                   <div
                     className="relative shrink-0"
                     style={{
-                      width: CANVAS_WIDTH * zoom,
-                      height: CANVAS_HEIGHT * zoom,
+                      width: canvasWidth * zoom,
+                      height: canvasHeight * zoom,
                     }}
                   >
                     <canvas
                       ref={canvasRef}
-                      width={CANVAS_WIDTH}
-                      height={CANVAS_HEIGHT}
+                      width={canvasWidth}
+                      height={canvasHeight}
                       onPointerDown={handlePointerDown}
                       onPointerMove={handlePointerMove}
                       onPointerUp={finishStroke}
@@ -4176,8 +4731,8 @@ export default function WhiteboardPage() {
                         canvasCursorClass,
                       ].join(" ")}
                       style={{
-                        width: CANVAS_WIDTH,
-                        height: CANVAS_HEIGHT,
+                        width: canvasWidth,
+                        height: canvasHeight,
                         transform: `scale(${zoom})`,
                         transformOrigin: "top left",
                         backgroundColor: selectedWhiteboard?.backgroundColor ?? "#FFFFFF",
@@ -4188,8 +4743,8 @@ export default function WhiteboardPage() {
                     <div
                       className="pointer-events-none absolute top-0 left-0"
                       style={{
-                        width: CANVAS_WIDTH,
-                        height: CANVAS_HEIGHT,
+                        width: canvasWidth,
+                        height: canvasHeight,
                         transform: `scale(${zoom})`,
                         transformOrigin: "top left",
                       }}
@@ -4535,6 +5090,80 @@ export default function WhiteboardPage() {
                         );
                       })}
 
+                      {imageObjects.map((object) => {
+                        const selected = object.id === selectedObjectId;
+
+                        return (
+                          <div
+                            key={object.id}
+                            className={[
+                              "pointer-events-auto absolute overflow-hidden rounded-lg bg-white shadow-sm",
+                              selected && tool === "SELECT"
+                                ? "ring-2 ring-[var(--flow-primary)] ring-offset-2"
+                                : "",
+                            ].join(" ")}
+                            style={{
+                              left: object.x,
+                              top: object.y,
+                              width: object.width,
+                              height: object.height,
+                              zIndex: object.zIndex + 10,
+                              transform: `rotate(${object.rotation}deg)`,
+                            }}
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+
+                              if (tool === "SELECT") {
+                                setSelectedStrokeId(null);
+                                setSelectedObjectId(object.id);
+                              }
+                            }}
+                          >
+                            <WhiteboardImageContent
+                              boardId={boardId}
+                              whiteboardId={selectedWhiteboardId as number}
+                              objectId={object.id}
+                              alt={object.content || `화이트보드 이미지 ${object.id}`}
+                            />
+
+                            {object.locked && (
+                              <span className="pointer-events-none absolute top-2 right-2 rounded-md bg-amber-50/95 px-2 py-1 text-[9px] font-bold text-amber-700 shadow-sm">
+                                🔒 잠김
+                              </span>
+                            )}
+
+                            {selected && tool === "SELECT" && canEdit && !object.locked && (
+                              <>
+                                <button
+                                  type="button"
+                                  aria-label="이미지 이동"
+                                  title="드래그해서 이미지 이동"
+                                  className="absolute top-2 left-1/2 z-30 flex h-6 -translate-x-1/2 cursor-grab items-center rounded-md border border-[var(--flow-border)] bg-white/95 px-2 text-[10px] font-bold text-[var(--flow-text-muted)] shadow-sm active:cursor-grabbing"
+                                  onPointerDown={(event) => handleObjectDragStart(event, object)}
+                                  onPointerMove={handleObjectDragMove}
+                                  onPointerUp={finishObjectDrag}
+                                  onPointerCancel={finishObjectDrag}
+                                >
+                                  이동
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="이미지 크기 조절"
+                                  title="드래그해서 이미지 크기 조절"
+                                  className="absolute right-1 bottom-1 z-30 flex h-5 w-5 cursor-nwse-resize items-center justify-center rounded border border-[var(--flow-border-strong)] bg-white/95 text-[10px] font-bold text-[var(--flow-text-muted)] shadow-sm"
+                                  onPointerDown={(event) => handleObjectResizeStart(event, object)}
+                                  onPointerMove={handleObjectResizeMove}
+                                  onPointerUp={finishObjectResize}
+                                  onPointerCancel={finishObjectResize}
+                                >
+                                  ◢
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+
                       {Object.values(remoteCursors).map((cursor) => {
                         const color = getCursorColor(cursor.userId);
                         return (
@@ -4557,15 +5186,222 @@ export default function WhiteboardPage() {
                         );
                       })}
                     </div>
+
+                    {canEdit && (
+                      <button
+                        type="button"
+                        aria-label="캔버스 크기 조절"
+                        title="드래그해서 캔버스 작업 영역 크기 조절"
+                        className="absolute -right-3 -bottom-3 z-[1000] flex h-7 w-7 cursor-nwse-resize items-center justify-center rounded-lg border border-[var(--flow-primary-300)] bg-white text-[12px] font-black text-[var(--flow-primary)] shadow-md"
+                        onPointerDown={handleCanvasResizeStart}
+                        onPointerMove={handleCanvasResizeMove}
+                        onPointerUp={finishCanvasResize}
+                        onPointerCancel={finishCanvasResize}
+                      >
+                        ◢
+                      </button>
+                    )}
                   </div>
                 </div>
+              </div>
+
+              <aside
+                className={[
+                  "shrink-0 border-l border-[var(--flow-border)] bg-white transition-[width] duration-200",
+                  layersOpen ? "w-[286px]" : "w-[48px]",
+                ].join(" ")}
+              >
+                <div className="flex h-full min-h-0 flex-col">
+                  <div className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--flow-border)] px-3">
+                    {layersOpen && (
+                      <div>
+                        <p className="text-[11px] font-bold text-[var(--flow-text)]">레이어</p>
+                        <p className="text-[9px] text-[var(--flow-text-placeholder)]">객체 {objects.length}개</p>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      aria-label={layersOpen ? "레이어 패널 닫기" : "레이어 패널 열기"}
+                      title={layersOpen ? "레이어 패널 닫기" : "레이어 패널 열기"}
+                      className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-[13px] font-bold text-[var(--flow-text-muted)] hover:bg-[var(--flow-gray-100)]"
+                      onClick={() => setLayersOpen((current) => !current)}
+                    >
+                      {layersOpen ? "→" : "←"}
+                    </button>
+                  </div>
+
+                  {layersOpen && (
+                    <>
+                      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+                        {orderedLayers.length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-[var(--flow-border-strong)] px-3 py-8 text-center text-[10px] leading-5 text-[var(--flow-text-placeholder)]">
+                            스티키·텍스트·도형·이미지를 추가하면
+                            <br />
+                            여기에 레이어가 표시됩니다.
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            {orderedLayers.map((object) => {
+                              const selected = object.id === selectedObjectId;
+                              const isRenaming = layerRenameId === object.id;
+                              const layerName = object.layerName?.trim() || getDefaultLayerName(object);
+
+                              return (
+                                <div
+                                  key={object.id}
+                                  draggable={canEdit && !reorderLayersMutation.isPending}
+                                  onDragStart={() => setDraggedLayerId(object.id)}
+                                  onDragEnd={() => setDraggedLayerId(null)}
+                                  onDragOver={(event) => {
+                                    if (canEdit) {
+                                      event.preventDefault();
+                                    }
+                                  }}
+                                  onDrop={(event) => handleLayerDrop(event, object.id)}
+                                  onClick={() => {
+                                    setTool("SELECT");
+                                    setSelectedStrokeId(null);
+                                    setSelectedObjectId(object.id);
+                                  }}
+                                  className={[
+                                    "group flex min-h-10 items-center gap-1.5 rounded-lg border px-1.5 py-1 transition-colors",
+                                    selected
+                                      ? "border-[var(--flow-primary-300)] bg-[var(--flow-primary-50)]"
+                                      : "border-transparent hover:border-[var(--flow-border)] hover:bg-[var(--flow-gray-50)]",
+                                    draggedLayerId === object.id ? "opacity-40" : "",
+                                  ].join(" ")}
+                                >
+                                  <span
+                                    className={[
+                                      "flex h-7 w-5 shrink-0 items-center justify-center text-[11px] text-[var(--flow-text-placeholder)]",
+                                      canEdit ? "cursor-grab active:cursor-grabbing" : "",
+                                    ].join(" ")}
+                                    title="드래그해서 레이어 순서 변경"
+                                  >
+                                    ⋮⋮
+                                  </span>
+
+                                  <button
+                                    type="button"
+                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[12px] hover:bg-white"
+                                    title={object.visible === false ? "레이어 표시" : "레이어 숨기기"}
+                                    disabled={!canEdit || updateLayerMetadataMutation.isPending}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      updateLayerMetadataMutation.mutate({
+                                        objectId: object.id,
+                                        layerName: object.layerName,
+                                        visible: object.visible === false,
+                                      });
+                                    }}
+                                  >
+                                    {object.visible === false ? "○" : "◉"}
+                                  </button>
+
+                                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--flow-gray-100)] text-[11px] font-black text-[var(--flow-text-secondary)]">
+                                    {getLayerTypeIcon(object.type)}
+                                  </span>
+
+                                  <div className="min-w-0 flex-1">
+                                    {isRenaming ? (
+                                      <input
+                                        autoFocus
+                                        value={layerRenameDraft}
+                                        maxLength={120}
+                                        className="h-7 w-full rounded-md border border-[var(--flow-primary-300)] bg-white px-2 text-[10px] font-semibold text-[var(--flow-text)] outline-none"
+                                        onClick={(event) => event.stopPropagation()}
+                                        onChange={(event) => setLayerRenameDraft(event.target.value)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === "Enter") {
+                                            event.preventDefault();
+                                            commitLayerRename(object);
+                                          } else if (event.key === "Escape") {
+                                            setLayerRenameId(null);
+                                            setLayerRenameDraft("");
+                                          }
+                                        }}
+                                        onBlur={() => commitLayerRename(object)}
+                                      />
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className={[
+                                          "block w-full truncate text-left text-[10px] font-semibold",
+                                          object.visible === false
+                                            ? "text-[var(--flow-text-placeholder)] line-through"
+                                            : "text-[var(--flow-text-secondary)]",
+                                        ].join(" ")}
+                                        title={`${layerName} · 더블클릭해서 이름 변경`}
+                                        onDoubleClick={(event) => {
+                                          event.stopPropagation();
+                                          if (!canEdit) {
+                                            return;
+                                          }
+                                          setLayerRenameId(object.id);
+                                          setLayerRenameDraft(object.layerName ?? getDefaultLayerName(object));
+                                        }}
+                                      >
+                                        {layerName}
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[11px] hover:bg-white"
+                                    title={object.locked ? "객체 잠금 해제" : "객체 잠금"}
+                                    disabled={!canEdit || updateObjectLockMutation.isPending}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      updateObjectLockMutation.mutate({
+                                        objectId: object.id,
+                                        locked: !object.locked,
+                                      });
+                                    }}
+                                  >
+                                    {object.locked ? "🔒" : "🔓"}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[13px] font-bold text-[var(--flow-text-placeholder)] hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                                    title="레이어 삭제"
+                                    disabled={!canEdit || object.locked || deleteObjectMutation.isPending}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedStrokeId(null);
+                                      setSelectedObjectId(object.id);
+                                      setDeletingObjectId(object.id);
+                                      deleteObjectMutation.mutate(object.id, {
+                                        onSettled: () => setDeletingObjectId(null),
+                                      });
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="shrink-0 border-t border-[var(--flow-border)] px-3 py-2.5">
+                        <p className="text-[9px] leading-4 text-[var(--flow-text-placeholder)]">
+                          위에 있을수록 앞에 표시됩니다. 드래그로 순서를 바꾸고 ◉ 버튼으로 숨길 수 있습니다.
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </aside>
               </div>
 
               <footer className="flex min-h-[58px] shrink-0 items-center justify-between gap-6 border-t border-[var(--flow-border)] bg-white px-5 py-3.5">
                 <p className="min-w-0 text-[11px] leading-5 text-[var(--flow-text-muted)]">
                   {strokes.length === 0 && stickyNotes.length === 0 && textObjects.length === 0
                     ? canEdit
-                      ? "아직 저장된 내용이 없습니다. 펜으로 그리거나 스티키·텍스트를 추가해보세요."
+                      ? "아직 저장된 내용이 없습니다. 펜으로 그리거나 스티키·텍스트·이미지를 추가해보세요."
                       : "아직 저장된 내용이 없습니다."
                     : tool === "STICKY"
                       ? "캔버스를 클릭하면 새 스티키 노트를 추가할 수 있습니다."
@@ -4578,7 +5414,7 @@ export default function WhiteboardPage() {
 
                 <div className="flex shrink-0 items-center gap-4">
                   <span className="text-[11px] whitespace-nowrap text-[var(--flow-text-placeholder)]">
-                    {CANVAS_WIDTH} × {CANVAS_HEIGHT}
+                    {canvasWidth} × {canvasHeight}
                   </span>
 
                   <span className="text-[11px] font-semibold whitespace-nowrap text-[var(--flow-text-muted)]">

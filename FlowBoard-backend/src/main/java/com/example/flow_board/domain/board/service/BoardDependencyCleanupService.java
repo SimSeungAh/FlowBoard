@@ -10,7 +10,10 @@ import com.example.flow_board.domain.card.entity.Tag;
 import com.example.flow_board.domain.card.repository.CardRepository;
 import com.example.flow_board.domain.card.repository.TagRepository;
 import com.example.flow_board.domain.card.service.CardDependencyCleanupService;
+import com.example.flow_board.domain.whiteboard.entity.Whiteboard;
+import com.example.flow_board.domain.whiteboard.repository.WhiteboardObjectRepository;
 import com.example.flow_board.domain.whiteboard.repository.WhiteboardRepository;
+import com.example.flow_board.domain.whiteboard.service.WhiteboardImageService;
 import com.example.flow_board.domain.whiteboard.repository.WhiteboardStrokeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,7 +32,9 @@ public class BoardDependencyCleanupService {
   private final TagRepository tagRepository;
 
   private final WhiteboardStrokeRepository whiteboardStrokeRepository;
+  private final WhiteboardObjectRepository whiteboardObjectRepository;
   private final WhiteboardRepository whiteboardRepository;
+  private final WhiteboardImageService whiteboardImageService;
 
   private final ActivityLogRepository activityLogRepository;
 
@@ -90,14 +95,31 @@ public class BoardDependencyCleanupService {
 
     /*
      * 3.
-     * 화이트보드 Stroke 삭제
+     * 화이트보드 Stroke / Object / 이미지 파일 삭제
      *
-     * whiteboards보다 먼저 지워야
-     * whiteboard_strokes.whiteboard_id FK가 안전합니다.
+     * whiteboards보다 먼저 지워야 각 whiteboard_id FK가 안전합니다.
      */
     whiteboardStrokeRepository
         .deleteByBoard(
             board
+        );
+
+    List<Whiteboard> whiteboards =
+        whiteboardRepository
+            .findByBoardOrderByPositionAsc(
+                board
+            );
+
+    for (Whiteboard whiteboard : whiteboards) {
+      whiteboardObjectRepository
+          .deleteByWhiteboard(
+              whiteboard
+          );
+    }
+
+    whiteboardImageService
+        .deleteBoardDirectoryQuietly(
+            board.getId()
         );
 
     /*

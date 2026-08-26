@@ -703,6 +703,8 @@ export default function BoardPage() {
 
   const [description, setDescription] = useState("");
 
+  const [startDate, setStartDate] = useState("");
+
   const [dueDate, setDueDate] = useState("");
 
   const [taskTemplateId, setTaskTemplateId] = useState<TaskTemplateId>(DEFAULT_TASK_TEMPLATE_ID);
@@ -926,6 +928,8 @@ export default function BoardPage() {
 
       setDescription("");
 
+      setStartDate("");
+
       setDueDate("");
 
       setTaskTemplateId(DEFAULT_TASK_TEMPLATE_ID);
@@ -959,6 +963,8 @@ export default function BoardPage() {
 
     setDescription(getTaskDescriptionTemplate(initialTemplateId, DEFAULT_TEST_CASE_TYPE_ID));
 
+    setStartDate("");
+
     setDueDate("");
 
     setSelectedAssigneeUserIds(assigneeFilter ? [Number(assigneeFilter)] : []);
@@ -980,6 +986,10 @@ export default function BoardPage() {
     setTaskTemplateId(DEFAULT_TASK_TEMPLATE_ID);
 
     setTestCaseTypeId(DEFAULT_TEST_CASE_TYPE_ID);
+
+    setStartDate("");
+
+    setDueDate("");
 
     setSelectedAssigneeUserIds([]);
 
@@ -1023,6 +1033,17 @@ export default function BoardPage() {
       return;
     }
 
+    if (startDate && dueDate) {
+      const startTime = new Date(startDate).getTime();
+      const dueTime = new Date(dueDate).getTime();
+
+      if (!Number.isNaN(startTime) && !Number.isNaN(dueTime) && startTime > dueTime) {
+        toast.error("시작일은 마감일보다 늦을 수 없습니다.");
+
+        return;
+      }
+    }
+
     createMutation.mutate({
       columnId: createColumnId,
 
@@ -1036,6 +1057,8 @@ export default function BoardPage() {
         title: trimmedTitle,
 
         description: trimmedDescription || null,
+
+        startDate: startDate || null,
 
         dueDate: dueDate || null,
 
@@ -1320,12 +1343,20 @@ export default function BoardPage() {
                   <h3 className="text-[13px] font-bold text-[var(--flow-text)]">일정</h3>
 
                   <p className="mt-0.5 text-[10px] text-[var(--flow-text-muted)]">
-                    필요할 때만 마감일을 지정하세요.
+                    작업 시작일과 마감일을 필요에 따라 지정하세요. 둘 다 나중에 수정할 수 있습니다.
                   </p>
                 </div>
               </div>
 
-              <div className="pl-9">
+              <div className="grid grid-cols-1 gap-4 pl-9 md:grid-cols-2">
+                <Input
+                  label="작업 시작일"
+                  type="datetime-local"
+                  value={startDate}
+                  disabled={createMutation.isPending}
+                  onChange={(event) => setStartDate(event.target.value)}
+                />
+
                 <Input
                   label="마감일"
                   type="datetime-local"

@@ -62,6 +62,20 @@ public final class WhiteboardRequests {
   ) {
   }
 
+
+  public record CanvasSize(
+      @NotNull(message = "캔버스 너비는 필수입니다.")
+      @Min(value = 800, message = "캔버스 너비는 800 이상이어야 합니다.")
+      @Max(value = 6000, message = "캔버스 너비는 6000 이하이어야 합니다.")
+      Integer width,
+
+      @NotNull(message = "캔버스 높이는 필수입니다.")
+      @Min(value = 500, message = "캔버스 높이는 500 이상이어야 합니다.")
+      @Max(value = 4000, message = "캔버스 높이는 4000 이하이어야 합니다.")
+      Integer height
+  ) {
+  }
+
   public record Reorder(
       @NotEmpty(message = "화이트보드 순서는 비어 있을 수 없습니다.")
       List<@NotNull(message = "화이트보드 ID는 필수입니다.") Long> whiteboardIds

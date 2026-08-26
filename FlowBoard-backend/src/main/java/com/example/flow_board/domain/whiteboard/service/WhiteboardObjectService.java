@@ -18,7 +18,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +34,7 @@ public class WhiteboardObjectService {
   private final WhiteboardRepository whiteboardRepository;
   private final WhiteboardObjectRepository whiteboardObjectRepository;
   private final WhiteboardEventPublisher whiteboardEventPublisher;
+  private final WhiteboardImageService whiteboardImageService;
 
   public List<WhiteboardObjectResponse> getObjects(
       User user,
@@ -161,6 +166,74 @@ public class WhiteboardObjectService {
     return response;
   }
 
+  @Transactional
+  public WhiteboardObjectResponse updateLayerMetadata(
+      User user,
+      Long boardId,
+      Long whiteboardId,
+      Long objectId,
+      WhiteboardObjectRequests.LayerMetadata request
+  ) {
+    Board board = getBoardById(boardId);
+    boardPermissionService.validateWritePermission(board, user);
+    Whiteboard whiteboard = getWhiteboardInBoard(board, whiteboardId);
+    validateWhiteboardEditable(whiteboard);
+
+    WhiteboardObject object = getObjectInWhiteboard(whiteboard, objectId);
+    object.updateLayerMetadata(
+        normalizeOptionalText(request.layerName()),
+        request.visible()
+    );
+
+    WhiteboardObjectResponse response = WhiteboardObjectResponse.from(object);
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.objectUpdated(board.getId(), whiteboard.getId(), response)
+    );
+    return response;
+  }
+
+  @Transactional
+  public List<WhiteboardObjectResponse> reorderLayers(
+      User user,
+      Long boardId,
+      Long whiteboardId,
+      WhiteboardObjectRequests.LayerReorder request
+  ) {
+    Board board = getBoardById(boardId);
+    boardPermissionService.validateWritePermission(board, user);
+    Whiteboard whiteboard = getWhiteboardInBoard(board, whiteboardId);
+    validateWhiteboardEditable(whiteboard);
+
+    List<WhiteboardObject> currentObjects =
+        whiteboardObjectRepository.findOrderedByWhiteboard(whiteboard);
+
+    validateLayerOrder(currentObjects, request.objectIds());
+
+    Map<Long, WhiteboardObject> byId = new HashMap<>();
+    for (WhiteboardObject object : currentObjects) {
+      byId.put(object.getId(), object);
+    }
+
+    for (int index = 0; index < request.objectIds().size(); index += 1) {
+      WhiteboardObject object = byId.get(request.objectIds().get(index));
+      object.updateZIndex(index);
+    }
+
+    List<WhiteboardObjectResponse> responses = request.objectIds()
+        .stream()
+        .map(byId::get)
+        .map(WhiteboardObjectResponse::from)
+        .toList();
+
+    for (WhiteboardObjectResponse response : responses) {
+      whiteboardEventPublisher.publish(
+          WhiteboardWebSocketEvent.objectUpdated(board.getId(), whiteboard.getId(), response)
+      );
+    }
+
+    return responses;
+  }
+
   /**
    * 잠긴 객체는 내용/위치/크기/삭제가 차단되지만 잠금 자체는 변경할 수 있습니다.
    */
@@ -202,10 +275,34 @@ public class WhiteboardObjectService {
     WhiteboardObject object = getObjectInWhiteboard(whiteboard, objectId);
     validateObjectEditable(object);
     whiteboardObjectRepository.delete(object);
+    whiteboardImageService.deleteStoredImageQuietly(object);
 
     whiteboardEventPublisher.publish(
         WhiteboardWebSocketEvent.objectDeleted(board.getId(), whiteboard.getId(), objectId)
     );
+  }
+
+  private void validateLayerOrder(
+      List<WhiteboardObject> currentObjects,
+      List<Long> requestedIds
+  ) {
+    if (currentObjects.size() != requestedIds.size()) {
+      throw new CustomException(ErrorCode.INVALID_INPUT);
+    }
+
+    Set<Long> requestedSet = new HashSet<>(requestedIds);
+    if (requestedSet.size() != requestedIds.size()) {
+      throw new CustomException(ErrorCode.INVALID_INPUT);
+    }
+
+    Set<Long> currentSet = new HashSet<>();
+    for (WhiteboardObject object : currentObjects) {
+      currentSet.add(object.getId());
+    }
+
+    if (!currentSet.equals(requestedSet)) {
+      throw new CustomException(ErrorCode.INVALID_INPUT);
+    }
   }
 
   private int getNextZIndex(Whiteboard whiteboard) {

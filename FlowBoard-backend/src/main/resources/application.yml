@@ -3,3 +3,11 @@ spring:
     active: local
   config:
     import: optional:application-secret.yml
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
+
+flowboard:
+  whiteboard:
+    upload-dir: ${FLOWBOARD_WHITEBOARD_UPLOAD_DIR:./uploads/whiteboards}

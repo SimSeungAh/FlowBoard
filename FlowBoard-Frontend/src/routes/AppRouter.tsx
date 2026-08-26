@@ -14,6 +14,7 @@ import HomePage from "@/pages/Home/HomePage";
 import LoginPage from "@/pages/Login/LoginPage";
 import MyPage from "@/pages/MyPage/MyPage";
 import RequirementsPage from "@/pages/Requirements/RequirementsPage";
+import ReleaseChecksPage from "@/pages/ReleaseChecks/ReleaseChecksPage";
 import SchedulePage from "@/pages/Schedule/SchedulePage";
 import NotFoundPage from "@/pages/NotFound/NotFoundPage";
 import SecurityReviewsPage from "@/pages/SecurityReviews/SecurityReviewsPage";
@@ -112,6 +113,12 @@ const router = createBrowserRouter([
                 path: "security-reviews",
 
                 element: <SecurityReviewsPage />,
+              },
+
+              {
+                path: "release-checks",
+
+                element: <ReleaseChecksPage />,
               },
 
               {

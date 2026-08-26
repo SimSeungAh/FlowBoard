@@ -8,6 +8,7 @@ public enum BoardPresenceSection {
   SEARCH,
   TEST_CASE,
   SECURITY_REVIEW,
+  RELEASE_CHECK,
   WHITEBOARD,
   ACTIVITY,
   MEMBERS,

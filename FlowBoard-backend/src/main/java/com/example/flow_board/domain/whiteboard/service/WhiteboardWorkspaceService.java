@@ -41,6 +41,7 @@ public class WhiteboardWorkspaceService {
   private final WhiteboardRepository whiteboardRepository;
   private final WhiteboardStrokeRepository whiteboardStrokeRepository;
   private final WhiteboardObjectRepository whiteboardObjectRepository;
+  private final WhiteboardImageService whiteboardImageService;
   private final ActivityLogService activityLogService;
   private final WhiteboardEventPublisher whiteboardEventPublisher;
 
@@ -304,6 +305,55 @@ public class WhiteboardWorkspaceService {
   }
 
   /**
+   * 캔버스 작업 영역 크기 변경.
+   *
+   * 무한 캔버스 대신 화이트보드별 유한 작업 영역을 저장합니다.
+   * 다른 참여자에게는 WORKSPACE_UPDATED 이벤트로 확정 크기를 동기화합니다.
+   */
+  @Transactional
+  public WhiteboardResponse updateCanvasSize(
+      User user,
+      Long boardId,
+      Long whiteboardId,
+      WhiteboardRequests.CanvasSize request
+  ) {
+    Board board = getBoardById(boardId);
+    boardPermissionService.validateWritePermission(board, user);
+
+    Whiteboard whiteboard = getWhiteboardInBoard(board, whiteboardId);
+
+    whiteboard.updateCanvasSize(request.width(), request.height());
+
+    activityLogService.recordActivity(
+        board,
+        user,
+        ActivityType.WHITEBOARD_UPDATED,
+        whiteboard.getId(),
+        whiteboard.getTitle(),
+        user.getNickname()
+            + "님이 '"
+            + whiteboard.getTitle()
+            + "' 화이트보드 캔버스 크기를 "
+            + request.width()
+            + " × "
+            + request.height()
+            + "(으)로 변경했습니다."
+    );
+
+    WhiteboardResponse response = WhiteboardResponse.from(whiteboard);
+
+    whiteboardEventPublisher.publish(
+        WhiteboardWebSocketEvent.workspaceUpdated(
+            board.getId(),
+            whiteboard.getId(),
+            response
+        )
+    );
+
+    return response;
+  }
+
+  /**
    * 화이트보드 잠금 / 잠금 해제.
    * 잠금 상태에서도 조회, 확대/축소, Pan은 가능하지만 데이터 수정은 차단합니다.
    */
@@ -546,6 +596,7 @@ public class WhiteboardWorkspaceService {
      */
     whiteboardStrokeRepository.deleteByWhiteboard(target);
     whiteboardObjectRepository.deleteByWhiteboard(target);
+    whiteboardImageService.deleteWhiteboardDirectoryQuietly(boardId, whiteboardId);
 
     whiteboardRepository.delete(target);
 

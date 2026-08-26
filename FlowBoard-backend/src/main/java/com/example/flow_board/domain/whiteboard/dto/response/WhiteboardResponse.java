@@ -17,6 +17,8 @@ public record WhiteboardResponse(
     WhiteboardGridType gridType,
     Integer gridSize,
     Double gridOpacity,
+    Integer canvasWidth,
+    Integer canvasHeight,
     boolean locked,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
@@ -35,6 +37,8 @@ public record WhiteboardResponse(
         whiteboard.getGridType(),
         whiteboard.getGridSize(),
         whiteboard.getGridOpacity(),
+        whiteboard.getCanvasWidth(),
+        whiteboard.getCanvasHeight(),
         whiteboard.isLocked(),
         whiteboard.getCreatedAt(),
         whiteboard.getUpdatedAt()

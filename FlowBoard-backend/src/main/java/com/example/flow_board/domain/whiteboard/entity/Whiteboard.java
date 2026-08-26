@@ -72,6 +72,12 @@ public class Whiteboard extends BaseEntity {
   @Column(name = "grid_opacity", nullable = false, columnDefinition = "double default 0.12")
   private Double gridOpacity = 0.12;
 
+  @Column(name = "canvas_width", nullable = false, columnDefinition = "integer default 1200")
+  private Integer canvasWidth = 1200;
+
+  @Column(name = "canvas_height", nullable = false, columnDefinition = "integer default 700")
+  private Integer canvasHeight = 700;
+
   @Column(name = "is_locked", nullable = false, columnDefinition = "boolean default false")
   private boolean locked = false;
 
@@ -92,6 +98,8 @@ public class Whiteboard extends BaseEntity {
     this.gridType = WhiteboardGridType.GRID;
     this.gridSize = 24;
     this.gridOpacity = 0.12;
+    this.canvasWidth = 1200;
+    this.canvasHeight = 700;
     this.locked = false;
   }
 
@@ -119,6 +127,11 @@ public class Whiteboard extends BaseEntity {
     this.gridEnabled = gridType != WhiteboardGridType.NONE;
     this.gridSize = gridSize;
     this.gridOpacity = gridOpacity;
+  }
+
+  public void updateCanvasSize(Integer canvasWidth, Integer canvasHeight) {
+    this.canvasWidth = canvasWidth;
+    this.canvasHeight = canvasHeight;
   }
 
   public void updateLocked(boolean locked) {

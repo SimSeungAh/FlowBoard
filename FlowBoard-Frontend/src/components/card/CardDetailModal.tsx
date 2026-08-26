@@ -43,6 +43,9 @@ import Button from "@/components/ui/Button";
 import ChecklistSection from "@/components/card/ChecklistSection";
 import CommentSection from "@/components/card/CommentSection";
 import StructuredDescription from "@/components/card/StructuredDescription";
+import RequirementCardSection from "@/components/card/RequirementCardSection";
+import DesignReviewCardSection from "@/components/card/DesignReviewCardSection";
+import ReleaseCheckCardSection from "@/components/card/ReleaseCheckCardSection";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
@@ -1380,7 +1383,7 @@ export default function CardDetailModal({
 
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <Input
-                        label="시작일"
+                        label="작업 시작일"
                         type="datetime-local"
                         value={startDate}
                         disabled={updateMutation.isPending}
@@ -1682,13 +1685,42 @@ export default function CardDetailModal({
 
                     <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4 px-4 py-3.5">
                       <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--flow-text-muted)]">
-                        <CalendarIcon />
-                        시작일
+                        <ClockIcon />
+                        등록일
                       </div>
 
-                      <span className="truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
-                        {formatDateTime(card.startDate)}
-                      </span>
+                      <div className="flex min-w-0 items-center justify-between gap-3">
+                        <span className="truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
+                          {formatCompactDateTime(card.createdAt)}
+                        </span>
+
+                        <span className="shrink-0 text-[9px] font-medium text-[var(--flow-text-placeholder)]">
+                          시스템 기록 · 수정 불가
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4 px-4 py-3.5">
+                      <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--flow-text-muted)]">
+                        <CalendarIcon />
+                        작업 시작일
+                      </div>
+
+                      <div className="flex min-w-0 items-center justify-between gap-3">
+                        <span className="truncate text-[12px] font-semibold text-[var(--flow-text-secondary)]">
+                          {formatDateTime(card.startDate)}
+                        </span>
+
+                        {canEdit && (
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold text-[var(--flow-primary)] transition-colors hover:bg-[var(--flow-primary-50)]"
+                            onClick={startEdit}
+                          >
+                            날짜 수정
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4 px-4 py-3.5">
@@ -2109,6 +2141,18 @@ export default function CardDetailModal({
                     </div>
                   )}
                 </section>
+
+                {card.taskType === "REQUIREMENT" && (
+                  <RequirementCardSection cardId={card.id} canEdit={canEdit} />
+                )}
+
+                {card.taskType === "DESIGN_REVIEW" && (
+                  <DesignReviewCardSection cardId={card.id} canEdit={canEdit} />
+                )}
+
+                {card.taskType === "RELEASE_CHECK" && (
+                  <ReleaseCheckCardSection cardId={card.id} canEdit={canEdit} />
+                )}
 
                 <section className="border-b border-[var(--flow-border)] px-7 py-6">
                   <div className="flex items-start justify-between gap-5">

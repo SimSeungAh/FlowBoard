@@ -170,6 +170,56 @@ public class WhiteboardObjectController {
     );
   }
 
+  @PatchMapping("/{objectId}/layer-meta")
+  @Operation(
+      summary = "화이트보드 레이어 메타데이터 변경",
+      description = "레이어 이름과 표시/숨김 상태를 변경합니다."
+  )
+  public ApiResponse<WhiteboardObjectResponse> updateLayerMetadata(
+      @AuthenticationPrincipal CustomUserDetails userDetails,
+      @PathVariable Long boardId,
+      @PathVariable Long whiteboardId,
+      @PathVariable Long objectId,
+      @Valid @RequestBody WhiteboardObjectRequests.LayerMetadata request
+  ) {
+    WhiteboardObjectResponse response = whiteboardObjectService.updateLayerMetadata(
+        userDetails.getUser(),
+        boardId,
+        whiteboardId,
+        objectId,
+        request
+    );
+
+    return ApiResponse.success(
+        "화이트보드 레이어 설정 변경 성공",
+        response
+    );
+  }
+
+  @PatchMapping("/layers/reorder")
+  @Operation(
+      summary = "화이트보드 레이어 순서 변경",
+      description = "현재 화이트보드의 객체 레이어 순서를 한 번에 변경합니다."
+  )
+  public ApiResponse<List<WhiteboardObjectResponse>> reorderLayers(
+      @AuthenticationPrincipal CustomUserDetails userDetails,
+      @PathVariable Long boardId,
+      @PathVariable Long whiteboardId,
+      @Valid @RequestBody WhiteboardObjectRequests.LayerReorder request
+  ) {
+    List<WhiteboardObjectResponse> response = whiteboardObjectService.reorderLayers(
+        userDetails.getUser(),
+        boardId,
+        whiteboardId,
+        request
+    );
+
+    return ApiResponse.success(
+        "화이트보드 레이어 순서 변경 성공",
+        response
+    );
+  }
+
   @PatchMapping("/{objectId}/lock")
   @Operation(
       summary = "화이트보드 객체 잠금 변경",
