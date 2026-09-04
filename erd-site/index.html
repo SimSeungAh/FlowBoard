@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FlowBoard 데이터베이스 구성도</title>
+  <style>
+    :root {
+      --navy: #0d2c61;
+      --blue: #1764c0;
+      --sky: #eaf3ff;
+      --ink: #17233b;
+      --muted: #65738b;
+      --line: #b9c7da;
+      --paper: #ffffff;
+      --bg: #eef3f9;
+      --item: #2767c7;
+      --animal: #7b4bc4;
+      --member: #168c8c;
+      --support: #d27525;
+      --public: #68758a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 1180px;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 58px;
+      padding: 0 26px;
+      color: white;
+      background: #071d40;
+      box-shadow: 0 5px 18px rgb(7 29 64 / 18%);
+    }
+
+    .toolbar strong { font-size: 17px; letter-spacing: -.02em; }
+    .toolbar-actions { display: flex; align-items: center; gap: 9px; }
+
+    button {
+      border: 1px solid rgb(255 255 255 / 28%);
+      border-radius: 8px;
+      padding: 8px 13px;
+      color: white;
+      background: rgb(255 255 255 / 8%);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover, button.active { color: #071d40; background: white; }
+
+    .page-wrap { padding: 24px; }
+
+    .slide {
+      position: relative;
+      width: 1600px;
+      min-height: 900px;
+      margin: 0 auto;
+      overflow: hidden;
+      background:
+        linear-gradient(rgb(13 44 97 / 3%) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(13 44 97 / 3%) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      border-radius: 12px;
+      box-shadow: 0 18px 55px rgb(31 53 86 / 17%);
+    }
+
+    header {
+      position: relative;
+      z-index: 3;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 34px 46px 19px;
+      border-bottom: 1px solid #dbe4ef;
+      background: rgb(255 255 255 / 94%);
+    }
+
+    h1 { margin: 0; color: var(--navy); font-size: 42px; line-height: 1; letter-spacing: -.045em; }
+    .subtitle { margin: 10px 0 0; color: var(--muted); font-size: 16px; }
+    .db-badge { color: var(--blue); font-size: 14px; font-weight: 800; }
+
+    .legend { display: flex; gap: 9px; }
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      color: #435169;
+      background: white;
+      border: 1px solid #dbe4ef;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    .board {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 21px 18px;
+      padding: 26px 42px 28px;
+    }
+
+    .table-card {
+      position: relative;
+      z-index: 4;
+      display: flex;
+      min-height: 118px;
+      flex-direction: column;
+      justify-content: center;
+      padding: 18px 17px 16px;
+      border: 1.5px solid #cbd7e6;
+      border-top: 6px solid var(--tone);
+      border-radius: 12px;
+      background: rgb(255 255 255 / 97%);
+      box-shadow: 0 7px 16px rgb(40 68 107 / 9%);
+      text-align: center;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+      transition: box-shadow .16s ease, border-color .16s ease;
+    }
+
+    .table-card:hover {
+      border-color: color-mix(in srgb, var(--tone) 55%, #cbd7e6);
+      box-shadow: 0 11px 24px rgb(40 68 107 / 15%);
+    }
+
+    .table-card.dragging {
+      z-index: 20;
+      cursor: grabbing;
+      box-shadow: 0 18px 38px rgb(24 49 86 / 24%);
+      transition: none;
+    }
+
+    .table-card::after {
+      position: absolute;
+      inset: 8px;
+      border: 1px solid color-mix(in srgb, var(--tone) 15%, transparent);
+      border-radius: 7px;
+      content: "";
+      pointer-events: none;
+    }
+
+    .table-name {
+      position: relative;
+      z-index: 1;
+      color: var(--navy);
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 17px;
+      font-weight: 850;
+      line-height: 1.18;
+      overflow-wrap: normal;
+      word-break: normal;
+      letter-spacing: -.01em;
+    }
+
+    .table-card.long .table-name { font-size: 14px; }
+    .table-card.very-long .table-name { font-size: 12.5px; line-height: 1.12; }
+
+    .table-desc {
+      position: relative;
+      z-index: 1;
+      margin-top: 10px;
+      color: #526078;
+      font-size: 13.5px;
+      font-weight: 650;
+      line-height: 1.4;
+      word-break: keep-all;
+    }
+
+    .member { --tone: var(--member); }
+    .item { --tone: var(--item); }
+    .animal { --tone: var(--animal); }
+    .support { --tone: var(--support); }
+    .public { --tone: var(--public); }
+
+    #relations {
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .relation-group { opacity: .62; transition: opacity .14s ease; }
+    .relation {
+      fill: none;
+      stroke: var(--relation-color);
+      stroke-width: 2;
+      transition: stroke-width .14s ease;
+    }
+    .relation.logical { stroke-dasharray: 7 6; }
+    .arrow { fill: var(--relation-color); }
+    #relations.has-focus .relation-group { opacity: .08; }
+    #relations.has-focus .relation-group.is-connected { opacity: 1; }
+    #relations.has-focus .relation-group.is-connected .relation { stroke-width: 3.6; }
+    .table-card:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+
+    .note {
+      position: absolute;
+      z-index: 5;
+      right: 43px;
+      bottom: 20px;
+      color: #7c8799;
+      font-size: 11px;
+    }
+
+    body[data-view="all"] .slide { min-height: 900px; }
+    body[data-view="all"] .board { grid-template-columns: repeat(7, 1fr); gap: 17px 14px; }
+    body[data-view="all"] .table-card { min-height: 126px; padding-inline: 13px; }
+    body[data-view="all"] .table-name { font-size: 15px; }
+    body[data-view="all"] .table-card.long .table-name { font-size: 12.5px; }
+    body[data-view="all"] .table-card.very-long .table-name { font-size: 11px; }
+    body[data-view="all"] .table-desc { font-size: 12.5px; }
+
+    body.capture .toolbar { display: none; }
+    body.capture .page-wrap { padding: 0; }
+    body.capture .slide { border-radius: 0; box-shadow: none; }
+
+    @media print {
+      body { min-width: 0; background: white; }
+      .toolbar { display: none; }
+      .page-wrap { padding: 0; }
+      .slide { box-shadow: none; border-radius: 0; }
+    }
+  </style>
+</head>
+<body data-view="core">
+  <div class="toolbar">
+    <strong>캡처 설정</strong>
+    <div class="toolbar-actions">
+      <button class="active" data-mode="core">핵심 관계도</button>
+      <button data-mode="all">전체 테이블</button>
+      <button id="toggle-lines">관계선 숨기기</button>
+      <button id="reset-layout">배치 초기화</button>
+      <button id="capture-mode">PPT 캡처 모드</button>
+      <button id="fullscreen">전체 화면</button>
+    </div>
+  </div>
+
+  <main class="page-wrap">
+    <section class="slide" id="slide">
+      <header>
+        <div>
+          <h1>FlowBoard ERD</h1>
+          <p class="subtitle" id="subtitle">서비스의 핵심 데이터와 연결 관계를 한눈에 보는 데이터베이스 구성도</p>
+        </div>
+        <div>
+          <div class="legend">
+            <span><i class="dot" style="background:var(--member)"></i>회원</span>
+            <span><i class="dot" style="background:var(--item)"></i>보드</span>
+            <span><i class="dot" style="background:var(--animal)"></i>카드·업무</span>
+            <span><i class="dot" style="background:var(--support)"></i>화이트보드</span>
+            <span><i class="dot" style="background:var(--public)"></i>활동 기록</span>
+          </div>
+          <div class="db-badge" style="text-align:right;margin-top:11px">MySQL · Spring Data JPA</div>
+        </div>
+      </header>
+
+      <svg id="relations" aria-hidden="true"></svg>
+      <div class="board" id="board"></div>
+      <div class="note">관계마다 선 색상 구분 · 카드에 마우스를 올리면 연결선 강조 · 점선은 논리적 연결</div>
+    </section>
+  </main>
+
+  <script>
+    const tables = [
+      { id: 'users', desc: '회원 계정과 기본 정보를 관리', group: 'member', core: true },
+      { id: 'refresh_tokens', desc: '로그인 갱신 토큰을 회원과 연결', group: 'member', core: false },
+      { id: 'boards', desc: '프로젝트 보드의 기본 정보를 저장', group: 'item', core: true },
+      { id: 'board_members', desc: '보드 참여자와 역할을 관리', group: 'item', core: true },
+      { id: 'board_columns', desc: '보드의 업무 진행 단계를 관리', group: 'item', core: true },
+      { id: 'cards', desc: '실제 업무 카드와 상태를 저장', group: 'animal', core: true },
+      { id: 'card_assignees', desc: '카드 담당자를 여러 명 연결', group: 'animal', core: true },
+      { id: 'tags', desc: '보드에서 사용하는 분류 태그', group: 'animal', core: true },
+      { id: 'card_tags', desc: '카드와 태그를 서로 연결', group: 'animal', core: true },
+      { id: 'checklists', desc: '카드 안의 체크리스트 묶음', group: 'animal', core: true },
+      { id: 'checklist_items', desc: '체크리스트의 세부 할 일', group: 'animal', core: true },
+      { id: 'comments', desc: '카드에 작성한 의견과 대화', group: 'animal', core: true },
+      { id: 'requirement_metadata', desc: '요구사항 카드의 추가 정보', group: 'animal', core: false },
+      { id: 'design_review_metadata', desc: '디자인 검토 카드의 추가 정보', group: 'animal', core: false },
+      { id: 'release_check_metadata', desc: '배포 점검 카드의 추가 정보', group: 'animal', core: false },
+      { id: 'whiteboards', desc: '보드별 협업 화이트보드', group: 'support', core: true },
+      { id: 'whiteboard_objects', desc: '메모·도형·텍스트 객체를 저장', group: 'support', core: true },
+      { id: 'whiteboard_strokes', desc: '화이트보드의 펜 그림을 저장', group: 'support', core: true },
+      { id: 'activity_logs', desc: '보드에서 발생한 변경 이력', group: 'public', core: true }
+    ];
+
+    const relations = [
+      ['refresh_tokens','users'], ['boards','users'],
+      ['board_members','boards'], ['board_members','users'], ['board_columns','boards'],
+      ['cards','board_columns'], ['cards','users'],
+      ['card_assignees','cards'], ['card_assignees','users'],
+      ['tags','boards'], ['card_tags','cards'], ['card_tags','tags'],
+      ['checklists','cards'], ['checklist_items','checklists'],
+      ['comments','cards'], ['comments','users'],
+      ['requirement_metadata','cards'], ['design_review_metadata','cards'], ['release_check_metadata','cards'],
+      ['whiteboards','boards'], ['whiteboard_objects','whiteboards'], ['whiteboard_objects','users'],
+      ['whiteboard_strokes','boards'], ['whiteboard_strokes','whiteboards'], ['whiteboard_strokes','users'],
+      ['activity_logs','boards'], ['activity_logs','users']
+    ];
+
+    const board = document.querySelector('#board');
+    const svg = document.querySelector('#relations');
+    let mode = 'core';
+    let linesVisible = true;
+    let dragState = null;
+
+    function storageKey() {
+      return `flowboard-erd-layout-${mode}`;
+    }
+
+    function readLayout() {
+      try { return JSON.parse(localStorage.getItem(storageKey()) || '{}'); }
+      catch { return {}; }
+    }
+
+    function saveLayout() {
+      const layout = {};
+      document.querySelectorAll('.table-card').forEach(card => {
+        layout[card.dataset.id] = {
+          x: Number(card.dataset.x || 0),
+          y: Number(card.dataset.y || 0)
+        };
+      });
+      localStorage.setItem(storageKey(), JSON.stringify(layout));
+    }
+
+    function applyPosition(card, x, y) {
+      card.dataset.x = String(Math.round(x));
+      card.dataset.y = String(Math.round(y));
+      card.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    }
+
+    function enableDrag(card) {
+      card.addEventListener('pointerdown', e => {
+        if (e.button !== 0) return;
+        card.setPointerCapture(e.pointerId);
+        dragState = {
+          card,
+          startX: e.clientX,
+          startY: e.clientY,
+          baseX: Number(card.dataset.x || 0),
+          baseY: Number(card.dataset.y || 0)
+        };
+        card.classList.add('dragging');
+      });
+
+      card.addEventListener('pointermove', e => {
+        if (!dragState || dragState.card !== card) return;
+        applyPosition(
+          card,
+          dragState.baseX + e.clientX - dragState.startX,
+          dragState.baseY + e.clientY - dragState.startY
+        );
+        drawRelations();
+      });
+
+      const finishDrag = () => {
+        if (!dragState || dragState.card !== card) return;
+        card.classList.remove('dragging');
+        dragState = null;
+        saveLayout();
+        drawRelations();
+      };
+      card.addEventListener('pointerup', finishDrag);
+      card.addEventListener('pointercancel', finishDrag);
+    }
+
+    function renderCards() {
+      board.innerHTML = '';
+      const visible = mode === 'core' ? tables.filter(t => t.core) : tables;
+      const savedLayout = readLayout();
+      visible.forEach(t => {
+        const card = document.createElement('article');
+        const lengthClass = t.id.length > 27 ? 'very-long' : t.id.length > 18 ? 'long' : '';
+        card.className = `table-card ${t.group} ${lengthClass}`;
+        card.dataset.id = t.id;
+        card.tabIndex = 0;
+        const readableName = t.id.replaceAll('_', '_<wbr>');
+        card.innerHTML = `<div class="table-name">${readableName}</div><div class="table-desc">${t.desc}</div>`;
+        const saved = savedLayout[t.id] || { x: 0, y: 0 };
+        applyPosition(card, saved.x, saved.y);
+        enableDrag(card);
+        card.addEventListener('pointerenter', () => setConnectionFocus(t.id));
+        card.addEventListener('pointerleave', clearConnectionFocus);
+        card.addEventListener('focus', () => setConnectionFocus(t.id));
+        card.addEventListener('blur', clearConnectionFocus);
+        board.appendChild(card);
+      });
+      document.querySelector('#subtitle').textContent = mode === 'core'
+        ? '서비스의 핵심 데이터와 연결 관계를 한눈에 보는 데이터베이스 구성도'
+        : `실제 엔티티 기준 전체 ${tables.length}개 테이블 요약`;
+      requestAnimationFrame(drawRelations);
+    }
+
+    function relationColor(index) {
+      const hue = Math.round((index * 137.508 + 212) % 360);
+      return `hsl(${hue} 72% 42%)`;
+    }
+
+    function setConnectionFocus(tableId) {
+      svg.classList.add('has-focus');
+      svg.querySelectorAll('.relation-group').forEach(group => {
+        group.classList.toggle('is-connected', group.dataset.from === tableId || group.dataset.to === tableId);
+      });
+    }
+
+    function clearConnectionFocus() {
+      svg.classList.remove('has-focus');
+      svg.querySelectorAll('.relation-group').forEach(group => group.classList.remove('is-connected'));
+    }
+
+    function drawRelations() {
+      svg.innerHTML = '';
+      if (!linesVisible) return;
+      const slideRect = document.querySelector('#slide').getBoundingClientRect();
+      svg.setAttribute('viewBox', `0 0 ${slideRect.width} ${slideRect.height}`);
+      relations.forEach(([from, to, type], index) => {
+        const a = document.querySelector(`[data-id="${from}"]`);
+        const b = document.querySelector(`[data-id="${to}"]`);
+        if (!a || !b) return;
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        const ax = ar.left - slideRect.left + ar.width / 2;
+        const ay = ar.top - slideRect.top + ar.height / 2;
+        const bx = br.left - slideRect.left + br.width / 2;
+        const by = br.top - slideRect.top + br.height / 2;
+        const mx = (ax + bx) / 2;
+        const group = document.createElementNS('http://www.w3.org/2000/svg','g');
+        group.setAttribute('class', 'relation-group');
+        group.dataset.from = from;
+        group.dataset.to = to;
+        group.style.setProperty('--relation-color', relationColor(index));
+        const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.setAttribute('d', `M ${ax} ${ay} C ${mx} ${ay}, ${mx} ${by}, ${bx} ${by}`);
+        path.setAttribute('class', `relation ${type || ''}`);
+        group.appendChild(path);
+        const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        dot.setAttribute('cx', bx); dot.setAttribute('cy', by); dot.setAttribute('r', 3.4);
+        dot.setAttribute('class', `arrow ${type || ''}`);
+        group.appendChild(dot);
+        svg.appendChild(group);
+      });
+    }
+
+    document.querySelectorAll('[data-mode]').forEach(btn => btn.addEventListener('click', () => {
+      mode = btn.dataset.mode;
+      document.body.dataset.view = mode;
+      document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b === btn));
+      renderCards();
+    }));
+
+    document.querySelector('#toggle-lines').addEventListener('click', e => {
+      linesVisible = !linesVisible;
+      e.currentTarget.textContent = linesVisible ? '관계선 숨기기' : '관계선 보이기';
+      drawRelations();
+    });
+
+    document.querySelector('#reset-layout').addEventListener('click', () => {
+      localStorage.removeItem(storageKey());
+      document.querySelectorAll('.table-card').forEach(card => applyPosition(card, 0, 0));
+      drawRelations();
+    });
+
+    document.querySelector('#fullscreen').addEventListener('click', () => {
+      document.documentElement.requestFullscreen?.();
+    });
+
+    function toggleCaptureMode() {
+      document.body.classList.toggle('capture');
+      window.scrollTo(0, 0);
+      requestAnimationFrame(drawRelations);
+    }
+
+    document.querySelector('#capture-mode').addEventListener('click', toggleCaptureMode);
+    document.addEventListener('keydown', e => {
+      if (e.key.toLowerCase() === 'h') toggleCaptureMode();
+    });
+
+    window.addEventListener('resize', drawRelations);
+    renderCards();
+  </script>
+</body>
+</html>

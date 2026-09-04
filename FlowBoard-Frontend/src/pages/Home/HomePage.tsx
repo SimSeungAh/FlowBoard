@@ -101,15 +101,15 @@ export default function HomePage() {
     <div className="w-full bg-white">
       {/* HERO */}
       <section className="relative overflow-hidden border-b border-slate-100">
-        <div className="pointer-events-none absolute left-[18%] top-[8%] h-[420px] w-[420px] rounded-full bg-blue-100/50 blur-[110px]" />
+        <div className="pointer-events-none absolute left-[18%] top-[8%] h-[420px] w-[420px] rounded-full bg-[var(--flow-primary-100)] opacity-50 blur-[110px]" />
 
-        <div className="pointer-events-none absolute right-[8%] top-[18%] h-[360px] w-[360px] rounded-full bg-sky-100/60 blur-[120px]" />
+        <div className="pointer-events-none absolute right-[8%] top-[18%] h-[360px] w-[360px] rounded-full bg-[var(--flow-secondary-soft)] opacity-60 blur-[120px]" />
 
         <div className="relative mx-auto grid min-h-[680px] w-full max-w-[1320px] grid-cols-[0.82fr_1.18fr] items-center gap-20 px-10 py-24">
           {/* HERO TEXT */}
           <div className="max-w-[520px]">
-            <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3.5 py-1.5 text-xs font-semibold text-blue-700">
-              <span className="h-2 w-2 rounded-full bg-blue-600" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--flow-primary-200)] bg-[var(--flow-primary-50)] px-3.5 py-1.5 text-xs font-semibold text-[var(--flow-primary-700)]">
+              <span className="h-2 w-2 rounded-full bg-[var(--flow-primary)]" />
               실시간 협업 칸반보드
             </div>
 
@@ -118,7 +118,7 @@ export default function HomePage() {
               <br />
               한눈에,
               <br />
-              <span className="text-blue-600">
+              <span className="text-[var(--flow-primary)]">
                 실시간으로.
               </span>
             </h1>
@@ -136,7 +136,8 @@ export default function HomePage() {
                 <>
                   <Link
                     to="/boards"
-                    className="inline-flex h-12 items-center justify-center rounded-lg bg-blue-600 px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+                    style={{ color: "var(--flow-on-primary)" }}
+                    className="inline-flex h-12 items-center justify-center rounded-lg bg-[var(--flow-primary)] px-6 text-sm font-semibold shadow-sm transition-colors hover:bg-[var(--flow-primary-700)]"
                   >
                     내 보드 보기
 
@@ -159,7 +160,8 @@ export default function HomePage() {
                 <>
                   <Link
                     to="/signup"
-                    className="inline-flex h-12 items-center justify-center rounded-lg bg-blue-600 px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+                    style={{ color: "var(--flow-on-primary)" }}
+                    className="inline-flex h-12 items-center justify-center rounded-lg bg-[var(--flow-primary)] px-6 text-sm font-semibold shadow-sm transition-colors hover:bg-[var(--flow-primary-700)]"
                   >
                     무료로 시작하기
 
@@ -183,21 +185,21 @@ export default function HomePage() {
 
             <div className="mt-10 flex items-center gap-6 text-xs font-medium text-slate-500">
               <span className="flex items-center gap-2">
-                <span className="text-blue-600">
+                <span className="text-[var(--flow-primary)]">
                   ✓
                 </span>
                 실시간 카드 동기화
               </span>
 
               <span className="flex items-center gap-2">
-                <span className="text-blue-600">
+                <span className="text-[var(--flow-primary)]">
                   ✓
                 </span>
                 권한별 협업
               </span>
 
               <span className="flex items-center gap-2">
-                <span className="text-blue-600">
+                <span className="text-[var(--flow-primary)]">
                   ✓
                 </span>
                 Canvas 화이트보드
@@ -207,7 +209,7 @@ export default function HomePage() {
 
           {/* DEMO BOARD */}
           <div className="relative">
-            <div className="pointer-events-none absolute -inset-10 -z-10 rounded-[40px] bg-gradient-to-br from-blue-100/70 via-sky-50 to-slate-50 blur-3xl" />
+            <div className="pointer-events-none absolute -inset-10 -z-10 rounded-[40px] bg-[linear-gradient(to_bottom_right,var(--flow-primary-100),var(--flow-secondary-soft),var(--flow-gray-50))] opacity-70 blur-3xl" />
 
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.12)]">
               <div className="flex h-[74px] items-center justify-between border-b border-slate-200 px-6">
@@ -233,7 +235,7 @@ export default function HomePage() {
                     ),
                   )}
 
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full border-[3px] border-white bg-blue-50 text-xs font-bold text-blue-700">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full border-[3px] border-white bg-[var(--flow-primary-50)] text-xs font-bold text-[var(--flow-primary-700)]">
                     +2
                   </span>
                 </div>
@@ -294,8 +296,8 @@ export default function HomePage() {
 
                                 <div className="mt-4 flex items-center justify-between">
                                   <div className="flex -space-x-1">
-                                    <span className="h-5 w-5 rounded-full border-2 border-white bg-blue-500" />
-                                    <span className="h-5 w-5 rounded-full border-2 border-white bg-sky-400" />
+                                    <span className="h-5 w-5 rounded-full border-2 border-white bg-[var(--flow-primary-500)]" />
+                                    <span className="h-5 w-5 rounded-full border-2 border-white bg-[var(--flow-secondary)]" />
                                   </div>
 
                                   <span className="text-[9px] text-slate-400">
@@ -345,7 +347,7 @@ export default function HomePage() {
       >
         <div className="mx-auto w-full max-w-[1240px] px-10 py-28">
           <div className="max-w-[660px]">
-            <p className="text-xs font-bold tracking-[0.14em] text-blue-600">
+            <p className="text-xs font-bold tracking-[0.14em] text-[var(--flow-primary)]">
               WHY FLOWBOARD
             </p>
 
@@ -371,9 +373,9 @@ export default function HomePage() {
                   key={
                     feature.number
                   }
-                  className="min-h-[220px] rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_4px_16px_rgba(15,23,42,0.04)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_12px_28px_rgba(15,23,42,0.07)]"
+                  className="min-h-[220px] rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_4px_16px_rgba(15,23,42,0.04)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-[var(--flow-primary-200)] hover:shadow-[0_12px_28px_rgba(15,23,42,0.07)]"
                 >
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-blue-600">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--flow-primary-50)] text-xs font-bold text-[var(--flow-primary)]">
                     {
                       feature.number
                     }
@@ -401,7 +403,7 @@ export default function HomePage() {
       <section className="border-y border-slate-200 bg-slate-50">
         <div className="mx-auto grid min-h-[600px] w-full max-w-[1240px] grid-cols-[0.9fr_1.1fr] items-center gap-24 px-10 py-28">
           <div>
-            <p className="text-xs font-bold tracking-[0.14em] text-blue-600">
+            <p className="text-xs font-bold tracking-[0.14em] text-[var(--flow-primary)]">
               REAL-TIME COLLABORATION
             </p>
 
@@ -424,8 +426,8 @@ export default function HomePage() {
 
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_10px_35px_rgba(15,23,42,0.06)]">
             <div className="space-y-0">
-              <div className="flex items-center gap-5 rounded-xl bg-blue-50 px-5 py-5">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+              <div className="flex items-center gap-5 rounded-xl bg-[var(--flow-primary-50)] px-5 py-5">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--flow-primary)] text-sm font-bold text-white">
                   1
                 </span>
 
@@ -441,7 +443,7 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <div className="ml-[41px] h-8 border-l-2 border-dashed border-blue-200" />
+              <div className="ml-[41px] h-8 border-l-2 border-dashed border-[var(--flow-primary-200)]" />
 
               <div className="flex items-center gap-5 rounded-xl bg-slate-50 px-5 py-5">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-800 text-sm font-bold text-white">
@@ -460,7 +462,7 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <div className="ml-[41px] h-8 border-l-2 border-dashed border-blue-200" />
+              <div className="ml-[41px] h-8 border-l-2 border-dashed border-[var(--flow-primary-200)]" />
 
               <div className="flex items-center gap-5 rounded-xl bg-emerald-50 px-5 py-5">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-white">
@@ -487,10 +489,10 @@ export default function HomePage() {
       <section className="bg-white">
         <div className="mx-auto w-full max-w-[1240px] px-10 py-28">
           <div className="relative overflow-hidden rounded-[24px] bg-slate-950 px-12 py-20 text-center">
-            <div className="pointer-events-none absolute left-1/2 top-0 h-[260px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600/20 blur-[100px]" />
+            <div className="pointer-events-none absolute left-1/2 top-0 h-[260px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--flow-primary)] opacity-20 blur-[100px]" />
 
             <div className="relative">
-              <p className="text-xs font-bold tracking-[0.14em] text-blue-400">
+              <p className="text-xs font-bold tracking-[0.14em] text-[var(--flow-primary-400)]">
                 FLOWBOARD
               </p>
 
@@ -514,7 +516,8 @@ export default function HomePage() {
                       ? "/boards"
                       : "/signup"
                   }
-                  className="inline-flex h-12 items-center justify-center rounded-lg bg-blue-600 px-7 text-sm font-semibold text-white transition-colors hover:bg-blue-500"
+                  style={{ color: "var(--flow-on-primary)" }}
+                  className="inline-flex h-12 items-center justify-center rounded-lg bg-[var(--flow-primary)] px-7 text-sm font-semibold transition-colors hover:bg-[var(--flow-primary-500)]"
                 >
                   {isLogin
                     ? "내 보드로 이동"

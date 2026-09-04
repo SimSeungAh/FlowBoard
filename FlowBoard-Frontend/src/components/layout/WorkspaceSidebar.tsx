@@ -290,14 +290,6 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
           },
 
           {
-            label: "요구사항",
-
-            path: `/boards/${boardId}/requirements`,
-
-            icon: "requirements" as const,
-          },
-
-          {
             label: "일정",
 
             path: `/boards/${boardId}/schedule`,
@@ -319,6 +311,14 @@ export default function WorkspaceSidebar({ boardId }: WorkspaceSidebarProps) {
             path: `/boards/${boardId}/search`,
 
             icon: "search" as const,
+          },
+
+          {
+            label: "요구사항",
+
+            path: `/boards/${boardId}/requirements`,
+
+            icon: "requirements" as const,
           },
 
           {
